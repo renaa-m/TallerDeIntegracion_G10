@@ -1,0 +1,23 @@
+# Web framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+
+# Configuration
+pydantic-settings==2.9.1
+python-dotenv==1.1.0
+
+# File uploads
+python-multipart==0.0.20
+
+# Auth (JWT validation for Auth0)
+python-jose[cryptography]==3.4.0
+
+# HTTP client (async calls to external APIs)
+httpx==0.28.1
+
+# Testing
+pytest==8.3.5
+pytest-asyncio==0.26.0
+
+# Linting
+ruff==0.11.6
