@@ -78,16 +78,21 @@ Esto genera un `data_model.json` que Wukong usa para saber exactamente qué extr
 Investigador presiona "Procesar colección"
         │
         ▼
+El backend descarga de Supabase todos los .txt
+de la colección (generados en Pipeline 1)
+        │
+        ▼
 Se arma el directorio que Wukong espera:
   data-dir/
   ├── docs/text/nombre-coleccion/
-  │   ├── documento_1.txt
-  │   ├── documento_2.txt
+  │   ├── documento_1.txt    ← vino de un PDF digital (PyMuPDF)
+  │   ├── documento_2.txt    ← vino de un PDF escaneado (OpenAI OCR)
+  │   ├── documento_3.txt    ← subido directo como .txt
   │   └── ...
-  └── data_model.json    ← generado del formulario
+  └── data_model.json        ← generado del formulario (Fase 2)
         │
         ▼
-Wukong procesa (usa OpenAI internamente):
+Wukong procesa TODOS los .txt juntos (usa OpenAI internamente):
   1. Divide cada .txt en chunks
   2. Extrae entidades con el LLM
   3. Extrae relaciones con el LLM
@@ -98,6 +103,10 @@ Se carga el .qm en MillenniumDB:
   mdb import knowledge_graph.qm /path/to/db
   mdb server /path/to/db --port 1234
 ```
+
+> **Importante**: Sin importar el formato original (PDF digital, PDF escaneado o TXT),
+> todos los documentos terminan como `.txt` después del Pipeline 1, y todos pasan
+> por Wukong en el Pipeline 2. Ningún documento se queda fuera del grafo.
 
 ### Fase 4 — Búsqueda (el producto principal)
 
@@ -163,7 +172,8 @@ graph LR
     CT -->|"4b. PDF escaneado"| OCR
     Pipeline_1 -->|"5. Texto extraído (.txt)"| SUPA
     API -->|"6. Botón Procesar"| CT
-    CT -->|"7. Todos los .txt + data_model.json"| WK
+    SUPA -->|"7. Lee todos los .txt"| WK
+    CT -->|"data_model.json"| WK
     WK -->|"8. .qm (grafo)"| MDB
 ```
 
