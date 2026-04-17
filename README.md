@@ -177,15 +177,17 @@ graph LR
     AUTH0 -->|"JWT"| API
     U -->|"1. Sube PDF/TXT"| API
     API -->|"2. Guarda originales"| SUPA
-    U -->|"3. Botón PROCESAR"| API
-    API -->|"4. Lanza pipeline"| CT
-    CT -->|"5a. PDF digital"| PYMUPDF
-    CT -->|"5b. PDF escaneado"| OCR
-    CT -->|"5c. Archivo .txt"| TXT_PASS
-    Pipeline_1 -->|"6. Textos .txt"| SUPA
-    SUPA -->|"7. Todos los .txt"| WK
-    CT -->|"7b. data_model.json"| WK
-    WK -->|"8. .qm"| MDB
+    U -->|"3. Define data model (formulario)"| API
+    API -->|"4. Guarda data_model.json"| SUPA
+    U -->|"5. Botón PROCESAR"| API
+    API -->|"6. Lanza pipeline"| CT
+    CT -->|"7a. PDF digital"| PYMUPDF
+    CT -->|"7b. PDF escaneado"| OCR
+    CT -->|"7c. Archivo .txt"| TXT_PASS
+    Pipeline_1 -->|"8. Textos .txt"| SUPA
+    SUPA -->|"9a. Todos los .txt"| WK
+    SUPA -->|"9b. data_model.json"| WK
+    WK -->|"10. .qm"| MDB
 ```
 
 ### Diagrama B — Flujo de consulta/búsqueda
