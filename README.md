@@ -161,6 +161,7 @@ graph LR
         subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
             OCR[OpenAI OCR]
             PYMUPDF[PyMuPDF]
+            TXT_PASS[Ya es .txt\nsin procesar]
         end
 
         subgraph Pipeline_2 ["Pipeline 2 — Construcción de grafo"]
@@ -180,9 +181,10 @@ graph LR
     API -->|"4. Lanza pipeline"| CT
     CT -->|"5a. PDF digital"| PYMUPDF
     CT -->|"5b. PDF escaneado"| OCR
-    Pipeline_1 -->|"6. Texto .txt"| SUPA
+    CT -->|"5c. Archivo .txt"| TXT_PASS
+    Pipeline_1 -->|"6. Textos .txt"| SUPA
     SUPA -->|"7. Todos los .txt"| WK
-    CT -->|"data_model.json"| WK
+    CT -->|"7b. data_model.json"| WK
     WK -->|"8. .qm"| MDB
 ```
 
