@@ -156,7 +156,7 @@ graph LR
 
     subgraph GCP ["Google Cloud Platform"]
         API[FastAPI\nCloud Run]
-        SUPA[(Supabase\nPostgreSQL + Storage)]
+        SUPA[(Supabase\nDB + Storage)]
         CT[Cloud Tasks]
 
         subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
@@ -245,7 +245,7 @@ graph RL
 | Frontend | React + TypeScript + Vite | React 19, Vite 8, Node 20 |
 | Backend / API | FastAPI (Python) en Cloud Run | Python 3.13, FastAPI 0.115 |
 | Autenticación | Auth0 (JWT / OAuth2) | Servicio externo |
-| Base de datos + Storage | Supabase (PostgreSQL + Storage) | — |
+| Base de datos + Storage | Supabase (DB + Storage) | — |
 | Extracción de texto | PyMuPDF + OpenAI (OCR) | — |
 | Grafo de conocimiento + Búsqueda | Wukong (IMFD) → MillenniumDB (IMFD) | Python 3.13 |
 | Cola de tareas | Cloud Tasks (GCP) | — |
