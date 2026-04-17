@@ -40,7 +40,7 @@ Plataforma web tipo **buscador** (no un chat) que permite a investigadores del I
 | **Carga de documentos** | El usuario sube PDFs y/o TXTs a una colección. Se guardan tal cual en Supabase (Storage) |
 | **Definición del data model** | El investigador define qué entidades y relaciones quiere extraer mediante un formulario. Esto genera el `data_model.json` que Wukong necesita |
 | **Procesamiento (botón "Procesar")** | El usuario presiona "Procesar" y se dispara todo el pipeline: extracción de texto (Pipeline 1) + construcción del grafo con Wukong (Pipeline 2). Los textos quedan en Supabase, el grafo queda en MillenniumDB |
-| **Búsqueda** | Buscador tipo Google: el usuario escribe una query → FastAPI consulta MillenniumDB (grafo) y Supabase (búsqueda semántica con pgvector) → devuelve resultados combinados al frontend |
+| **Búsqueda** | Buscador tipo Google: el usuario escribe una query → FastAPI consulta MillenniumDB (grafo) → devuelve resultados al frontend |
 | **Visualización de grafo** | Cytoscape.js para explorar nodos y aristas interactivamente |
 
 ---
@@ -122,12 +122,13 @@ Se carga el .qm en MillenniumDB:
 Investigador escribe en el buscador: "Pérez González"
         │
         ▼
-FastAPI recibe la query y consulta:
-  ├── MillenniumDB → entidades y relaciones del grafo
-  └── Supabase (pgvector) → fragmentos de texto semánticamente similares
+FastAPI recibe la query
         │
         ▼
-FastAPI combina los resultados y los devuelve al frontend
+Consulta a MillenniumDB → entidades y relaciones del grafo
+        │
+        ▼
+FastAPI devuelve resultados al frontend
         │
         ▼
 Frontend muestra:
@@ -155,7 +156,7 @@ graph LR
 
     subgraph GCP ["Google Cloud Platform"]
         API[FastAPI\nCloud Run]
-        SUPA[(Supabase\nPostgreSQL + pgvector\n+ Storage)]
+        SUPA[(Supabase\nPostgreSQL + Storage)]
         CT[Cloud Tasks]
 
         subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
@@ -200,7 +201,6 @@ graph RL
 
     subgraph GCP ["Google Cloud Platform"]
         API[FastAPI\nCloud Run]
-        SUPA[(Supabase\nPostgreSQL + pgvector)]
     end
 
     subgraph IMFD_servers ["Servidores IMFD"]
@@ -208,11 +208,9 @@ graph RL
     end
 
     U -->|"1. Query de búsqueda (HTTPS)"| API
-    API -->|"2a. Consulta grafo (HTTP POST)"| MDB
-    MDB -->|"3a. Entidades + relaciones (JSON)"| API
-    API -->|"2b. Embedding → pgvector"| SUPA
-    SUPA -->|"3b. Documentos similares (JSON)"| API
-    API -->|"4. Resultados combinados (JSON)"| U
+    API -->|"2. Consulta grafo (HTTP POST)"| MDB
+    MDB -->|"3. Entidades + relaciones (JSON)"| API
+    API -->|"4. Resultados (JSON)"| U
 ```
 
 ### Protocolos de comunicación
@@ -224,7 +222,7 @@ graph RL
 | FastAPI → Auth0 | **HTTPS (JWKS)** | Descarga las public keys de Auth0 para validar tokens JWT |
 | FastAPI → Supabase | **HTTPS (REST API)** | Cliente de Supabase con anon key para DB + Storage |
 | FastAPI → MillenniumDB | **HTTP POST** | Query al endpoint `/sparql` del servidor `mdb`. Respuesta en JSON/CSV |
-| FastAPI → OpenAI | **HTTPS (REST API)** | Llamadas a la API de OpenAI para OCR y embeddings |
+| FastAPI → OpenAI | **HTTPS (REST API)** | Llamadas a la API de OpenAI para OCR de PDFs escaneados |
 | FastAPI → Cloud Tasks | **gRPC (GCP SDK)** | Crea tasks en la cola de GCP |
 | FastAPI ↔ Wukong | **Python (local)** | Wukong es un paquete Python instalado en el backend. Se llama directo |
 | Wukong → OpenAI | **HTTPS (REST API)** | Wukong usa OpenAI internamente para extraer entidades/relaciones |
@@ -247,10 +245,9 @@ graph RL
 | Frontend | React + TypeScript + Vite | React 19, Vite 8, Node 20 |
 | Backend / API | FastAPI (Python) en Cloud Run | Python 3.13, FastAPI 0.115 |
 | Autenticación | Auth0 (JWT / OAuth2) | Servicio externo |
-| Base de datos + Storage | Supabase (PostgreSQL + pgvector + Storage) | — |
+| Base de datos + Storage | Supabase (PostgreSQL + Storage) | — |
 | Extracción de texto | PyMuPDF + OpenAI (OCR) | — |
-| Grafo de conocimiento | Wukong (IMFD) → MillenniumDB (IMFD) | Python 3.13 |
-| Embeddings + Búsqueda | OpenAI API (text-embedding-3-small) + pgvector | — |
+| Grafo de conocimiento + Búsqueda | Wukong (IMFD) → MillenniumDB (IMFD) | Python 3.13 |
 | Cola de tareas | Cloud Tasks (GCP) | — |
 | Visualización de grafo | Cytoscape.js (react-cytoscapejs) | — |
 | CI/CD | GitHub Actions → Cloud Run | — |
@@ -428,8 +425,8 @@ cp .env.example .env
 ```env
 # ──────────────────────────────────────────────
 # OpenAI — REQUERIDO
-# Se usa para: OCR de PDFs escaneados, embeddings de búsqueda semántica,
-# y Wukong lo usa internamente para extraer entidades/relaciones.
+# Se usa para: OCR de PDFs escaneados.
+# Wukong también lo usa internamente para extraer entidades/relaciones.
 # Formato: pegar la key TAL CUAL, sin comillas.
 # ──────────────────────────────────────────────
 OPENAI_API_KEY=sk-proj-abc123...
