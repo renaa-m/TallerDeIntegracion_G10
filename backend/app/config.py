@@ -14,8 +14,12 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
 
-    millenniumdb_host: str = ""
-    millenniumdb_port: int = 8080
+    millenniumdb_host: str = "localhost"
+    millenniumdb_port: int = 1234
+
+    gcp_project_id: str = ""
+    cloud_tasks_queue: str = ""
+    cloud_tasks_location: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
