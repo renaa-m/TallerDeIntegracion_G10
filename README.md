@@ -37,11 +37,10 @@ Plataforma web tipo **buscador** (no un chat) que permite a investigadores del I
 
 | Funcionalidad | Descripción |
 |---|---|
-| **Carga de documentos** | PDFs (digitales y escaneados) y archivos TXT, organizados en colecciones |
-| **Extracción de texto (Pipeline 1)** | PyMuPDF para PDFs digitales, OpenAI para OCR de escaneados. Se ejecuta automáticamente al subir cada documento |
-| **Definición del data model** | El investigador define qué entidades y relaciones buscar mediante un formulario. Esto genera el `data_model.json` que Wukong necesita |
-| **Construcción de grafo (Pipeline 2)** | El usuario presiona "Procesar colección" → Wukong toma **todos** los `.txt` de la colección + el `data_model.json` y genera el grafo (`.qm`) → se carga en MillenniumDB |
-| **Búsqueda en el grafo** | Buscador tipo Google: el usuario escribe una query → FastAPI consulta MillenniumDB (grafo) y Supabase (búsqueda semántica con pgvector) → resultados combinados |
+| **Carga de documentos** | El usuario sube PDFs y/o TXTs a una colección. Se guardan tal cual en Supabase (Storage) |
+| **Definición del data model** | El investigador define qué entidades y relaciones quiere extraer mediante un formulario. Esto genera el `data_model.json` que Wukong necesita |
+| **Procesamiento (botón "Procesar")** | El usuario presiona "Procesar" y se dispara todo el pipeline: extracción de texto (Pipeline 1) + construcción del grafo con Wukong (Pipeline 2). Los textos quedan en Supabase, el grafo queda en MillenniumDB |
+| **Búsqueda** | Buscador tipo Google: el usuario escribe una query → FastAPI consulta MillenniumDB (grafo) y Supabase (búsqueda semántica con pgvector) → devuelve resultados combinados al frontend |
 | **Visualización de grafo** | Cytoscape.js para explorar nodos y aristas interactivamente |
 
 ---
@@ -51,15 +50,11 @@ Plataforma web tipo **buscador** (no un chat) que permite a investigadores del I
 ### Fase 1 — Carga de documentos
 
 ```
-Investigador sube PDFs a una colección
+Investigador sube archivos (PDF y/o TXT) a una colección
         │
         ▼
-Pipeline 1 (automático, por documento):
-  ├── PDF digital   → PyMuPDF    → texto (.txt)
-  └── PDF escaneado → OpenAI OCR → texto (.txt)
-        │
-        ▼
-Textos guardados en Supabase Storage
+Se guardan TAL CUAL en Supabase (Storage)
+No se procesan todavía. Solo se almacenan.
 ```
 
 ### Fase 2 — Definición del data model
@@ -72,31 +67,44 @@ El investigador llena un formulario en el frontend indicando qué quiere extraer
 
 Esto genera un `data_model.json` que Wukong usa para saber exactamente qué extraer.
 
-### Fase 3 — Procesamiento con Wukong
+### Fase 3 — Procesamiento (botón "Procesar")
+
+El usuario presiona **"Procesar"** y se dispara el pipeline completo:
 
 ```
-Investigador presiona "Procesar colección"
+Botón "Procesar"
         │
         ▼
-El backend descarga de Supabase todos los .txt
-de la colección (generados en Pipeline 1)
+  ┌─────────────────────────────────────────────────┐
+  │  PIPELINE 1 — Extracción de texto (por documento) │
+  │                                                     │
+  │  Para cada archivo de la colección en Supabase:     │
+  │  ├── Es .txt?          → se usa directo             │
+  │  ├── PDF digital?      → PyMuPDF extrae texto       │
+  │  └── PDF escaneado?    → OpenAI OCR extrae texto    │
+  │                                                     │
+  │  Resultado: todos los documentos como .txt           │
+  │  Se guardan en Supabase                             │
+  └─────────────────────────────────────────────────┘
         │
         ▼
-Se arma el directorio que Wukong espera:
-  data-dir/
-  ├── docs/text/nombre-coleccion/
-  │   ├── documento_1.txt    ← vino de un PDF digital (PyMuPDF)
-  │   ├── documento_2.txt    ← vino de un PDF escaneado (OpenAI OCR)
-  │   ├── documento_3.txt    ← subido directo como .txt
-  │   └── ...
-  └── data_model.json        ← generado del formulario (Fase 2)
-        │
-        ▼
-Wukong procesa TODOS los .txt juntos (usa OpenAI internamente):
-  1. Divide cada .txt en chunks
-  2. Extrae entidades con el LLM
-  3. Extrae relaciones con el LLM
-  4. Exporta el grafo en formato .qm
+  ┌─────────────────────────────────────────────────┐
+  │  PIPELINE 2 — Construcción del grafo (colección)  │
+  │                                                     │
+  │  Se arma el directorio que Wukong espera:           │
+  │  data-dir/                                          │
+  │  ├── docs/text/coleccion/                           │
+  │  │   ├── documento_1.txt                            │
+  │  │   ├── documento_2.txt                            │
+  │  │   └── ...                                        │
+  │  └── data_model.json  ← del formulario (Fase 2)    │
+  │                                                     │
+  │  Wukong procesa TODOS los .txt juntos:              │
+  │  1. Divide cada .txt en chunks                      │
+  │  2. Extrae entidades con OpenAI                     │
+  │  3. Extrae relaciones con OpenAI                    │
+  │  4. Exporta el grafo en formato .qm                 │
+  └─────────────────────────────────────────────────┘
         │
         ▼
 Se carga el .qm en MillenniumDB:
@@ -104,9 +112,9 @@ Se carga el .qm en MillenniumDB:
   mdb server /path/to/db --port 1234
 ```
 
-> **Importante**: Sin importar el formato original (PDF digital, PDF escaneado o TXT),
-> todos los documentos terminan como `.txt` después del Pipeline 1, y todos pasan
-> por Wukong en el Pipeline 2. Ningún documento se queda fuera del grafo.
+> **Resultado**: Los documentos originales y textos quedan en **Supabase**.
+> El grafo de conocimiento (entidades + relaciones) queda en **MillenniumDB**.
+> Ambos se usan para responder búsquedas.
 
 ### Fase 4 — Búsqueda (el producto principal)
 
@@ -114,12 +122,15 @@ Se carga el .qm en MillenniumDB:
 Investigador escribe en el buscador: "Pérez González"
         │
         ▼
-FastAPI recibe la query y ejecuta en paralelo:
-  ├── Consulta a MillenniumDB → entidades, relaciones del grafo
-  └── Búsqueda semántica (pgvector/Supabase) → fragmentos de texto relevantes
+FastAPI recibe la query y consulta:
+  ├── MillenniumDB → entidades y relaciones del grafo
+  └── Supabase (pgvector) → fragmentos de texto semánticamente similares
         │
         ▼
-Frontend muestra resultados:
+FastAPI combina los resultados y los devuelve al frontend
+        │
+        ▼
+Frontend muestra:
   ├── Grafo interactivo (Cytoscape.js)
   ├── Lista de entidades encontradas
   ├── Documentos/fragmentos relacionados
@@ -130,9 +141,7 @@ Frontend muestra resultados:
 
 ## Arquitectura del Sistema
 
-### Diagrama A — Flujo de carga y procesamiento (ida)
-
-Cuando el usuario sube documentos y los procesa:
+### Diagrama A — Flujo de carga y procesamiento
 
 ```mermaid
 graph LR
@@ -149,12 +158,12 @@ graph LR
         SUPA[(Supabase\nPostgreSQL + pgvector\n+ Storage)]
         CT[Cloud Tasks]
 
-        subgraph Pipeline_1 ["Pipeline 1 — Por documento"]
+        subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
             OCR[OpenAI OCR]
             PYMUPDF[PyMuPDF]
         end
 
-        subgraph Pipeline_2 ["Pipeline 2 — Por colección"]
+        subgraph Pipeline_2 ["Pipeline 2 — Construcción de grafo"]
             WK[Wukong]
         end
     end
@@ -163,23 +172,21 @@ graph LR
         MDB[(MillenniumDB)]
     end
 
-    U -->|"1. HTTPS"| API
     U -->|"0. Login (OAuth2)"| AUTH0
     AUTH0 -->|"JWT"| API
-    API -->|"2. Guarda PDF/TXT"| SUPA
-    API -->|"3. Job por documento"| CT
-    CT -->|"4a. PDF digital"| PYMUPDF
-    CT -->|"4b. PDF escaneado"| OCR
-    Pipeline_1 -->|"5. Texto extraído (.txt)"| SUPA
-    API -->|"6. Botón Procesar"| CT
-    SUPA -->|"7. Lee todos los .txt"| WK
+    U -->|"1. Sube PDF/TXT"| API
+    API -->|"2. Guarda originales"| SUPA
+    U -->|"3. Botón PROCESAR"| API
+    API -->|"4. Lanza pipeline"| CT
+    CT -->|"5a. PDF digital"| PYMUPDF
+    CT -->|"5b. PDF escaneado"| OCR
+    Pipeline_1 -->|"6. Texto .txt"| SUPA
+    SUPA -->|"7. Todos los .txt"| WK
     CT -->|"data_model.json"| WK
-    WK -->|"8. .qm (grafo)"| MDB
+    WK -->|"8. .qm"| MDB
 ```
 
-### Diagrama B — Flujo de consulta/búsqueda (vuelta)
-
-Cuando el usuario busca en el buscador:
+### Diagrama B — Flujo de consulta/búsqueda
 
 ```mermaid
 graph RL
