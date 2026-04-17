@@ -232,7 +232,7 @@ graph RL
 - **FastAPI sirve todo**: la API REST y el frontend estático compilado (React/Vite). No hay Firebase ni hosting separado.
 - **Auth0** es externo a GCP. Maneja login (OAuth2) y emite tokens JWT que FastAPI valida.
 - **MillenniumDB** corre en servidores del IMFD (fuera de GCP). FastAPI le hace requests HTTP POST al puerto 1234.
-- **Wukong** se instala como paquete Python dentro del backend (submodule o carpeta local). No es un servicio HTTP externo.
+- **Wukong** ya está incluido como git submodule en `backend/wukong-engine/`. Se instala como paquete Python local. No es un servicio HTTP externo.
 - **Cloud Tasks** maneja los jobs de procesamiento de forma asíncrona dentro de GCP.
 - **Archivos `.txt`** subidos directamente se guardan en Supabase sin pasar por Pipeline 1 (ya son texto plano).
 
@@ -279,7 +279,7 @@ TallerDeIntegracion_G10/
 │   │   │   └── __init__.py
 │   │   └── middleware/         # Autenticación JWT con Auth0 (por crear)
 │   │       └── __init__.py
-│   ├── wukong-engine/          # Submodule de Wukong (se agrega con git submodule)
+│   ├── wukong-engine/          # Submodule de Wukong (ya incluido)
 │   ├── tests/
 │   │   ├── __init__.py
 │   │   └── test_health.py      # Tests de los endpoints /health y /ready
@@ -349,7 +349,7 @@ git clone https://github.com/your-org/TallerDeIntegracion_G10.git
 cd TallerDeIntegracion_G10
 ```
 
-Si el repo usa Wukong como submodule:
+Wukong viene como submodule, así que hay que inicializarlo:
 
 ```bash
 git submodule update --init --recursive
@@ -516,25 +516,21 @@ npm run build           # Compila TypeScript + Vite (detecta errores de tipos/im
 
 ## Integración con Wukong
 
-[Wukong](https://github.com/MillenniumDB/wukong-engine) es el motor que construye grafos de conocimiento a partir de documentos de texto. Se instala como **paquete Python local** dentro del backend (no es un servicio externo).
+[Wukong](https://github.com/MillenniumDB/wukong-engine) es el motor que construye grafos de conocimiento a partir de documentos de texto. **Ya está incluido en el repositorio** como git submodule en `backend/wukong-engine/`.
 
-### Cómo agregar Wukong al repo
-
-**Opción A — Git submodule (recomendada)**:
+Al clonar el repo, se descarga automáticamente con:
 
 ```bash
-cd backend
-git submodule add https://github.com/MillenniumDB/wukong-engine.git wukong-engine
+git clone --recurse-submodules https://github.com/renaa-m/TallerDeIntegracion_G10.git
 ```
 
-**Opción B — Clonar la carpeta directamente**:
+Si ya tienes el repo clonado y la carpeta `backend/wukong-engine/` está vacía:
 
 ```bash
-cd backend
-git clone https://github.com/MillenniumDB/wukong-engine.git wukong-engine
+git submodule update --init --recursive
 ```
 
-En ambos casos, `requirements.txt` ya incluye la línea `./wukong-engine` que le dice a pip que instale el paquete desde esa carpeta local.
+`requirements.txt` ya incluye la línea `./wukong-engine` que le dice a pip que instale Wukong como paquete Python local.
 
 ### Qué necesita Wukong para correr
 
