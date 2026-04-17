@@ -121,14 +121,22 @@ Frontend muestra resultados:
 
 ## Arquitectura del Sistema
 
+### Diagrama A — Flujo de carga y procesamiento (ida)
+
+Cuando el usuario sube documentos y los procesa:
+
 ```mermaid
 graph LR
     subgraph Browser
         U[Usuario / Browser]
     end
 
+    subgraph Auth0_ext ["Externo"]
+        AUTH0[Auth0\nOAuth2 / JWT]
+    end
+
     subgraph GCP ["Google Cloud Platform"]
-        API[FastAPI + Frontend estático\nCloud Run]
+        API[FastAPI\nCloud Run]
         SUPA[(Supabase\nPostgreSQL + pgvector\n+ Storage)]
         CT[Cloud Tasks]
 
@@ -142,35 +150,72 @@ graph LR
         end
     end
 
-    subgraph Auth0_ext ["Externo"]
-        AUTH0[Auth0\nOAuth2 / JWT]
+    subgraph IMFD_servers ["Servidores IMFD"]
+        MDB[(MillenniumDB)]
+    end
+
+    U -->|"1. HTTPS"| API
+    U -->|"0. Login (OAuth2)"| AUTH0
+    AUTH0 -->|"JWT"| API
+    API -->|"2. Guarda PDF/TXT"| SUPA
+    API -->|"3. Job por documento"| CT
+    CT -->|"4a. PDF digital"| PYMUPDF
+    CT -->|"4b. PDF escaneado"| OCR
+    Pipeline_1 -->|"5. Texto extraído (.txt)"| SUPA
+    API -->|"6. Botón Procesar"| CT
+    CT -->|"7. Todos los .txt + data_model.json"| WK
+    WK -->|"8. .qm (grafo)"| MDB
+```
+
+### Diagrama B — Flujo de consulta/búsqueda (vuelta)
+
+Cuando el usuario busca en el buscador:
+
+```mermaid
+graph RL
+    subgraph Browser
+        U[Usuario / Browser]
+    end
+
+    subgraph GCP ["Google Cloud Platform"]
+        API[FastAPI\nCloud Run]
+        SUPA[(Supabase\nPostgreSQL + pgvector)]
     end
 
     subgraph IMFD_servers ["Servidores IMFD"]
         MDB[(MillenniumDB)]
     end
 
-    U -->|HTTPS| API
-    U -->|Login| AUTH0
-    AUTH0 -->|JWT| API
-    API --> SUPA
-    API -->|Job por documento| CT
-    CT --> Pipeline_1
-    Pipeline_1 -->|Texto extraído| SUPA
-    API -->|Botón Procesar| CT
-    CT -->|Colección completa| Pipeline_2
-    WK -->|.qm| MDB
-    API -->|Consulta grafo| MDB
-    API -->|Búsqueda semántica| SUPA
+    U -->|"1. Query de búsqueda (HTTPS)"| API
+    API -->|"2a. Consulta grafo (HTTP POST)"| MDB
+    MDB -->|"3a. Entidades + relaciones (JSON)"| API
+    API -->|"2b. Embedding → pgvector"| SUPA
+    SUPA -->|"3b. Documentos similares (JSON)"| API
+    API -->|"4. Resultados combinados (JSON)"| U
 ```
+
+### Protocolos de comunicación
+
+| Conexión | Protocolo | Detalle |
+|---|---|---|
+| Browser ↔ FastAPI | **HTTPS** | Requests REST. Frontend hace `fetch()` a la API |
+| Browser → Auth0 | **HTTPS (OAuth2)** | Redirect al login de Auth0, devuelve JWT |
+| FastAPI → Auth0 | **HTTPS (JWKS)** | Descarga las public keys de Auth0 para validar tokens JWT |
+| FastAPI → Supabase | **HTTPS (REST API)** | Cliente de Supabase con anon key para DB + Storage |
+| FastAPI → MillenniumDB | **HTTP POST** | Query al endpoint `/sparql` del servidor `mdb`. Respuesta en JSON/CSV |
+| FastAPI → OpenAI | **HTTPS (REST API)** | Llamadas a la API de OpenAI para OCR y embeddings |
+| FastAPI → Cloud Tasks | **gRPC (GCP SDK)** | Crea tasks en la cola de GCP |
+| FastAPI ↔ Wukong | **Python (local)** | Wukong es un paquete Python instalado en el backend. Se llama directo |
+| Wukong → OpenAI | **HTTPS (REST API)** | Wukong usa OpenAI internamente para extraer entidades/relaciones |
 
 ### Notas clave
 
 - **FastAPI sirve todo**: la API REST y el frontend estático compilado (React/Vite). No hay Firebase ni hosting separado.
 - **Auth0** es externo a GCP. Maneja login (OAuth2) y emite tokens JWT que FastAPI valida.
-- **MillenniumDB** corre en servidores del IMFD (fuera de GCP). FastAPI le hace requests HTTP.
-- **Wukong** se instala como paquete Python dentro del backend (submodule o carpeta local). No es un servicio externo.
+- **MillenniumDB** corre en servidores del IMFD (fuera de GCP). FastAPI le hace requests HTTP POST al puerto 1234.
+- **Wukong** se instala como paquete Python dentro del backend (submodule o carpeta local). No es un servicio HTTP externo.
 - **Cloud Tasks** maneja los jobs de procesamiento de forma asíncrona dentro de GCP.
+- **Archivos `.txt`** subidos directamente se guardan en Supabase sin pasar por Pipeline 1 (ya son texto plano).
 
 ---
 
