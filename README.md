@@ -208,7 +208,7 @@ graph RL
     end
 
     U -->|"1. Query de búsqueda (HTTPS)"| API
-    API -->|"2. Consulta grafo (HTTP POST)"| MDB
+    API -->|"2. Consulta grafo (WebSocket)"| MDB
     MDB -->|"3. Entidades + relaciones (JSON)"| API
     API -->|"4. Resultados (JSON)"| U
 ```
@@ -221,7 +221,7 @@ graph RL
 | Browser → Auth0 | **HTTPS (OAuth2)** | Redirect al login de Auth0, devuelve JWT |
 | FastAPI → Auth0 | **HTTPS (JWKS)** | Descarga las public keys de Auth0 para validar tokens JWT |
 | FastAPI → Supabase | **HTTPS (REST API)** | Cliente de Supabase con anon key para DB + Storage |
-| FastAPI → MillenniumDB | **HTTP POST** | Query al endpoint `/sparql` del servidor `mdb`. Respuesta en JSON/CSV |
+| FastAPI → MillenniumDB | **WebSocket** | Driver oficial `millenniumdb-driver` se conecta vía `ws://host:port` |
 | FastAPI → OpenAI | **HTTPS (REST API)** | Llamadas a la API de OpenAI para OCR de PDFs escaneados |
 | FastAPI → Cloud Tasks | **gRPC (GCP SDK)** | Crea tasks en la cola de GCP |
 | FastAPI ↔ Wukong | **Python (local)** | Wukong es un paquete Python instalado en el backend. Se llama directo |
@@ -231,7 +231,7 @@ graph RL
 
 - **FastAPI sirve todo**: la API REST y el frontend estático compilado (React/Vite). No hay Firebase ni hosting separado.
 - **Auth0** es externo a GCP. Maneja login (OAuth2) y emite tokens JWT que FastAPI valida.
-- **MillenniumDB** corre en servidores del IMFD (fuera de GCP). FastAPI le hace requests HTTP POST al puerto 1234.
+- **MillenniumDB** corre en servidores del IMFD (fuera de GCP). FastAPI se conecta vía WebSocket usando el driver oficial (`millenniumdb-driver`).
 - **Wukong** ya está incluido como git submodule en `backend/wukong-engine/`. Se instala como paquete Python local. No es un servicio HTTP externo.
 - **Cloud Tasks** maneja los jobs de procesamiento de forma asíncrona dentro de GCP.
 - **Archivos `.txt`** subidos directamente se guardan en Supabase sin pasar por Pipeline 1 (ya son texto plano).
@@ -589,32 +589,30 @@ mdb server /path/to/mi-db --port 1234 --timeout 3600
 
 ### Cómo consultar MillenniumDB desde el backend
 
-El servidor escucha en el puerto configurado (default `1234`) y acepta queries vía HTTP POST:
-
-```bash
-# Ejemplo: consultar desde la terminal
-curl -H "Content-Type:application/sparql-query" \
-     -H "Accept:text/csv" \
-     --data-binary "@query.txt" \
-     -X POST http://localhost:1234/sparql
-```
-
-Desde el backend (Python con httpx):
+Se usa el [driver oficial de Python](https://pypi.org/project/millenniumdb-driver/) que se conecta vía WebSocket:
 
 ```python
-import httpx
+import millenniumdb_driver
 
-async def query_millennium(query: str) -> str:
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            f"http://{settings.millenniumdb_host}:{settings.millenniumdb_port}/sparql",
-            content=query,
-            headers={
-                "Content-Type": "application/sparql-query",
-                "Accept": "application/json",
-            },
-        )
-        return response.json()
+driver = millenniumdb_driver.driver("ws://localhost:1234")
+session = driver.session()
+
+result = session.run(
+    "MATCH (?person :Persona)-[:VotaEn]->(?sent :Sentencia) RETURN *"
+)
+data = result.data()   # lista de dicts
+driver.close()
+```
+
+El servicio `backend/app/services/millenniumdb.py` ya tiene esto encapsulado. Solo hay que llamar:
+
+```python
+from app.services.millenniumdb import query_graph
+
+resultados = query_graph(
+    "MATCH (?p :Persona) WHERE ?p.nombre = ?nombre RETURN *",
+    {"nombre": "Juan Pérez"},
+)
 ```
 
 ### Formato del archivo .qm (Quad Model)

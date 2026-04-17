@@ -12,8 +12,11 @@ python-multipart==0.0.20
 # Auth (JWT validation for Auth0)
 python-jose[cryptography]==3.4.0
 
-# HTTP client (async calls to OpenAI, MillenniumDB)
+# HTTP client (async calls to OpenAI)
 httpx==0.28.1
+
+# MillenniumDB — driver oficial (WebSocket)
+millenniumdb-driver
 
 # Wukong — motor de grafos de conocimiento (paquete local)
 ./wukong-engine
