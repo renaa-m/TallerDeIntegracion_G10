@@ -69,52 +69,83 @@ Esto genera un `data_model.json` que Wukong usa para saber exactamente qué extr
 
 ### Fase 3 — Procesamiento (botón "Procesar")
 
-El usuario presiona **"Procesar"** y se dispara el pipeline completo:
+El usuario presiona **"Procesar"** y se dispara el pipeline completo.
+Todo esto pasa **dentro del backend** (el servidor), de forma invisible para el usuario:
 
 ```
 Botón "Procesar"
         │
         ▼
-  ┌─────────────────────────────────────────────────┐
-  │  PIPELINE 1 — Extracción de texto (por documento) │
-  │                                                     │
-  │  Para cada archivo de la colección en Supabase:     │
-  │  ├── Es .txt?          → se usa directo             │
-  │  ├── PDF digital?      → PyMuPDF extrae texto       │
-  │  └── PDF escaneado?    → OpenAI OCR extrae texto    │
-  │                                                     │
-  │  Resultado: todos los documentos como .txt           │
-  │  Se guardan en Supabase                             │
-  └─────────────────────────────────────────────────┘
+═══════════════════════════════════════════════════════
+  PIPELINE 1 — Extracción de texto (por documento)
+═══════════════════════════════════════════════════════
+
+  El backend descarga los archivos originales de Supabase
         │
         ▼
-  ┌─────────────────────────────────────────────────┐
-  │  PIPELINE 2 — Construcción del grafo (colección)  │
-  │                                                     │
-  │  Se arma el directorio que Wukong espera:           │
-  │  data-dir/                                          │
-  │  ├── docs/text/coleccion/                           │
-  │  │   ├── documento_1.txt                            │
-  │  │   ├── documento_2.txt                            │
-  │  │   └── ...                                        │
-  │  └── data_model.json  ← del formulario (Fase 2)    │
-  │                                                     │
-  │  Wukong procesa TODOS los .txt juntos:              │
-  │  1. Divide cada .txt en chunks                      │
-  │  2. Extrae entidades con OpenAI                     │
-  │  3. Extrae relaciones con OpenAI                    │
-  │  4. Exporta el grafo en formato .qm                 │
-  └─────────────────────────────────────────────────┘
+  Para cada archivo:
+  ├── Es .txt?          → se usa tal cual, no se procesa
+  ├── PDF digital?      → PyMuPDF extrae el texto
+  └── PDF escaneado?    → OpenAI OCR extrae el texto
         │
         ▼
-Se carga el .qm en MillenniumDB:
-  mdb import knowledge_graph.qm /path/to/db
-  mdb server /path/to/db --port 1234
+  Resultado: todos los documentos convertidos a .txt
+  Se guardan en Supabase (como respaldo)
+
+        │
+        ▼
+═══════════════════════════════════════════════════════
+  CARPETA TEMPORAL — Se arma en el servidor (/tmp/)
+═══════════════════════════════════════════════════════
+
+  El backend crea una carpeta temporal en el servidor
+  y la llena con la estructura que Wukong necesita:
+
+  /tmp/coleccion-abc123/
+  ├── docs/
+  │   └── text/
+  │       └── mi-coleccion/
+  │           ├── archivo1.txt   ← vino de un PDF digital
+  │           ├── archivo2.txt   ← vino de un PDF escaneado
+  │           └── archivo3.txt   ← subido como .txt directo
+  └── data_model.json            ← generado del formulario (Fase 2)
+
+  Esta carpeta es TEMPORAL. Se borra al terminar.
+
+        │
+        ▼
+═══════════════════════════════════════════════════════
+  PIPELINE 2 — Wukong procesa la carpeta
+═══════════════════════════════════════════════════════
+
+  El backend ejecuta:
+    python -m wukong_engine /tmp/coleccion-abc123/
+
+  Wukong lee TODOS los .txt + el data_model.json y:
+    1. Divide cada .txt en pedazos (chunks)
+    2. Usa OpenAI para extraer entidades (personas, sentencias, etc.)
+    3. Usa OpenAI para extraer relaciones (quién votó en qué, etc.)
+    4. Genera el grafo en formato .qm
+
+  Resultado: /tmp/coleccion-abc123/exports/mdb/  ← archivo .qm
+
+        │
+        ▼
+═══════════════════════════════════════════════════════
+  CARGA EN MILLENNIUMDB
+═══════════════════════════════════════════════════════
+
+  El .qm se carga en MillenniumDB (servidor del IMFD):
+    mdb import knowledge_graph.qm /path/to/db
+
+  Se borra la carpeta temporal. Fin del procesamiento.
 ```
 
-> **Resultado**: Los documentos originales y textos quedan en **Supabase**.
-> El grafo de conocimiento (entidades + relaciones) queda en **MillenniumDB**.
-> Ambos se usan para responder búsquedas.
+> **Resumen**:
+> - Los documentos originales y los textos extraídos quedan en **Supabase**
+> - El grafo de conocimiento (entidades + relaciones) queda en **MillenniumDB**
+> - La carpeta temporal en el servidor **se borra** después de procesar
+> - El usuario solo presiona un botón y espera
 
 ### Fase 4 — Búsqueda (el producto principal)
 
