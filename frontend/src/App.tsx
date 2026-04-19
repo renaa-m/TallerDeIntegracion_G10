@@ -3,6 +3,7 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
 import './App.css'
+import LoginButton from './login.tsx'
 
 function App() {
   const [count, setCount] = useState(0)
@@ -27,6 +28,7 @@ function App() {
         >
           Count is {count}
         </button>
+        <LoginButton />
       </section>
 
       <div className="ticks"></div>
