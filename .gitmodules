@@ -1,0 +1,3 @@
+[submodule "backend/wukong-engine"]
+	path = backend/wukong-engine
+	url = https://github.com/MillenniumDB/wukong-engine.git

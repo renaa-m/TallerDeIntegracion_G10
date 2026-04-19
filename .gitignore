@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Environment variables (NUNCA subir secretos)
+.env
+.env.local
+.env.*.local
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Testing / Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage/
+*.cover
+.pytest_cache/
+
+# Docker
+*.log
+
+# Supabase local
+supabase/.temp/
