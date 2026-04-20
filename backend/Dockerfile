@@ -4,7 +4,8 @@ WORKDIR /app
 
 COPY requirements.txt .
 COPY wukong-engine ./wukong-engine
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt && \
+    pip install --no-cache-dir --prefix=/install ./wukong-engine
 
 FROM python:3.13-slim
 
