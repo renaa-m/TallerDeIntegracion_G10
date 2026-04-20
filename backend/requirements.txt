@@ -19,7 +19,8 @@ httpx==0.28.1
 millenniumdb-driver
 
 # Wukong — motor de grafos de conocimiento (paquete local)
-./wukong-engine
+# Se instala por separado: pip install ./wukong-engine
+# (requiere el submodule clonado, ver README)
 
 # Testing
 pytest==8.3.5
