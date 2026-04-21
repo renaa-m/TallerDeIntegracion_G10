@@ -182,3 +182,117 @@
     border-right-color: var(--border);
   }
 }
+
+/* Contenedor de Bienvenida (No Autenticado) */
+.landing-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  text-align: center;
+}
+
+.landing-container h1 {
+  font-size: 3rem;
+  margin-bottom: 2rem;
+  color: var(--text-h);
+}
+
+/* Botón Blanco de Inicio de Sesión */
+.login-white-button button {
+  background-color: white !important;
+  color: black !important;
+  border: 1px solid var(--border);
+  padding: 12px 24px;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.login-white-button button:hover {
+  background-color: #f0f0f0 !important;
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+/* Header y Perfil en esquina superior */
+.main-header {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1000;
+}
+
+.user-avatar {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--accent);
+  transition: transform 0.2s;
+}
+
+.user-avatar:hover {
+  transform: scale(1.1);
+}
+
+/* Dropdown Menu */
+.profile-dropdown {
+  position: absolute;
+  top: 55px;
+  right: 0;
+  background-color: white;
+  color: #213547;
+  border-radius: 12px;
+  padding: 15px;
+  minwidth: 200px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+.profile-dropdown .user-name {
+  margin: 0;
+  font-weight: bold;
+  font-size: 0.9rem;
+}
+
+.profile-dropdown .user-email {
+  margin: 5px 0 15px 0;
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.dropdown-divider {
+  border: none;
+  border-top: 1px solid #eee;
+  margin-bottom: 15px;
+}
+
+/* Botón de Logout */
+.logout-wrapper button {
+  width: 100%;
+  background-color: #ff4b4b;
+  color: white;
+  border: none;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.logout-wrapper button:hover {
+  background-color: #e03e3e;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  font-weight: bold;
+  color: var(--accent);
+}
