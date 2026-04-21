@@ -8,7 +8,6 @@ import './App.css'
 import { useAuth0 } from "@auth0/auth0-react";
 import LoginButton from './login.tsx' 
 import { LogoutButton } from './logout.tsx'
-import { Profile } from './profile.tsx'
 
 function App() {
   const [count, setCount] = useState(0)
