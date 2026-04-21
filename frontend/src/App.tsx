@@ -5,17 +5,17 @@ import heroImg from './assets/hero.png'
 import './App.css'
 
 // Importamos los componentes de autenticación - Auth0 Configuración Inicial
-import { useAuth0 } from "@auth0/auth0-react";
-import LoginButton from './login.tsx' 
+import { useAuth0 } from '@auth0/auth0-react'
+import LoginButton from './login.tsx'
 import { LogoutButton } from './logout.tsx'
 
 function App() {
   const [count, setCount] = useState(0)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const { isAuthenticated, isLoading, user } = useAuth0();
+  const { isAuthenticated, isLoading, user } = useAuth0()
 
   if (isLoading) {
-    return <div className="loading">Cargando...</div>;
+    return <div className="loading">Cargando...</div>
   }
 
   // VISTA PÚBLICA (Landing)
@@ -27,7 +27,7 @@ function App() {
           <LoginButton />
         </div>
       </section>
-    );
+    )
   }
 
   // VISTA PRIVADA (Autenticado)
@@ -35,9 +35,9 @@ function App() {
     <>
       <header className="main-header">
         <div style={{ position: 'relative' }}>
-          <img 
-            src={user?.picture} 
-            alt={user?.name} 
+          <img
+            src={user?.picture}
+            alt={user?.name}
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="user-avatar"
           />
@@ -63,9 +63,11 @@ function App() {
         </div>
         <div>
           <h1>Get started</h1>
-          <p>Edit <code>src/App.tsx</code> and save to test <code>HMR</code></p>
+          <p>
+            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
+          </p>
         </div>
-        
+
         <button className="counter" onClick={() => setCount((c) => c + 1)}>
           Count is {count}
         </button>
@@ -75,12 +77,24 @@ function App() {
 
       <section id="next-steps">
         <div id="docs">
-          <svg className="icon" role="presentation"><use href="/icons.svg#documentation-icon"></use></svg>
+          <svg className="icon" role="presentation">
+            <use href="/icons.svg#documentation-icon"></use>
+          </svg>
           <h2>Documentation</h2>
           <p>Your questions, answered</p>
           <ul>
-            <li><a href="https://vite.dev/" target="_blank"><img className="logo" src={viteLogo} alt="" />Explore Vite</a></li>
-            <li><a href="https://react.dev/" target="_blank"><img className="button-icon" src={reactLogo} alt="" />Learn more</a></li>
+            <li>
+              <a href="https://vite.dev/" target="_blank">
+                <img className="logo" src={viteLogo} alt="" />
+                Explore Vite
+              </a>
+            </li>
+            <li>
+              <a href="https://react.dev/" target="_blank">
+                <img className="button-icon" src={reactLogo} alt="" />
+                Learn more
+              </a>
+            </li>
           </ul>
         </div>
       </section>
