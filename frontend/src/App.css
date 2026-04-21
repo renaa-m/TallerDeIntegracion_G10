@@ -247,7 +247,7 @@
   color: #213547;
   border-radius: 12px;
   padding: 15px;
-  minwidth: 200px;
+  min-width: 200px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   border: 1px solid var(--border);
   text-align: left;
@@ -295,4 +295,98 @@
   height: 100vh;
   font-weight: bold;
   color: var(--accent);
+}
+
+/* NAVBAR STYLES */
+.navbar {
+  position: fixed;
+  top: 0;
+  width: 100%;
+  height: 70px;
+  background: var(--card-bg, rgba(255, 255, 255, 0.8));
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+}
+
+.navbar-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.navbar-brand {
+  font-weight: 900;
+  font-size: 1.5rem;
+  color: #243166;
+}
+
+.navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: var(--text-sub, #4f4f5c);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.nav-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  border: 2px solid #aba3f6;
+}
+
+/* FOOTER STYLES */
+.app-footer {
+  padding: 40px 0;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: bold;
+  color: #94a3b8;
+}
+
+.app-footer {
+  width: 100%;
+  padding: 24px 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-sub); /* Usa tus variables para que cambie en modo oscuro */
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  position: relative;
+  z-index: 10;
+}
+
+.coffee-icon {
+  margin-left: 4px;
+  /* Un color café sutil */
+  color: #6F4E37; 
+}
+
+.heart { color: #ff4b4b; }
+
+/* Rotación del chevron */
+.rotate { transform: rotate(180deg); }
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body, html {
+  width: 100%;
+  overflow-x: hidden; /* Evita scroll horizontal accidental */
 }
