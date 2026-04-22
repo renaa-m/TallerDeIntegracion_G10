@@ -1,13 +1,40 @@
+:root {
+  /* MODO CLARO: Basado en tu referencia */
+  --bg-gradient: linear-gradient(180deg, #f8ffa1 0%, #f6d5ee 55%, #ffffff 100%);
+  --card-bg: rgba(255, 255, 255, 0.75);
+  --text-main: #111111;
+  --text-sub: #4f4f5c;
+  --accent: #aba3f6;
+  --border-color: rgba(171, 163, 246, 0.3);
+  --btn-text: #111111;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* MODO OSCURO: Basado en la imagen que subiste */
+    --bg-gradient: radial-gradient(circle at center, #243166 0%, #1a1a2e 100%);
+    --card-bg: rgba(23, 23, 35, 0.7);
+    --text-main: #ffffff;
+    --text-sub: #94a3b8;
+    --accent: #a8a3f6;
+    --border-color: rgba(168, 163, 246, 0.2);
+    --btn-text: #111111;
+  }
+}
+
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
     }
 
+    /* DESPUÉS */
     body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: linear-gradient(180deg, #f8ffa1 0%, #f6d5ee 55%, #ffffff 100%);
-    color: #111;
+    color: var(--text-main);
+    height: 100%;
+    width: 100%;
+    background: transparent; /* ← sin gradiente */
     }
 
     .container {
@@ -17,8 +44,9 @@
     justify-content: center;
     gap: 56px;
     padding: 48px 20px 56px;
-    max-width: 1200px;
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
+    background: var(--bg-gradient);
     }
 
     .welcome {

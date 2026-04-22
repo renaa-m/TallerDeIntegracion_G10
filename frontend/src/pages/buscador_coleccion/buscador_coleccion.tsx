@@ -94,11 +94,6 @@ const BuscadorColeccion = () => {
       <aside className="bc-sidebar">
         <div className="bc-sidebar-inner">
 
-          <div className="bc-logo">
-            <div className="bc-logo-icon"><BookOpen size={15} /></div>
-            <span>NotebookIMFD</span>
-          </div>
-
           <button className="bc-add-btn">
             <Plus size={15} /><span>Nueva Colección</span>
           </button>

@@ -5,21 +5,24 @@
   position: fixed;
   top: 0;
   left: 0;
-  right: 0; /* Asegura que toque ambos bordes */
+  right: 0;
   width: 100%;
   height: 72px;
   
-  /* Glassmorphism para que se vea moderno sobre el degradado */
-  background: rgba(255, 255, 255, 0.05); 
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
+  /* Transparente para fusionarse con el fondo de la vista */
+  background: transparent;
+  /* Opcional: sutil blur para glassmorphism */
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 2000; /* Siempre por encima de todo */
+  /* Sin borde para seamless */
+  /* border-bottom: 1px solid var(--navbar-border); */
+  
+  z-index: 2000;
   
   display: flex;
   align-items: center;
-  box-sizing: border-box; /* Crucial para que el padding no estire el ancho */
+  box-sizing: border-box;
 }
 
 .navbar-container {

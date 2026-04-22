@@ -49,7 +49,13 @@ function App() {
       <Navbar />
       {/* Este div empuja el contenido 70px hacia abajo (altura de la navbar fixed) */}
       <div style={{ height: '70px', flexShrink: 0 }} />
-      <main style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+      <main style={{ 
+          flex: 1, 
+          overflow: 'hidden', 
+          minHeight: 0,
+          width: '100%',
+          height: 'calc(100vh - 70px)'
+        }}>
         <Routes>
           <Route 
             path="/" 
