@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import LandingPage from "./pages/landing_page/landing_page";
 import LoginPage from "./pages/login_page/login_page";
 import Navbar from "./pages/navbar/navbar";
+import BuscadorColeccion from "./pages/buscador_coleccion/buscador_coleccion"; 
 
 // Componente que maneja el callback de Auth0
 function CallbackHandler() {
@@ -15,7 +16,7 @@ function CallbackHandler() {
       const userId = user?.sub?.split('|')[1] || user?.nickname;
       navigate(`/landing-page/${userId}`, { replace: true });
     }
-  }, [isLoading, isAuthenticated, user]);
+  }, [isLoading, isAuthenticated, user, navigate]);
 
   return (
     <div className="h-screen flex items-center justify-center bg-[#243166]">
@@ -44,30 +45,26 @@ function App() {
   const userId = user?.sub?.split('|')[1] || user?.nickname;
 
   return (
-    <div className="app-layout">
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       <Navbar />
-      <main className="flex-grow">
+      {/* Este div empuja el contenido 70px hacia abajo (altura de la navbar fixed) */}
+      <div style={{ height: '70px', flexShrink: 0 }} />
+      <main style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
         <Routes>
           <Route 
             path="/" 
-            element={
-              isAuthenticated 
-                ? <Navigate to={`/landing-page/${userId}`} replace /> 
-                : <LoginPage />
-            } 
+            element={isAuthenticated ? <Navigate to={`/landing-page/${userId}`} replace /> : <LoginPage />} 
           />
-
-          {/* Ruta específica para procesar el callback de Auth0 */}
           <Route path="/callback" element={<CallbackHandler />} />
-
+          <Route 
+            path="/:id_usuario/buscador-coleccion" 
+            element={isAuthenticated ? <BuscadorColeccion /> : <Navigate to="/" replace />} 
+          />
           <Route 
             path="/landing-page/:id_usuario" 
             element={isAuthenticated ? <LandingPage /> : <Navigate to="/" replace />} 
           />
-          <Route 
-            path="/login" 
-            element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" replace />} 
-          />
+          <Route path="/login" element={!isAuthenticated ? <LoginPage /> : <Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
