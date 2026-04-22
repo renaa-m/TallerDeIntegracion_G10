@@ -1,26 +1,41 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Auth0Provider } from '@auth0/auth0-react'
-import { BrowserRouter } from 'react-router-dom' // 1. Importa el Router
+import { BrowserRouter, useNavigate } from 'react-router-dom'
 import App from './App.tsx'
 import './index.css'
 
 const domain = 'dev-cz6hwcuqrlsmuej4.us.auth0.com'
 const clientId = 'Am1qXEru783KHoCiPSgWNA3Rk6K6tckC'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
+// Wrapper necesario para usar useNavigate dentro de Auth0Provider
+function Auth0ProviderWithNavigate({ children }: { children: React.ReactNode }) {
+  const navigate = useNavigate();
+
+  return (
     <Auth0Provider
       domain={domain}
       clientId={clientId}
       authorizationParams={{
-        redirectUri: window.location.origin,
+        redirect_uri: `${window.location.origin}/callback`
+      }}
+      cacheLocation="localstorage"
+      useRefreshTokens={true}
+      onRedirectCallback={(appState) => {
+        navigate(appState?.returnTo || window.location.pathname);
       }}
     >
-      {/* 2. Envuelve App con BrowserRouter */}
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
+      {children}
     </Auth0Provider>
-  </StrictMode>,
-)
+  );
+}
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <BrowserRouter>
+      <Auth0ProviderWithNavigate>
+        <App />
+      </Auth0ProviderWithNavigate>
+    </BrowserRouter>
+  </StrictMode>
+);
