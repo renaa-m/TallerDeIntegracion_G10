@@ -59,8 +59,6 @@ function LandingPage() {
                     </h1>
 
                     <p className="subtitle">
-                        ID de Colección: <span style={{ fontWeight: 'bold', color: 'var(--accent)' }}>{id_usuario}</span>
-                        <br />
                         Crea tu primera colección y empieza a reunir todo lo importante en un solo lugar.
                     </p>
 

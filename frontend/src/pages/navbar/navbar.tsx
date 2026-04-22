@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { ChevronDown, LogOut, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import './navbar.css';
 
 const Navbar = () => {
   const { isAuthenticated, user, logout } = useAuth0();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const userId = user?.sub?.split('|')[1] || user?.nickname;
 
   const handleLogout = () => {
     logout({ logoutParams: { returnTo: window.location.origin } });
@@ -15,7 +17,11 @@ const Navbar = () => {
     <nav className="navbar">
       <div className="navbar-container">
         {/* Izquierda: Identidad */}
-        <div className="navbar-brand">IMFD</div>
+        {isAuthenticated ? (
+          <Link to={`/landing-page/${userId}`} className="navbar-brand">IMFD</Link>
+        ) : (
+          <div className="navbar-brand">IMFD</div>
+        )}
 
         {/* Derecha: Navegación y Perfil */}
         <div className="navbar-actions">

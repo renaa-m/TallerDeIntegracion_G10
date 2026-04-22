@@ -15,7 +15,7 @@
     --bg-gradient: radial-gradient(circle at center, #243166 0%, #1a1a2e 100%);
     --card-bg: rgba(23, 23, 35, 0.7);
     --text-main: #ffffff;
-    --text-sub: #94a3b8;
+    --text-sub: #ffffff;
     --accent: #a8a3f6;
     --border-color: rgba(168, 163, 246, 0.2);
     --btn-text: #111111;
@@ -80,7 +80,7 @@
     .subtitle {
     font-size: 18px;
     line-height: 1.6;
-    color: #4f4f5c;
+    color: var(--text-sub);
     margin-bottom: 32px;
     max-width: 520px;
     }
