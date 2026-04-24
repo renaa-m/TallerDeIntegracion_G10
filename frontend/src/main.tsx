@@ -9,25 +9,29 @@ const domain = 'dev-cz6hwcuqrlsmuej4.us.auth0.com'
 const clientId = 'Am1qXEru783KHoCiPSgWNA3Rk6K6tckC'
 
 // Wrapper necesario para usar useNavigate dentro de Auth0Provider
-export function Auth0ProviderWithNavigate({ children }: { children: React.ReactNode }) {
-  const navigate = useNavigate();
+export function Auth0ProviderWithNavigate({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  const navigate = useNavigate()
 
   return (
     <Auth0Provider
       domain={domain}
       clientId={clientId}
       authorizationParams={{
-        redirect_uri: `${window.location.origin}/callback`
+        redirect_uri: `${window.location.origin}/callback`,
       }}
       cacheLocation="localstorage"
       useRefreshTokens={true}
       onRedirectCallback={(appState) => {
-        navigate(appState?.returnTo || window.location.pathname);
+        navigate(appState?.returnTo || window.location.pathname)
       }}
     >
       {children}
     </Auth0Provider>
-  );
+  )
 }
 
 createRoot(document.getElementById('root')!).render(
@@ -37,5 +41,5 @@ createRoot(document.getElementById('root')!).render(
         <App />
       </Auth0ProviderWithNavigate>
     </BrowserRouter>
-  </StrictMode>
-);
+  </StrictMode>,
+)

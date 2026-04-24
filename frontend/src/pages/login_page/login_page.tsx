@@ -1,17 +1,17 @@
-import { useAuth0 } from '@auth0/auth0-react';
-import { BookOpen } from 'lucide-react';
-import './login_page.css';
+import { useAuth0 } from '@auth0/auth0-react'
+import { BookOpen } from 'lucide-react'
+import './login_page.css'
 
 const LoginPage = () => {
-  const { loginWithRedirect } = useAuth0();
+  const { loginWithRedirect } = useAuth0()
 
   const handleLogin = async () => {
     try {
-      await loginWithRedirect();
+      await loginWithRedirect()
     } catch (error) {
-      console.error("Error al iniciar sesión:", error);
+      console.error('Error al iniciar sesión:', error)
     }
-  };
+  }
 
   return (
     <div className="login-page-wrapper">
@@ -21,15 +21,12 @@ const LoginPage = () => {
         </div>
 
         <h1 className="login-title">NotebookIMFD</h1>
-        
+
         <p className="login-subtitle">
           Plataforma de Investigación en Humanidades Digitales del IMFD.
         </p>
 
-        <button 
-          className="primary-btn"
-          onClick={handleLogin}
-        >
+        <button className="primary-btn" onClick={handleLogin}>
           Iniciar Sesión
         </button>
 
@@ -38,7 +35,7 @@ const LoginPage = () => {
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default LoginPage;
+export default LoginPage

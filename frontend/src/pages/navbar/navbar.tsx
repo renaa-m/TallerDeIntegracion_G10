@@ -1,17 +1,17 @@
-import { useState } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
-import { ChevronDown, LogOut, User } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import './navbar.css';
+import { useState } from 'react'
+import { useAuth0 } from '@auth0/auth0-react'
+import { ChevronDown, LogOut, User } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import './navbar.css'
 
 const Navbar = () => {
-  const { isAuthenticated, user, logout } = useAuth0();
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const userId = user?.sub?.split('|')[1] || user?.nickname;
+  const { isAuthenticated, user, logout } = useAuth0()
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const userId = user?.sub?.split('|')[1] || user?.nickname
 
   const handleLogout = () => {
-    logout({ logoutParams: { returnTo: window.location.origin } });
-  };
+    logout({ logoutParams: { returnTo: window.location.origin } })
+  }
 
   return (
     <nav className="navbar">
@@ -39,18 +39,27 @@ const Navbar = () => {
         <div className="navbar-actions">
           {isAuthenticated && (
             <div className="profile-wrapper">
-              <button 
-                className="profile-trigger" 
+              <button
+                className="profile-trigger"
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 aria-haspopup="true"
                 aria-expanded={isDropdownOpen}
               >
                 {user?.picture ? (
-                  <img src={user.picture} alt={user.name} className="nav-avatar" />
+                  <img
+                    src={user.picture}
+                    alt={user.name}
+                    className="nav-avatar"
+                  />
                 ) : (
-                  <div className="nav-avatar-placeholder"><User size={20} /></div>
+                  <div className="nav-avatar-placeholder">
+                    <User size={20} />
+                  </div>
                 )}
-                <ChevronDown size={16} className={`chevron ${isDropdownOpen ? 'rotate' : ''}`} />
+                <ChevronDown
+                  size={16}
+                  className={`chevron ${isDropdownOpen ? 'rotate' : ''}`}
+                />
               </button>
 
               {isDropdownOpen && (
@@ -71,7 +80,7 @@ const Navbar = () => {
         </div>
       </div>
     </nav>
-  );
-};
+  )
+}
 
-export default Navbar;
+export default Navbar
