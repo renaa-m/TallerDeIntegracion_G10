@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Search, FileText, Network, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
+import ModalNoDisponible from "../../components/modal_no_disponible/modal_no_disponible";
 import "./buscador_coleccion.css";
 
 interface Fuente {
@@ -47,7 +48,7 @@ const BuscadorColeccion = () => {
   const { id_usuario } = useParams();
   const { user } = useAuth0();
 
-  const [modalOpen,    setModalOpen]    = useState(false);
+  const [modalGrafoOpen, setModalGrafoOpen] = useState(false);
   const [filtroBarra,  setFiltroBarra]  = useState("");
   const [busqueda,     setBusqueda]     = useState("");
   const [filtroTipo,   setFiltroTipo]   = useState("todos");
@@ -86,7 +87,7 @@ const BuscadorColeccion = () => {
         {/* SIDEBAR */}
         <aside className="bc-sidebar">
           <div className="bc-sidebar-inner">
-            <button className="bc-add-btn" type="button">
+            <button className="bc-add-btn" type="button" onClick={() => setModalGrafoOpen(true)}>
               <Network size={15} /><span>Ver Grafo</span>
             </button>
 
@@ -124,7 +125,7 @@ const BuscadorColeccion = () => {
               <h1 className="bc-topbar-title">Buscador Semántico</h1>
               <span className="bc-topbar-sub">Colección activa · {FUENTES.filter(f => f.estado === "ok").length} fuentes</span>
             </div>
-            <button className="bc-graph-btn"><Network size={15} /><span>Ver Grafo</span></button>
+            <button className="bc-graph-btn" onClick={() => setModalGrafoOpen(true)}><Network size={15} /><span>Ver Grafo</span></button>
           </header>
 
           <div className="bc-searchbar-wrap">
@@ -192,6 +193,7 @@ const BuscadorColeccion = () => {
           </div>
         </main>
       </div>
+      <ModalNoDisponible isOpen={modalGrafoOpen} onClose={() => setModalGrafoOpen(false)} />
     </>
   );
 };
