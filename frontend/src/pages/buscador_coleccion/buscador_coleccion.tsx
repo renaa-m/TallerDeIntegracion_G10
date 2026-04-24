@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Search, Plus, FileText, Network, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import ModalCarga from "../modal_carga/modal_carga";
+import ModalCarga from "../../components/modal_carga/modal_carga";
 import "./buscador_coleccion.css";
 
 interface Fuente {
