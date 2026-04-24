@@ -18,15 +18,25 @@ const Navbar = () => {
       <div className="navbar-container">
         {/* Izquierda: Identidad */}
         {isAuthenticated ? (
-          <Link to={`/landing-page/${userId}`} className="navbar-brand">IMFD</Link>
+          <Link to={`/landing-page/${userId}`} className="navbar-brand">
+            <img
+              src="https://portalpsw.dcc.uchile.cl/media/Logo_Principal_Color.png"
+              alt="IMFD logo"
+              className="navbar-logo"
+            />
+          </Link>
         ) : (
-          <div className="navbar-brand">IMFD</div>
+          <div className="navbar-brand">
+            <img
+              src="https://portalpsw.dcc.uchile.cl/media/Logo_Principal_Color.png"
+              alt="IMFD logo"
+              className="navbar-logo"
+            />
+          </div>
         )}
 
         {/* Derecha: Navegación y Perfil */}
         <div className="navbar-actions">
-          <a href="#" className="nav-link">Nosotros</a>
-          
           {isAuthenticated && (
             <div className="profile-wrapper">
               <button 

@@ -1,6 +1,44 @@
 /* navbar.css */
-/* navbar.css */
 
+:root {
+  /* NAVBAR */
+  --navbar-bg: rgba(255, 255, 255, 0.7);
+  --navbar-border: rgba(0, 0, 0, 0.06);
+  --navbar-shadow: rgba(0, 0, 0, 0.05);
+
+  /* TEXTOS */
+  --text-main: #1a1a1a;
+  --text-sub: #6b7280;
+
+  /* UI */
+  --card-bg: rgba(255, 255, 255, 0.85);
+  --border-color: rgba(0, 0, 0, 0.08);
+  --hover-bg: rgba(0, 0, 0, 0.05);
+
+  /* ACCENT */
+  --accent: #7c3aed;
+}
+
+.dark {
+  /* NAVBAR */
+  --navbar-bg: rgba(15, 32, 69, 0.82);
+  --navbar-border: rgba(96, 165, 250, 0.16);
+  --navbar-shadow: rgba(15, 85, 166, 0.3);
+
+  /* TEXTOS */
+  --text-main: #e5e7eb;
+  --text-sub: #9ca3af;
+
+  /* UI */
+  --card-bg: rgba(30, 41, 59, 0.8);
+  --border-color: rgba(255, 255, 255, 0.08);
+  --hover-bg: rgba(255, 255, 255, 0.08);
+
+  /* ACCENT */
+  --accent: #a78bfa;
+}
+
+/* NAVBAR */
 .navbar {
   position: fixed;
   top: 0;
@@ -8,39 +46,49 @@
   right: 0;
   width: 100%;
   height: 72px;
-  
-  /* Transparente para fusionarse con el fondo de la vista */
-  background: transparent;
-  /* Opcional: sutil blur para glassmorphism */
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
-  
-  /* Sin borde para seamless */
-  /* border-bottom: 1px solid var(--navbar-border); */
-  
+
+  background: var(--navbar-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  border-bottom: 1px solid var(--navbar-border);
+  box-shadow: 0 4px 20px var(--navbar-shadow);
+
   z-index: 2000;
-  
+
   display: flex;
   align-items: center;
   box-sizing: border-box;
+
+  transition: background 0.3s ease, border 0.3s ease;
 }
 
 .navbar-container {
-  /* Este es el contenedor interno que alinea el contenido */
   width: 100%;
-  max-width: 1400px; /* O el ancho máximo que desees para el contenido */
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 0 40px; /* Espaciado interno para que el logo no toque el borde físico */
+  padding: 0 40px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
 .navbar-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   font-weight: 900;
   font-size: 22px;
   color: var(--text-main);
   letter-spacing: -0.04em;
+}
+
+.navbar-logo {
+  max-height: 48px;
+  max-width: 160px;
+  width: auto;
+  height: auto;
+  display: block;
 }
 
 .navbar-actions {
@@ -58,10 +106,14 @@
   transition: opacity 0.2s;
 }
 
-.nav-link:hover { opacity: 1; }
+.nav-link:hover {
+  opacity: 1;
+}
 
-/* Perfil */
-.profile-wrapper { position: relative; }
+/* PERFIL */
+.profile-wrapper {
+  position: relative;
+}
 
 .profile-trigger {
   display: flex;
@@ -75,9 +127,12 @@
   transition: background 0.2s;
 }
 
-.profile-trigger:hover { background: rgba(0,0,0,0.05); }
+.profile-trigger:hover {
+  background: var(--hover-bg);
+}
 
-.nav-avatar, .nav-avatar-placeholder {
+.nav-avatar,
+.nav-avatar-placeholder {
   width: 36px;
   height: 36px;
   border-radius: 10px;
@@ -98,9 +153,11 @@
   transition: transform 0.3s ease;
 }
 
-.chevron.rotate { transform: rotate(180deg); }
+.chevron.rotate {
+  transform: rotate(180deg);
+}
 
-/* Dropdown flotante */
+/* DROPDOWN */
 .nav-dropdown {
   position: absolute;
   top: 52px;
@@ -111,13 +168,19 @@
   border: 1px solid var(--border-color);
   border-radius: 20px;
   padding: 16px;
-  box-shadow: 0 15px 35px rgba(0,0,0,0.15);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
   animation: slideDown 0.2s ease-out;
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .dropdown-user-info {
@@ -162,4 +225,6 @@
   transition: background 0.2s;
 }
 
-.logout-action:hover { background: rgba(239, 68, 68, 0.1); }
+.logout-action:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
