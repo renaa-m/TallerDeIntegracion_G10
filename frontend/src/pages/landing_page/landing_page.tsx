@@ -1,6 +1,6 @@
 import "./landing_page.css";
 import { useState } from "react";
-import { useParams } from "react-router-dom"; // Importar para capturar el :id_usuario
+import { useNavigate, useParams } from "react-router-dom"; // Importar para capturar el :id_usuario y navegar
 import { useAuth0 } from '@auth0/auth0-react'; // Para validar contra el usuario real
 
 function LandingPage() {
@@ -13,6 +13,7 @@ function LandingPage() {
     // Opcional: Validación de seguridad
     // Extraemos el ID real del token para comparar con la URL
     const currentUserId = user?.sub?.split('|')[1] || user?.nickname;
+    const navigate = useNavigate();
 
     const handleIniciar = () => {
         console.log("click en iniciar");
@@ -71,10 +72,15 @@ function LandingPage() {
                     <h2 className="collections-title">Colecciones anteriores</h2>
 
                     <div className="grid">
-                        <div className="card">
-                            <h3>Colección 1</h3>
-                            <p>12 archivos</p>
-                        </div>
+<button
+                        type="button"
+                        className="card"
+                        onClick={() => navigate(`/${id_usuario || currentUserId}/buscador-coleccion`)}
+                        style={{ cursor: "pointer", textAlign: "left" }}
+                    >
+                        <h3>Colección 1</h3>
+                        <p>12 archivos</p>
+                    </button>
 
                         <div className="card">
                             <h3>Colección 2</h3>
