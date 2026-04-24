@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Search, FileText, Network, ChevronRight, SlidersHorizontal, X } from "lucide-react";
-import { useParams } from "react-router-dom";
-import { useAuth0 } from "@auth0/auth0-react";
+//import { useParams } from "react-router-dom";
+//import { useAuth0 } from "@auth0/auth0-react";
 import ModalNoDisponible from "../../components/modal_no_disponible/modal_no_disponible";
 import "./buscador_coleccion.css";
 
@@ -45,8 +45,8 @@ function Highlight({ text, query }: { text: string; query: string }) {
 }
 
 const BuscadorColeccion = () => {
-  const { id_usuario } = useParams();
-  const { user } = useAuth0();
+  //const { id_usuario } = useParams();
+  //const { user } = useAuth0();
 
   const [modalGrafoOpen, setModalGrafoOpen] = useState(false);
   const [filtroBarra,  setFiltroBarra]  = useState("");
