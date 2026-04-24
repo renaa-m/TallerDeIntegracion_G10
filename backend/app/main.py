@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import health
 from app.api.routes import collections
+from app.api.routes import documentos
 from app.config import settings
 
 app = FastAPI(
@@ -28,6 +29,7 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(collections.router)
+app.include_router(documentos.router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
