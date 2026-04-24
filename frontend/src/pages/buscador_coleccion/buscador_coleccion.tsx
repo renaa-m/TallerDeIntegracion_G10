@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
-import { Search, Plus, FileText, Network, ChevronRight, SlidersHorizontal, X } from "lucide-react";
+import { Search, FileText, Network, ChevronRight, SlidersHorizontal, X } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth0 } from "@auth0/auth0-react";
-import ModalCarga from "../../components/modal_carga/modal_carga";
 import "./buscador_coleccion.css";
 
 interface Fuente {
@@ -81,17 +80,12 @@ const BuscadorColeccion = () => {
 
   return (
     <>
-      <ModalCarga isOpen={modalOpen} onClose={() => setModalOpen(false)} darkMode={darkMode} />
 
       <div className={`bc-root${darkMode ? " bc-dark" : ""}`}>
 
         {/* SIDEBAR */}
         <aside className="bc-sidebar">
           <div className="bc-sidebar-inner">
-            <button className="bc-add-btn" onClick={() => setModalOpen(true)}>
-              <Plus size={15} /><span>Añadir documentos</span>
-            </button>
-
             <div className="bc-search-wrap">
               <Search size={13} className="bc-search-icon" />
               <input className="bc-search-input" type="text" placeholder="Filtrar fuentes..." value={filtroBarra} onChange={e => setFiltroBarra(e.target.value)} />
