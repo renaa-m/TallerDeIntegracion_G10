@@ -86,6 +86,10 @@ const BuscadorColeccion = () => {
         {/* SIDEBAR */}
         <aside className="bc-sidebar">
           <div className="bc-sidebar-inner">
+            <button className="bc-add-btn" type="button">
+              <Network size={15} /><span>Ver Grafo</span>
+            </button>
+
             <div className="bc-search-wrap">
               <Search size={13} className="bc-search-icon" />
               <input className="bc-search-input" type="text" placeholder="Filtrar fuentes..." value={filtroBarra} onChange={e => setFiltroBarra(e.target.value)} />
