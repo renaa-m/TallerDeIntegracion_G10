@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { X, CloudUpload, FileText, Trash2 } from "lucide-react";
 import "./modal_carga.css";
 
@@ -19,14 +19,17 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleClose = useCallback(() => {
+    setFiles([]);
+    onClose();
+  }, [onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") handleClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, onClose]);
-
-  useEffect(() => { if (!isOpen) setFiles([]); }, [isOpen]);
+  }, [isOpen, handleClose]);
 
   if (!isOpen) return null;
 
@@ -50,7 +53,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             <h2 className="mc-title">Añadir fuentes</h2>
             <p className="mc-subtitle">Sube documentos para indexar en tu colección</p>
           </div>
-          <button className="mc-close" onClick={onClose}><X size={18} /></button>
+          <button className="mc-close" onClick={handleClose}><X size={18} /></button>
         </div>
 
         <div
@@ -84,8 +87,8 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
         )}
 
         <div className="mc-footer">
-          <button className="mc-btn-cancel" onClick={onClose}>Cancelar</button>
-          <button className="mc-btn-upload" disabled={files.length === 0} onClick={() => { alert(`Simulación: ${files.length} archivo(s) enviado(s)`); onClose(); }}>
+          <button className="mc-btn-cancel" onClick={handleClose}>Cancelar</button>
+          <button className="mc-btn-upload" disabled={files.length === 0} onClick={() => { alert(`Simulación: ${files.length} archivo(s) enviado(s)`); handleClose(); }}>
             {files.length > 0 ? `Añadir ${files.length} archivo${files.length > 1 ? "s" : ""}` : "Añadir a la colección"}
           </button>
         </div>

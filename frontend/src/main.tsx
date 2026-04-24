@@ -9,7 +9,7 @@ const domain = 'dev-cz6hwcuqrlsmuej4.us.auth0.com'
 const clientId = 'Am1qXEru783KHoCiPSgWNA3Rk6K6tckC'
 
 // Wrapper necesario para usar useNavigate dentro de Auth0Provider
-function Auth0ProviderWithNavigate({ children }: { children: React.ReactNode }) {
+export function Auth0ProviderWithNavigate({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   return (

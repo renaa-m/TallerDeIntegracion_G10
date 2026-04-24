@@ -54,11 +54,10 @@ const BuscadorColeccion = () => {
   const [filtroTipo,   setFiltroTipo]   = useState("todos");
   const [filtroOpen,   setFiltroOpen]   = useState(false);
   const [fuenteActiva, setFuenteActiva] = useState<number | null>(null);
-  const [darkMode,     setDarkMode]     = useState(false);
+  const [darkMode,     setDarkMode]     = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-color-scheme: dark)");
-    setDarkMode(mq.matches);
     const handler = (e: MediaQueryListEvent) => setDarkMode(e.matches);
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
