@@ -129,12 +129,16 @@ const BuscadorColeccion = () => {
 
   const [modalGrafoOpen, setModalGrafoOpen] = useState(false)
   const [filtroBarra, setFiltroBarra] = useState('')
+
+  // busqueda: valor en tiempo real del input
+  // busquedaEnviada: valor que dispara resultados (solo al presionar Enter)
   const [busqueda, setBusqueda] = useState('')
-  const [filtroOpen, setFiltroOpen] = useState(false)
-  const [fuenteActiva, setFuenteActiva] = useState<number | null>(null)
   const [busquedaEnviada, setBusquedaEnviada] = useState('')
 
-  // Nuevos filtros
+  const [filtroOpen, setFiltroOpen] = useState(false)
+  const [fuenteActiva, setFuenteActiva] = useState<number | null>(null)
+
+  // Filtros
   const [personas, setPersonas] = useState<string[]>([])
   const [inputPersona, setInputPersona] = useState('')
   const [eventos, setEventos] = useState<string[]>([])
@@ -153,7 +157,6 @@ const BuscadorColeccion = () => {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
-  // Helpers de tags
   const agregarTag = (
     val: string,
     lista: string[],
@@ -171,17 +174,29 @@ const BuscadorColeccion = () => {
     setLista: (v: string[]) => void,
   ) => setLista(lista.filter((x) => x !== val))
 
+  const handleBuscar = () => {
+    setBusquedaEnviada(busqueda)
+  }
+
+  const handleClearBusqueda = () => {
+    setBusqueda('')
+    setBusquedaEnviada('')
+  }
+
   const hayFiltrosActivos =
-    personas.length > 0 || eventos.length > 0 || fechaDesde || fechaHasta
+    personas.length > 0 || eventos.length > 0 || !!fechaDesde || !!fechaHasta
 
   const fuentesFiltradas = FUENTES.filter((f) =>
     f.titulo.toLowerCase().includes(filtroBarra.toLowerCase()),
   )
 
+  // Resultados solo se derivan de busquedaEnviada, nunca de busqueda
+  const buscando = busquedaEnviada.trim().length > 0
+
   const resultados = CORPUS.filter((r) => {
-    if (!busqueda.trim()) return false
+    if (!buscando) return false
     const texto = (r.extracto + ' ' + r.fuenteTitulo).toLowerCase()
-    const matchBusqueda = texto.includes(busqueda.toLowerCase())
+    const matchBusqueda = texto.includes(busquedaEnviada.toLowerCase())
     const matchPersonas =
       personas.length === 0 ||
       personas.some((p) => texto.includes(p.toLowerCase()))
@@ -192,8 +207,6 @@ const BuscadorColeccion = () => {
     // const matchFecha = (!fechaDesde || r.fecha >= fechaDesde) && (!fechaHasta || r.fecha <= fechaHasta)
     return matchBusqueda && matchPersonas && matchEventos
   })
-
-  const buscando = busqueda.trim().length > 0
 
   return (
     <>
@@ -277,12 +290,15 @@ const BuscadorColeccion = () => {
                 placeholder="Busca en tus fuentes..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleBuscar()
+                }}
                 autoFocus
               />
               {busqueda && (
                 <button
                   className="bc-searchbar-clear"
-                  onClick={() => setBusqueda('')}
+                  onClick={handleClearBusqueda}
                 >
                   <X size={14} />
                 </button>
@@ -296,7 +312,9 @@ const BuscadorColeccion = () => {
                 <span>Filtrar</span>
                 {hayFiltrosActivos && (
                   <span className="bc-filter-badge">
-                    {personas.length + eventos.length + (fechaDesde || fechaHasta ? 1 : 0)}
+                    {personas.length +
+                      eventos.length +
+                      (fechaDesde || fechaHasta ? 1 : 0)}
                   </span>
                 )}
               </button>
@@ -452,8 +470,8 @@ const BuscadorColeccion = () => {
                 </div>
                 <p className="bc-empty-title">Busca en tu colección</p>
                 <p className="bc-empty-sub">
-                  Escribe un término para encontrar extractos relevantes en
-                  todos tus documentos.
+                  Escribe un término y presiona Enter para encontrar extractos
+                  relevantes en todos tus documentos.
                 </p>
               </div>
             ) : resultados.length === 0 ? (
@@ -464,7 +482,7 @@ const BuscadorColeccion = () => {
                 <p className="bc-empty-title">Sin resultados</p>
                 <p className="bc-empty-sub">
                   No se encontraron coincidencias para{' '}
-                  <strong>"{busqueda}"</strong>.
+                  <strong>"{busquedaEnviada}"</strong>.
                 </p>
               </div>
             ) : (
@@ -472,9 +490,11 @@ const BuscadorColeccion = () => {
                 <p className="bc-results-count">
                   {resultados.length} resultado
                   {resultados.length !== 1 ? 's' : ''} para{' '}
-                  <strong>"{busqueda}"</strong>
+                  <strong>"{busquedaEnviada}"</strong>
                   {hayFiltrosActivos && (
-                    <span className="bc-results-filtered"> · filtros aplicados</span>
+                    <span className="bc-results-filtered">
+                      {' '}· filtros aplicados
+                    </span>
                   )}
                 </p>
                 <div className="bc-results-list">
@@ -499,7 +519,7 @@ const BuscadorColeccion = () => {
                         )}
                       </div>
                       <p className="bc-result-excerpt">
-                        <Highlight text={r.extracto} query={busqueda} />
+                        <Highlight text={r.extracto} query={busquedaEnviada} />
                       </p>
                     </article>
                   ))}
