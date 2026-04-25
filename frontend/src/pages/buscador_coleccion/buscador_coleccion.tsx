@@ -6,6 +6,9 @@ import {
   ChevronRight,
   SlidersHorizontal,
   X,
+  User,
+  CalendarRange,
+  Zap,
 } from 'lucide-react'
 //import { useParams } from "react-router-dom";
 //import { useAuth0 } from "@auth0/auth0-react";
@@ -127,9 +130,18 @@ const BuscadorColeccion = () => {
   const [modalGrafoOpen, setModalGrafoOpen] = useState(false)
   const [filtroBarra, setFiltroBarra] = useState('')
   const [busqueda, setBusqueda] = useState('')
-  const [filtroTipo, setFiltroTipo] = useState('todos')
   const [filtroOpen, setFiltroOpen] = useState(false)
   const [fuenteActiva, setFuenteActiva] = useState<number | null>(null)
+  const [busquedaEnviada, setBusquedaEnviada] = useState('')
+
+  // Nuevos filtros
+  const [personas, setPersonas] = useState<string[]>([])
+  const [inputPersona, setInputPersona] = useState('')
+  const [eventos, setEventos] = useState<string[]>([])
+  const [inputEvento, setInputEvento] = useState('')
+  const [fechaDesde, setFechaDesde] = useState('')
+  const [fechaHasta, setFechaHasta] = useState('')
+
   const [darkMode, setDarkMode] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches,
   )
@@ -141,21 +153,47 @@ const BuscadorColeccion = () => {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
+  // Helpers de tags
+  const agregarTag = (
+    val: string,
+    lista: string[],
+    setLista: (v: string[]) => void,
+    setInput: (v: string) => void,
+  ) => {
+    const trimmed = val.trim()
+    if (trimmed && !lista.includes(trimmed)) setLista([...lista, trimmed])
+    setInput('')
+  }
+
+  const quitarTag = (
+    val: string,
+    lista: string[],
+    setLista: (v: string[]) => void,
+  ) => setLista(lista.filter((x) => x !== val))
+
+  const hayFiltrosActivos =
+    personas.length > 0 || eventos.length > 0 || fechaDesde || fechaHasta
+
   const fuentesFiltradas = FUENTES.filter((f) =>
     f.titulo.toLowerCase().includes(filtroBarra.toLowerCase()),
   )
 
   const resultados = CORPUS.filter((r) => {
     if (!busqueda.trim()) return false
-    const matchTexto =
-      r.extracto.toLowerCase().includes(busqueda.toLowerCase()) ||
-      r.fuenteTitulo.toLowerCase().includes(busqueda.toLowerCase())
-    const matchTipo = filtroTipo === 'todos' || r.fuenteTipo === filtroTipo
-    return matchTexto && matchTipo
+    const texto = (r.extracto + ' ' + r.fuenteTitulo).toLowerCase()
+    const matchBusqueda = texto.includes(busqueda.toLowerCase())
+    const matchPersonas =
+      personas.length === 0 ||
+      personas.some((p) => texto.includes(p.toLowerCase()))
+    const matchEventos =
+      eventos.length === 0 ||
+      eventos.some((e) => texto.includes(e.toLowerCase()))
+    // fechas: lógica lista para conectar a metadatos reales
+    // const matchFecha = (!fechaDesde || r.fecha >= fechaDesde) && (!fechaHasta || r.fecha <= fechaHasta)
+    return matchBusqueda && matchPersonas && matchEventos
   })
 
   const buscando = busqueda.trim().length > 0
-  const TIPOS = ['todos', 'PDF', 'Doc', 'CSV']
 
   return (
     <>
@@ -177,7 +215,7 @@ const BuscadorColeccion = () => {
               <input
                 className="bc-search-input"
                 type="text"
-                placeholder="Filtrar fuentes..."
+                placeholder="Mis Fuentes..."
                 value={filtroBarra}
                 onChange={(e) => setFiltroBarra(e.target.value)}
               />
@@ -251,28 +289,157 @@ const BuscadorColeccion = () => {
               )}
               <div className="bc-searchbar-divider" />
               <button
-                className={`bc-filter-btn${filtroOpen ? ' active' : ''}`}
+                className={`bc-filter-btn${filtroOpen ? ' active' : ''}${hayFiltrosActivos ? ' has-filters' : ''}`}
                 onClick={() => setFiltroOpen(!filtroOpen)}
               >
                 <SlidersHorizontal size={14} />
                 <span>Filtrar</span>
+                {hayFiltrosActivos && (
+                  <span className="bc-filter-badge">
+                    {personas.length + eventos.length + (fechaDesde || fechaHasta ? 1 : 0)}
+                  </span>
+                )}
               </button>
             </div>
 
             {filtroOpen && (
               <div className="bc-filter-panel">
-                <span className="bc-filter-label">Tipo</span>
-                <div className="bc-filter-chips">
-                  {TIPOS.map((t) => (
-                    <button
-                      key={t}
-                      className={`bc-filter-chip${filtroTipo === t ? ' selected' : ''}`}
-                      onClick={() => setFiltroTipo(t)}
-                    >
-                      {t === 'todos' ? 'Todos' : t}
-                    </button>
-                  ))}
+                {/* ── Personas ── */}
+                <div className="bc-filter-group">
+                  <div className="bc-filter-group-header">
+                    <User size={12} />
+                    <span className="bc-filter-label">Personas de interés</span>
+                  </div>
+                  <div className="bc-filter-tag-row">
+                    <input
+                      className="bc-filter-tag-input"
+                      type="text"
+                      placeholder="Escribe un nombre y presiona Enter..."
+                      value={inputPersona}
+                      onChange={(e) => setInputPersona(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter')
+                          agregarTag(
+                            inputPersona,
+                            personas,
+                            setPersonas,
+                            setInputPersona,
+                          )
+                      }}
+                    />
+                  </div>
+                  {personas.length > 0 && (
+                    <div className="bc-filter-chips">
+                      {personas.map((p) => (
+                        <button
+                          key={p}
+                          className="bc-filter-chip selected"
+                          onClick={() => quitarTag(p, personas, setPersonas)}
+                        >
+                          {p}
+                          <X size={10} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+
+                <div className="bc-filter-divider" />
+
+                {/* ── Fechas ── */}
+                <div className="bc-filter-group">
+                  <div className="bc-filter-group-header">
+                    <CalendarRange size={12} />
+                    <span className="bc-filter-label">Rango de fechas</span>
+                  </div>
+                  <div className="bc-filter-date-row">
+                    <input
+                      className="bc-filter-date"
+                      type="date"
+                      value={fechaDesde}
+                      onChange={(e) => setFechaDesde(e.target.value)}
+                    />
+                    <span className="bc-filter-date-sep">→</span>
+                    <input
+                      className="bc-filter-date"
+                      type="date"
+                      value={fechaHasta}
+                      onChange={(e) => setFechaHasta(e.target.value)}
+                    />
+                    {(fechaDesde || fechaHasta) && (
+                      <button
+                        className="bc-filter-date-clear"
+                        onClick={() => {
+                          setFechaDesde('')
+                          setFechaHasta('')
+                        }}
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bc-filter-divider" />
+
+                {/* ── Eventos ── */}
+                <div className="bc-filter-group">
+                  <div className="bc-filter-group-header">
+                    <Zap size={12} />
+                    <span className="bc-filter-label">Eventos</span>
+                  </div>
+                  <div className="bc-filter-tag-row">
+                    <input
+                      className="bc-filter-tag-input"
+                      type="text"
+                      placeholder="Escribe un evento y presiona Enter..."
+                      value={inputEvento}
+                      onChange={(e) => setInputEvento(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter')
+                          agregarTag(
+                            inputEvento,
+                            eventos,
+                            setEventos,
+                            setInputEvento,
+                          )
+                      }}
+                    />
+                  </div>
+                  {eventos.length > 0 && (
+                    <div className="bc-filter-chips">
+                      {eventos.map((ev) => (
+                        <button
+                          key={ev}
+                          className="bc-filter-chip selected"
+                          onClick={() => quitarTag(ev, eventos, setEventos)}
+                        >
+                          {ev}
+                          <X size={10} />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Limpiar todo ── */}
+                {hayFiltrosActivos && (
+                  <>
+                    <div className="bc-filter-divider" />
+                    <button
+                      className="bc-filter-clear-all"
+                      onClick={() => {
+                        setPersonas([])
+                        setEventos([])
+                        setFechaDesde('')
+                        setFechaHasta('')
+                      }}
+                    >
+                      <X size={11} />
+                      Limpiar filtros
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -306,6 +473,9 @@ const BuscadorColeccion = () => {
                   {resultados.length} resultado
                   {resultados.length !== 1 ? 's' : ''} para{' '}
                   <strong>"{busqueda}"</strong>
+                  {hayFiltrosActivos && (
+                    <span className="bc-results-filtered"> · filtros aplicados</span>
+                  )}
                 </p>
                 <div className="bc-results-list">
                   {resultados.map((r, i) => (

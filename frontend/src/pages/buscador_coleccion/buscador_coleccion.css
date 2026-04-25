@@ -21,9 +21,8 @@
 
   font-family: 'DM Sans', sans-serif;
   display: flex;
-  height: calc(100vh - 64px); /* Asumiendo que tu Navbar mide 64px */
-  display: flex;
-  overflow: hidden; /* Evita el scroll doble (uno en la página y otro en el buscador) */
+  height: calc(100vh - 64px);
+  overflow: hidden;
   background: var(--surface-2);
   color: var(--text-1);
   transition:
@@ -407,34 +406,112 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+.bc-filter-btn.has-filters {
+  background: rgba(168, 163, 246, 0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
-/* filtros panel */
+/* Badge numérico en el botón filtrar */
+.bc-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* ── FILTER PANEL ────────────────────────────────────────────────────────── */
 .bc-filter-panel {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
+  flex-direction: column;
+  gap: 0;
+  padding: 4px 4px;
   background: var(--surface);
   border: 1.5px solid var(--border);
-  border-radius: 14px;
+  border-radius: 16px;
   animation: bc-fadein 0.2s ease both;
-  flex-wrap: wrap;
+  overflow: hidden;
 }
+
+/* Cada sección de filtro */
+.bc-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 14px;
+}
+
+.bc-filter-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+}
+
 .bc-filter-label {
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 10px;
+  font-weight: 800;
   color: var(--text-3);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  flex-shrink: 0;
+  letter-spacing: 0.1em;
 }
+
+/* Separador entre grupos */
+.bc-filter-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 14px;
+}
+
+/* Input de texto para tags */
+.bc-filter-tag-row {
+  display: flex;
+  gap: 8px;
+}
+
+.bc-filter-tag-input {
+  flex: 1;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12.5px;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text-1);
+  outline: none;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+.bc-filter-tag-input::placeholder {
+  color: var(--text-3);
+}
+.bc-filter-tag-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(168, 163, 246, 0.1);
+}
+
+/* Chips de tags seleccionados */
 .bc-filter-chips {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
 }
+
 .bc-filter-chip {
-  padding: 5px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px 4px 12px;
   border-radius: 99px;
   border: 1.5px solid var(--border);
   background: transparent;
@@ -454,9 +531,99 @@
   color: var(--accent);
 }
 .bc-filter-chip.selected {
-  background: var(--accent);
+  background: rgba(168, 163, 246, 0.15);
   border-color: var(--accent);
-  color: white;
+  color: var(--accent);
+}
+.bc-filter-chip.selected:hover {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* Fila de fechas */
+.bc-filter-date-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bc-filter-date {
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12.5px;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text-1);
+  outline: none;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    background 0.2s;
+}
+.bc-filter-date:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px rgba(168, 163, 246, 0.1);
+}
+
+.bc-filter-date-sep {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+
+.bc-filter-date-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.bc-filter-date-clear:hover {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: var(--red);
+}
+
+/* Botón limpiar todos los filtros */
+.bc-filter-clear-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  margin: 4px 14px 10px;
+  padding: 5px 12px;
+  border-radius: 99px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.bc-filter-clear-all:hover {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: var(--red);
 }
 
 /* ── RESULTS ─────────────────────────────────────────────────────────────── */
@@ -485,6 +652,10 @@
 .bc-results-count strong {
   color: var(--text-1);
   font-weight: 700;
+}
+.bc-results-filtered {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .bc-results-list {
@@ -578,7 +749,7 @@
 
 /* empty state */
 .bc-empty {
-  margin-top: 10vh; /* Lo posiciona en el tercio superior, mucho más natural */
+  margin-top: 10vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -630,6 +801,10 @@
   }
   .bc-results-area {
     padding: 14px 16px 24px;
+  }
+  .bc-filter-date-row {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 @media (max-width: 540px) {
