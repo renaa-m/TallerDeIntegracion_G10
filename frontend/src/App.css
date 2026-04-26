@@ -247,7 +247,7 @@
   color: #213547;
   border-radius: 12px;
   padding: 15px;
-  minwidth: 200px;
+  min-width: 200px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
   border: 1px solid var(--border);
   text-align: left;
