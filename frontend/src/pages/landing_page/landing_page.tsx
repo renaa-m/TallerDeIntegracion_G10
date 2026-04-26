@@ -32,6 +32,18 @@ function LandingPage() {
       )
   }
 
+  const probarMensaje = () => {
+    const prob = Math.random()
+
+    if (prob > 0.5) {
+      setEstado('success')
+      setMensaje('Éxito: la operación se realizó correctamente.')
+    } else {
+      setEstado('error')
+      setMensaje('Error: no se pudo completar la operación.')
+    }
+  }
+
   const abrirColeccionExistente = (idColeccion: number) => {
     navigate(`/${id_usuario || currentUserId}/colecciones/${idColeccion}/buscador`, {
       state: { abrirModalCarga: false },
@@ -73,7 +85,11 @@ function LandingPage() {
           <button className="primary-btn" onClick={handleIniciar}>
             Iniciar
           </button>
+          <button className="message-test-btn" onClick={probarMensaje}>
+            Probar mensaje
+          </button>
         </section>
+        
 
         <section className="collections">
           <h2 className="collections-title">Colecciones anteriores</h2>
