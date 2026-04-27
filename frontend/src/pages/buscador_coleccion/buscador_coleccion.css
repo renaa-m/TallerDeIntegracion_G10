@@ -661,16 +661,16 @@
   justify-content: center;
   gap: 7px;
 
-  width: 100%;             
-  padding: 9px;            
+  width: 100%;
+  padding: 9px;
 
   background: #fef2f2;
   color: #ef4444;
 
   border: 2px solid #ef4444;
-  border-radius: 13px;    
+  border-radius: 13px;
 
-  box-shadow: 3px 3px 0 #ef4444; 
+  box-shadow: 3px 3px 0 #ef4444;
 
   font-size: 12px;
   font-weight: 700;
@@ -678,7 +678,9 @@
 
   cursor: pointer;
 
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
 }
 
 .bc-delete-btn:hover {

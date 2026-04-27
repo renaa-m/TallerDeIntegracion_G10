@@ -192,10 +192,7 @@ const BuscadorColeccion = () => {
               <Network size={15} />
               <span>Ver Grafo</span>
             </button>
-            <button
-              className="bc-delete-btn"
-              onClick={handleBorrarColeccion}
-            >
+            <button className="bc-delete-btn" onClick={handleBorrarColeccion}>
               Borrar colección
             </button>
 

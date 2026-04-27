@@ -23,13 +23,13 @@ function LandingPage() {
   ]
 
   const handleIniciar = () => {
-      const nuevaColeccionMockId = 'nueva'
-      navigate(
-        `/${id_usuario || currentUserId}/colecciones/${nuevaColeccionMockId}/buscador`,
-        {
-          state: { abrirModalCarga: true },
-        },
-      )
+    const nuevaColeccionMockId = 'nueva'
+    navigate(
+      `/${id_usuario || currentUserId}/colecciones/${nuevaColeccionMockId}/buscador`,
+      {
+        state: { abrirModalCarga: true },
+      },
+    )
   }
 
   const probarMensaje = () => {
@@ -45,9 +45,12 @@ function LandingPage() {
   }
 
   const abrirColeccionExistente = (idColeccion: number) => {
-    navigate(`/${id_usuario || currentUserId}/colecciones/${idColeccion}/buscador`, {
-      state: { abrirModalCarga: false },
-    })
+    navigate(
+      `/${id_usuario || currentUserId}/colecciones/${idColeccion}/buscador`,
+      {
+        state: { abrirModalCarga: false },
+      },
+    )
   }
 
   const cerrarPopup = () => {
@@ -89,7 +92,6 @@ function LandingPage() {
             Probar mensaje
           </button>
         </section>
-        
 
         <section className="collections">
           <h2 className="collections-title">Colecciones anteriores</h2>
