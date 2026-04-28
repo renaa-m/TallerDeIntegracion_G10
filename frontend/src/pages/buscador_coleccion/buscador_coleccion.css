@@ -1,40 +1,59 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
 
-/* ── VARIABLES ───────────────────────────────────────────────────────────── */
-.bc-root {
+/* ── VARIABLES DINÁMICAS (MODO CLARO POR DEFECTO) ────────────────────────── */
+:root {
   --bg-gradient: linear-gradient(180deg, #f8ffa1 0%, #f6d5ee 55%, #ffffff 100%);
-  --card-bg: rgba(255, 255, 255, 0.75);
-  --text-main: #111111;
-  --text-sub: #4f4f5c;
-  --accent: #aba3f6;
-  --border-color: rgba(171, 163, 246, 0.3);
-
-  --navy: #243166;
-  --yellow: #f8ffa1;
-  --pink: #f6d5ee;
   --surface: rgba(255, 255, 255, 0.75);
   --surface-2: rgba(255, 255, 255, 0.45);
   --surface-3: rgba(246, 213, 238, 0.55);
-  --border: rgba(171, 163, 246, 0.3);
   --text-1: #111111;
   --text-2: #4f4f5c;
   --text-3: #6f7280;
+  --border: rgba(171, 163, 246, 0.3);
+  --hl-bg: #f8ffa1;
+  --hl-text: #111111;
+}
+
+/* ── MODO OSCURO (DETECCIÓN AUTOMÁTICA) ──────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Fondo radial azul según tu referencia */
+    --bg-gradient: radial-gradient(circle at center, #243166 0%, #1a1a2e 100%);
+    --surface: #141d35;
+    --surface-2: #0d1426;
+    --surface-3: #182038;
+    --text-1: #ffffff;
+    --text-2: #dce4f5;
+    --text-3: #8394b4;
+    --border: #1e2d50;
+    --hl-bg: rgba(251, 255, 161, 0.2);
+    --hl-text: #fbffa1;
+  }
+}
+
+/* ── COMPONENTE ROOT ─────────────────────────────────────────────────────── */
+.bc-root {
+  /* Mantenemos tus constantes de color que no cambian */
+  --navy: #243166;
+  --yellow: #f8ffa1;
+  --pink: #f6d5ee;
   --red: #ef4444;
   --red-bg: #fef2f2;
   --green: #22c55e;
-  --hl-bg: #f8ffa1;
-  --hl-text: #111111;
+  --accent: #aba3f6;
 
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   display: flex;
   height: calc(100vh - 64px);
   overflow: hidden;
+  
+  /* Aplicación del fondo dinámico */
   background: var(--bg-gradient);
   color: var(--text-1);
+  
   margin: 0;
   padding: 0;
+  transition: background 0.3s ease; /* Transición suave al cambiar de modo */
 }
 
 /* ── DARK ────────────────────────────────────────────────────────────────── */
@@ -828,4 +847,92 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── BOTÓN ELIMINAR COLECCIÓN (SIDEBAR) ──────────────────────────────────── */
+.bc-delete-collection-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  padding: 10px;
+  
+  /* Estilo base Rojo */
+  background: rgba(239, 68, 68, 0.08); /* Rojo muy suave de fondo */
+  border: 1.5px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444; /* Color rojo vibrante */
+  
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 4px;
+}
+
+.bc-delete-collection-btn:hover {
+  background: #ef4444;
+  color: white;
+  border-color: #ef4444;
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.25);
+  transform: translateY(-1px);
+}
+
+.bc-delete-collection-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+/* Ajuste específico para Modo Oscuro */
+.bc-dark .bc-delete-collection-btn {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ff6b6b;
+}
+
+.bc-dark .bc-delete-collection-btn:hover {
+  background: #e03131;
+  color: white;
+  border-color: #e03131;
+}
+
+/* ── ESTILOS DEL FOOTER DEL FILTRO ────────────────────────────────────────── */
+.bc-filter-footer-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border-top: 1.5px solid var(--border);
+}
+
+.bc-filter-clear-all-link {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.bc-filter-clear-all-link:hover {
+  color: #ef4444;
+}
+
+.bc-filter-save-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 7px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: auto;
 }
