@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import {
   Search,
   FileText,
@@ -10,6 +11,7 @@ import {
 //import { useParams } from "react-router-dom";
 //import { useAuth0 } from "@auth0/auth0-react";
 import ModalNoDisponible from '../../components/modal_no_disponible/modal_no_disponible'
+import ModalCarga from '../../components/modal_carga/modal_carga'
 import './buscador_coleccion.css'
 
 interface Fuente {
@@ -123,7 +125,11 @@ function Highlight({ text, query }: { text: string; query: string }) {
 const BuscadorColeccion = () => {
   //const { id_usuario } = useParams();
   //const { user } = useAuth0();
-
+  const { id_usuario } = useParams<{ id_usuario: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const abrirModalCarga = location.state?.abrirModalCarga === true
+  const [modalCargaOpen, setModalCargaOpen] = useState(abrirModalCarga)
   const [modalGrafoOpen, setModalGrafoOpen] = useState(false)
   const [filtroBarra, setFiltroBarra] = useState('')
   const [busqueda, setBusqueda] = useState('')
@@ -157,6 +163,21 @@ const BuscadorColeccion = () => {
   const buscando = busqueda.trim().length > 0
   const TIPOS = ['todos', 'PDF', 'Doc', 'CSV']
 
+  const handleCancelarCarga = () => {
+    setModalCargaOpen(false)
+    navigate(`/${id_usuario}`)
+  }
+
+  const handleBorrarColeccion = () => {
+    const confirmacion = window.confirm(
+      '¿Estás seguro de que quieres borrar esta colección?',
+    )
+
+    if (!confirmacion) return
+    console.log('Colección eliminada')
+    navigate(`/landing-page/${id_usuario}`)
+  }
+
   return (
     <>
       <div className={`bc-root${darkMode ? ' bc-dark' : ''}`}>
@@ -170,6 +191,9 @@ const BuscadorColeccion = () => {
             >
               <Network size={15} />
               <span>Ver Grafo</span>
+            </button>
+            <button className="bc-delete-btn" onClick={handleBorrarColeccion}>
+              Borrar colección
             </button>
 
             <div className="bc-search-wrap">
@@ -342,6 +366,11 @@ const BuscadorColeccion = () => {
       <ModalNoDisponible
         isOpen={modalGrafoOpen}
         onClose={() => setModalGrafoOpen(false)}
+      />
+      <ModalCarga
+        isOpen={modalCargaOpen}
+        onClose={handleCancelarCarga}
+        darkMode={darkMode}
       />
     </>
   )
