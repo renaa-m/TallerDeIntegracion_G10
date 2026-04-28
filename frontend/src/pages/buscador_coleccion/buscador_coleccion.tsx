@@ -132,7 +132,6 @@ const BuscadorColeccion = () => {
   const abrirModalCarga = location.state?.abrirModalCarga === true
   const [modalCargaOpen, setModalCargaOpen] = useState(abrirModalCarga)
   const [modalGrafoOpen, setModalGrafoOpen] = useState(false)
-  const [modalCargaOpen, setModalCargaOpen] = useState(false) // NUEVO: Estado para abrir/cerrar nuestro modal
   const [filtroBarra, setFiltroBarra] = useState('')
   const [busqueda, setBusqueda] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('todos')
