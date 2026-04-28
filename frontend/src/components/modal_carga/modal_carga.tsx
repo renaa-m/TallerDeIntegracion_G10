@@ -98,9 +98,10 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSu
       onUploadSuccess?.() // Avisamos al componente padre (la página) para que actualice la tabla
       onClose()
 
-    } catch (error: any) {
+    } catch (error) {
       console.error("Error en subida:", error)
-      alert(`Hubo un error al subir los archivos: ${error.message}`)
+      const errorMessage = error instanceof Error ? error.message : "Error desconocido"
+      alert(`Hubo un error al subir los archivos: ${errorMessage}`)
     } finally {
       setIsUploading(false)
     }

@@ -43,6 +43,11 @@ def client_sin_auth():
 
 
 class TestUploadDocumento:
+    @pytest.fixture(autouse=True)
+    def mock_coleccion(self):
+        with patch("app.api.routes.documentos.supabase_client.get_collection_by_id") as mock:
+            mock.return_value = {"user_id": MOCK_USER_ID}
+            yield mock
     def test_upload_pdf_exitoso(self, client):
         with (
             patch(
