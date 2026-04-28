@@ -303,13 +303,20 @@ TallerDeIntegracion_G10/
 │   │   │   ├── __init__.py
 │   │   │   └── routes/
 │   │   │       ├── __init__.py
-│   │   │       └── health.py   # GET /health y GET /ready (Cloud Run health checks)
-│   │   ├── models/             # Schemas Pydantic para requests/responses (por crear)
-│   │   │   └── __init__.py
-│   │   ├── services/           # Lógica de negocio: Wukong, OpenAI, MDB (por crear)
-│   │   │   └── __init__.py
+│   │   │       ├── health.py        # GET /health y GET /ready (Cloud Run health checks)
+│   │   │       └── collections.py   # GET y POST /api/collections (esqueleto Sprint 1)
+│   │   ├── models/
+│   │   │   ├── __init__.py
+│   │   │   └── document.py          # Schema Pydantic para documentos
+│   │   ├── services/
+│   │   │   ├── __init__.py
+│   │   │   └── supabase_client.py   # Cliente Supabase (DB + Storage)
 │   │   └── middleware/         # Autenticación JWT con Auth0 (por crear)
 │   │       └── __init__.py
+│   ├── supabase/
+│   │   └── migrations/
+│   │       ├── 001_initial_schema.sql   # Schema inicial: tablas collections y documents
+│   │       └── 002_storage_bucket.sql   # Bucket 'documentos' y políticas RLS de storage
 │   ├── wukong-engine/          # Submodule de Wukong (ya incluido)
 │   ├── tests/
 │   │   ├── __init__.py
@@ -411,7 +418,14 @@ El backend queda disponible en:
 - Docs interactivos (Swagger): `http://localhost:8080/docs`
 - Docs alternativo (ReDoc): `http://localhost:8080/redoc`
 
-### 3. Frontend
+### 3. Supabase
+
+El proyecto Supabase **ya existe y es compartido del equipo** — no hay que crear uno nuevo.
+
+- **Credenciales**: pedir `SUPABASE_URL` y `SUPABASE_KEY` al equipo por un canal seguro (no compartir por GitHub ni chat público). Una vez obtenidas, pegarlas en el `.env` local.
+- **Migraciones**: ya fueron corridas sobre el proyecto compartido. No hay que volver a ejecutarlas.
+
+### 4. Frontend
 
 ```bash
 cd frontend
@@ -425,7 +439,7 @@ npm run dev
 
 El frontend queda disponible en `http://localhost:5173`.
 
-### 4. Verificar que todo funciona
+### 5. Verificar que todo funciona
 
 ```bash
 # Desde la raíz del proyecto:

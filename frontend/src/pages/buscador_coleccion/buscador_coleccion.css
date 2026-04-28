@@ -2,32 +2,37 @@
 
 /* ── VARIABLES ───────────────────────────────────────────────────────────── */
 .bc-root {
+  --bg-gradient: linear-gradient(180deg, #f8ffa1 0%, #f6d5ee 55%, #ffffff 100%);
+  --card-bg: rgba(255, 255, 255, 0.75);
+  --text-main: #111111;
+  --text-sub: #4f4f5c;
+  --accent: #aba3f6;
+  --border-color: rgba(171, 163, 246, 0.3);
+
   --navy: #243166;
-  --accent: #a8a3f6;
-  --yellow: #fbffa1;
-  --pink: #f8d5ee;
-  --surface: #ffffff;
-  --surface-2: #f4f6fb;
-  --surface-3: #eaeff8;
-  --border: #dde3ef;
-  --text-1: #1a2550;
-  --text-2: #526080;
-  --text-3: #96a4bb;
+  --yellow: #f8ffa1;
+  --pink: #f6d5ee;
+  --surface: rgba(255, 255, 255, 0.75);
+  --surface-2: rgba(255, 255, 255, 0.45);
+  --surface-3: rgba(246, 213, 238, 0.55);
+  --border: rgba(171, 163, 246, 0.3);
+  --text-1: #111111;
+  --text-2: #4f4f5c;
+  --text-3: #6f7280;
   --red: #ef4444;
   --red-bg: #fef2f2;
   --green: #22c55e;
-  --hl-bg: #fef08a;
-  --hl-text: #713f12;
+  --hl-bg: #f8ffa1;
+  --hl-text: #111111;
 
-  font-family: 'DM Sans', sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
   display: flex;
   height: calc(100vh - 64px);
   overflow: hidden;
-  background: var(--surface-2);
+  background: var(--bg-gradient);
   color: var(--text-1);
-  transition:
-    background 0.25s,
-    color 0.25s;
   margin: 0;
   padding: 0;
 }
@@ -824,4 +829,3 @@
     transform: translateY(0);
   }
 }
-

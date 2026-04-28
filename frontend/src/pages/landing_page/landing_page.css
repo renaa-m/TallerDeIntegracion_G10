@@ -4,7 +4,7 @@
   --card-bg: rgba(255, 255, 255, 0.75);
   --text-main: #111111;
   --text-sub: #4f4f5c;
-  --accent: #aba3f6;
+  --landing-accent: #aba3f6;
   --border-color: rgba(171, 163, 246, 0.3);
   --btn-text: #111111;
 }
@@ -87,7 +87,8 @@ body {
 }
 
 .primary-btn {
-  background-color: #aba3f6;
+  background-color: #aba3f6 !important;
+  background-image: none !important;
   color: #111;
   border: none;
   padding: 14px 30px;
@@ -103,6 +104,8 @@ body {
 }
 
 .primary-btn:hover {
+  background-color: #aba3f6 !important;
+  background-image: none !important;
   transform: translateY(-2px);
   opacity: 0.96;
   box-shadow: 0 14px 28px rgba(171, 163, 246, 0.45);
@@ -283,4 +286,48 @@ body {
   to {
     transform: rotate(360deg);
   }
+}
+
+.message-test-btn {
+  margin-top: 16px;
+  background: transparent;
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  padding: 10px 18px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inline-message {
+  margin-top: 18px;
+  width: 100%;
+  max-width: 420px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  text-align: center;
+}
+
+.inline-message strong {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+
+.inline-message p {
+  font-size: 14px;
+  margin: 0;
+}
+
+.inline-message-success {
+  background: #f8ffa1;
+  color: #2d3a00;
+  border: 2px solid #aba3f6;
+}
+
+.inline-message-error {
+  background: #f6d5ee;
+  color: #7a1c4a;
+  border: 2px solid #d88bbb;
 }
