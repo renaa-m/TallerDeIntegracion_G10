@@ -16,22 +16,41 @@ function LandingPage() {
   // Extraemos el ID real del token para comparar con la URL
   const currentUserId = user?.sub?.split('|')[1] || user?.nickname
   const navigate = useNavigate()
+  const coleccionesMock = [
+    { id: 1, nombre: 'Colección 1', archivos: 12 },
+    { id: 2, nombre: 'Colección 2', archivos: 8 },
+    { id: 3, nombre: 'Colección 3', archivos: 21 },
+  ]
 
   const handleIniciar = () => {
-    console.log('click en iniciar')
-    setEstado('loading')
-    setMensaje('Procesando archivo...')
+    const nuevaColeccionMockId = 'nueva'
+    navigate(
+      `/${id_usuario || currentUserId}/colecciones/${nuevaColeccionMockId}/buscador`,
+      {
+        state: { abrirModalCarga: true },
+      },
+    )
+  }
 
-    setTimeout(() => {
-      const exito = Math.random() > 0.5
-      if (exito) {
-        setEstado('success')
-        setMensaje('Archivo procesado correctamente')
-      } else {
-        setEstado('error')
-        setMensaje('Error al procesar el archivo')
-      }
-    }, 2000)
+  const probarMensaje = () => {
+    const prob = Math.random()
+
+    if (prob > 0.5) {
+      setEstado('success')
+      setMensaje('Éxito: la operación se realizó correctamente.')
+    } else {
+      setEstado('error')
+      setMensaje('Error: no se pudo completar la operación.')
+    }
+  }
+
+  const abrirColeccionExistente = (idColeccion: number) => {
+    navigate(
+      `/${id_usuario || currentUserId}/colecciones/${idColeccion}/buscador`,
+      {
+        state: { abrirModalCarga: false },
+      },
+    )
   }
 
   const cerrarPopup = () => {
@@ -69,33 +88,27 @@ function LandingPage() {
           <button className="primary-btn" onClick={handleIniciar}>
             Iniciar
           </button>
+          <button className="message-test-btn" onClick={probarMensaje}>
+            Probar mensaje
+          </button>
         </section>
 
         <section className="collections">
           <h2 className="collections-title">Colecciones anteriores</h2>
 
           <div className="grid">
-            <button
-              type="button"
-              className="card"
-              onClick={() =>
-                navigate(`/${id_usuario || currentUserId}/buscador-coleccion`)
-              }
-              style={{ cursor: 'pointer', textAlign: 'left' }}
-            >
-              <h3>Colección 1</h3>
-              <p>12 archivos</p>
-            </button>
-
-            <div className="card">
-              <h3>Colección 2</h3>
-              <p>8 archivos</p>
-            </div>
-
-            <div className="card">
-              <h3>Colección 3</h3>
-              <p>21 archivos</p>
-            </div>
+            {coleccionesMock.map((coleccion) => (
+              <button
+                key={coleccion.id}
+                type="button"
+                className="card"
+                onClick={() => abrirColeccionExistente(coleccion.id)}
+                style={{ cursor: 'pointer', textAlign: 'left' }}
+              >
+                <h3>{coleccion.nombre}</h3>
+                <p>{coleccion.archivos} archivos</p>
+              </button>
+            ))}
           </div>
         </section>
       </main>
