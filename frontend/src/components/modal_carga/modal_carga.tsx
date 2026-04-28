@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { X, CloudUpload, FileText, Trash2, Loader2 } from 'lucide-react'
-// Asumimos que usan @auth0/auth0-react para la autenticación. 
+// Asumimos que usan @auth0/auth0-react para la autenticación.
 // Si usan otro hook, avísame para ajustarlo.
-import { useAuth0 } from '@auth0/auth0-react' 
+import { useAuth0 } from '@auth0/auth0-react'
 import './modal_carga.css'
 
 interface ModalCargaProps {
@@ -19,12 +19,18 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSuccess }: ModalCargaProps) => {
+const ModalCarga = ({
+  isOpen,
+  onClose,
+  darkMode = false,
+  coleccionId,
+  onUploadSuccess,
+}: ModalCargaProps) => {
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false) // NUEVO: Estado para mostrar un loader
   const fileInputRef = useRef<HTMLInputElement>(null)
-  
+
   const { getAccessTokenSilently } = useAuth0() // NUEVO: Hook para sacar el token de Auth0
 
   const handleClose = useCallback(() => {
@@ -75,14 +81,17 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSu
 
         // Usamos la URL base de tu API (ajusta el import.meta.env si tienen otro nombre)
         const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-        
-        const response = await fetch(`${apiUrl}/api/documentos/upload?coleccion_id=${coleccionId}`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}` // Inyectamos la seguridad aquí
+
+        const response = await fetch(
+          `${apiUrl}/api/documentos/upload?coleccion_id=${coleccionId}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`, // Inyectamos la seguridad aquí
+            },
+            body: formData,
           },
-          body: formData,
-        })
+        )
 
         if (!response.ok) {
           const errorData = await response.json()
@@ -92,15 +101,15 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSu
 
       // Esperamos a que todos suban
       await Promise.all(uploadPromises)
-      
+
       // Si todo sale bien:
       setFiles([])
       onUploadSuccess?.() // Avisamos al componente padre (la página) para que actualice la tabla
       onClose()
-
     } catch (error) {
-      console.error("Error en subida:", error)
-      const errorMessage = error instanceof Error ? error.message : "Error desconocido"
+      console.error('Error en subida:', error)
+      const errorMessage =
+        error instanceof Error ? error.message : 'Error desconocido'
       alert(`Hubo un error al subir los archivos: ${errorMessage}`)
     } finally {
       setIsUploading(false)
@@ -120,7 +129,11 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSu
               Sube documentos para indexar en tu colección
             </p>
           </div>
-          <button className="mc-close" onClick={handleClose} disabled={isUploading}>
+          <button
+            className="mc-close"
+            onClick={handleClose}
+            disabled={isUploading}
+          >
             <X size={18} />
           </button>
         </div>
@@ -161,7 +174,8 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSu
               : 'Arrastra tus archivos aquí'}
           </p>
           <p className="mc-drop-sub">
-            PDF o TXT · Máx. 50 MB por archivo {/* CORRECCIÓN: Texto ajustado a la HU */}
+            PDF o TXT · Máx. 50 MB por archivo{' '}
+            {/* CORRECCIÓN: Texto ajustado a la HU */}
           </p>
           <button
             className="mc-drop-btn"
@@ -195,7 +209,11 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSu
         )}
 
         <div className="mc-footer">
-          <button className="mc-btn-cancel" onClick={handleClose} disabled={isUploading}>
+          <button
+            className="mc-btn-cancel"
+            onClick={handleClose}
+            disabled={isUploading}
+          >
             Cancelar
           </button>
           <button
@@ -204,7 +222,14 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, coleccionId, onUploadSu
             onClick={handleUpload} // NUEVO: Llamamos a nuestra función real
           >
             {isUploading ? (
-              <><Loader2 className="animate-spin" size={16} style={{marginRight: '8px', display: 'inline'}} /> Subiendo...</>
+              <>
+                <Loader2
+                  className="animate-spin"
+                  size={16}
+                  style={{ marginRight: '8px', display: 'inline' }}
+                />{' '}
+                Subiendo...
+              </>
             ) : files.length > 0 ? (
               `Añadir ${files.length} archivo${files.length > 1 ? 's' : ''}`
             ) : (

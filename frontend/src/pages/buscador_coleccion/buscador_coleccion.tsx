@@ -7,7 +7,7 @@ import {
   ChevronRight,
   SlidersHorizontal,
   X,
-  Upload // NUEVO: Importamos el ícono de subida
+  Upload, // NUEVO: Importamos el ícono de subida
 } from 'lucide-react'
 //import { useParams } from "react-router-dom";
 //import { useAuth0 } from "@auth0/auth0-react";
@@ -203,7 +203,10 @@ const BuscadorColeccion = () => {
               className="bc-add-btn"
               type="button"
               onClick={() => setModalCargaOpen(true)}
-              style={{ marginTop: '10px', backgroundColor: 'var(--accent-color, #4a5568)' }} 
+              style={{
+                marginTop: '10px',
+                backgroundColor: 'var(--accent-color, #4a5568)',
+              }}
             >
               <Upload size={15} />
               <span>Subir Documentos</span>
@@ -381,18 +384,15 @@ const BuscadorColeccion = () => {
         isOpen={modalGrafoOpen}
         onClose={() => setModalGrafoOpen(false)}
       />
-      
+
       {/* NUEVO: Aquí montamos nuestro modal. 
           Le pasamos un UUID inventado válido para pasar la validación del Backend en la prueba */}
       <ModalCarga
         isOpen={modalCargaOpen}
         onClose={handleCancelarCarga}
         darkMode={darkMode}
-        coleccionId="123e4567-e89b-12d3-a456-426614174000" 
-        onUploadSuccess={() => console.log("¡Subida exitosa!")}
-       
-        
-        
+        coleccionId="123e4567-e89b-12d3-a456-426614174000"
+        onUploadSuccess={() => console.log('¡Subida exitosa!')}
       />
     </>
   )
