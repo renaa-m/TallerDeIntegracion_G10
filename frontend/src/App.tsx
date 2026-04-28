@@ -82,6 +82,17 @@ function App() {
           />
           <Route path="/callback" element={<CallbackHandler />} />
           <Route
+            path="/:id_usuario/colecciones/:id_coleccion/buscador"
+            element={
+              isAuthenticated ? (
+                <BuscadorColeccion />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          <Route
             path="/:id_usuario/buscador-coleccion"
             element={
               isAuthenticated ? (

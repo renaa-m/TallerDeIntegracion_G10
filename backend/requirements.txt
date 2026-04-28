@@ -29,5 +29,8 @@ pytest-asyncio==0.26.0
 # Supabase
 supabase==2.10.0
 
+# PDF text extraction
+pymupdf==1.27.2.3
+
 # Linting
 ruff==0.11.6

@@ -5,7 +5,7 @@ from supabase import Client, create_client
 
 from app.config import settings
 
-BUCKET = "documents"
+BUCKET = "documentos"
 
 
 @lru_cache(maxsize=1)
