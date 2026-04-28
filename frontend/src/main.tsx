@@ -22,6 +22,7 @@ export function Auth0ProviderWithNavigate({
       clientId={clientId}
       authorizationParams={{
         redirect_uri: `${window.location.origin}/callback`,
+        audience: "https://dev-cz6hwcuqrlsmuej4.us.auth0.com/api/v2/",
       }}
       cacheLocation="localstorage"
       useRefreshTokens={true}
