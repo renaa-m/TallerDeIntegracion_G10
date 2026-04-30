@@ -23,9 +23,11 @@ function LandingPage() {
   ]
 
   const handleIniciar = () => {
-    const nuevaColeccionMockId = 'nueva'
+    /////CAMBIAR CON LOGICA DE CREAR COLECCIONES
+    const fakeUUID = crypto.randomUUID()
+
     navigate(
-      `/${id_usuario || currentUserId}/colecciones/${nuevaColeccionMockId}/buscador`,
+      `/${id_usuario || currentUserId}/colecciones/${fakeUUID}/buscador`,
       {
         state: { abrirModalCarga: true },
       },

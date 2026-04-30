@@ -125,7 +125,10 @@ function Highlight({ text, query }: { text: string; query: string }) {
 const BuscadorColeccion = () => {
   //const { id_usuario } = useParams();
   //const { user } = useAuth0();
-  const { id_usuario } = useParams<{ id_usuario: string }>()
+  const { id_usuario, id_coleccion } = useParams<{
+    id_usuario: string
+    id_coleccion: string
+  }>()
   const navigate = useNavigate()
   const location = useLocation()
   const abrirModalCarga = location.state?.abrirModalCarga === true
@@ -370,6 +373,7 @@ const BuscadorColeccion = () => {
       <ModalCarga
         isOpen={modalCargaOpen}
         onClose={handleCancelarCarga}
+        coleccionId={id_coleccion || ''}
         darkMode={darkMode}
       />
     </>
