@@ -53,11 +53,13 @@ async def upload_documento(
     extension = _validar_archivo(file.filename, contenido)
 
     doc_id = uuid4()
-    ruta = f"{user_id}/{coleccion_id}/{doc_id}"
+    safe_user_id = user_id.replace("|", "_")
+    ruta = f"{safe_user_id}/{coleccion_id}/{doc_id}"
 
     try:
         await supabase_client.upload_file(ruta, contenido, _CONTENT_TYPES[extension])
     except Exception as exc:
+        print("ERROR STORAGE:", repr(exc))
         raise HTTPException(
             status_code=502,
             detail="Error al subir el archivo al almacenamiento.",
@@ -73,6 +75,7 @@ async def upload_documento(
             storage_path=ruta,
         )
     except Exception as exc:
+        print("ERROR DB:", repr(exc))
         raise HTTPException(
             status_code=502,
             detail="El archivo se subió pero no se pudo registrar en la base de datos.",
