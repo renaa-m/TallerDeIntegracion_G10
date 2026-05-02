@@ -5,7 +5,7 @@ import { useAuth0 } from '@auth0/auth0-react' // Para validar contra el usuario 
 
 function LandingPage() {
   const { id_usuario } = useParams<{ id_usuario: string }>() // Captura el parámetro de la URL
-  const { user } = useAuth0() // Obtenemos la info del usuario logueado
+  const { user,  getAccessTokenSilently } = useAuth0() // Obtenemos la info del usuario logueado
 
   const [estado, setEstado] = useState<
     'idle' | 'loading' | 'success' | 'error'
@@ -22,16 +22,41 @@ function LandingPage() {
     { id: 3, nombre: 'Colección 3', archivos: 21 },
   ]
 
-  const handleIniciar = () => {
-    /////CAMBIAR CON LOGICA DE CREAR COLECCIONES
-    const fakeUUID = crypto.randomUUID()
+  const handleIniciar = async () => {
+    try {
+      const token = await getAccessTokenSilently()
 
-    navigate(
-      `/${id_usuario || currentUserId}/colecciones/${fakeUUID}/buscador`,
-      {
-        state: { abrirModalCarga: true },
-      },
-    )
+      const response = await fetch('http://localhost:8000/api/collections', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: 'Nueva colección',
+          description: '',
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.detail || 'Error al crear colección')
+      }
+
+      const collectionId = data.id
+
+      navigate(
+        `/${id_usuario || currentUserId}/colecciones/${collectionId}/buscador`,
+        {
+          state: { abrirModalCarga: true },
+        },
+      )
+    } catch (error) {
+      console.error('Error creando colección:', error)
+      setEstado('error')
+      setMensaje('No se pudo crear la colección')
+    }
   }
 
   const probarMensaje = () => {
