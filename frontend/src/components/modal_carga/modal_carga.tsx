@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
 import { X, CloudUpload, FileText, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import './modal_carga.css'
 
 interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
-  coleccionId: string
   darkMode?: boolean
 }
 
@@ -23,13 +23,22 @@ interface DocumentResponse {
   created_at: string
 }
 
+interface CollectionResponse {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  status: string
+  created_at: string
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const ModalCarga = ({ isOpen, onClose, coleccionId, darkMode = false }: ModalCargaProps) => {
+const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const { getAccessTokenSilently } = useAuth0()
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -37,6 +46,8 @@ const ModalCarga = ({ isOpen, onClose, coleccionId, darkMode = false }: ModalCar
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const [nombreColeccion, setNombreColeccion] = useState('')
+  const navigate = useNavigate()
 
   const handleClose = useCallback(() => {
     setFiles([])
@@ -73,13 +84,38 @@ const ModalCarga = ({ isOpen, onClose, coleccionId, darkMode = false }: ModalCar
     if (isUploading) return
     setFiles((prev) => prev.filter((_, idx) => idx !== i)) }
   
-  const uploadOneFile = async (file: File): Promise<DocumentResponse> => {
+  const createCollection = async (): Promise<CollectionResponse> => {
+    const token = await getAccessTokenSilently()
+
+    const response = await fetch('http://localhost:8000/api/collections', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: nombreColeccion || 'Nueva colección',
+        description: '',
+      }),
+    })
+
+    const text = await response.text()
+    const data = text ? JSON.parse(text) : null
+
+    if (!response.ok) {
+      throw new Error(data?.detail || 'Error al crear colección')
+    }
+
+    return data
+  }
+  
+  const uploadOneFile = async (file: File, collectionId: string,): Promise<DocumentResponse> => {
     const token = await getAccessTokenSilently()
 
     const formData = new FormData()
     formData.append('file', file)
     ///VER RUTA BACKEND
-    const response = await fetch(`http://localhost:8000/api/documentos/upload?coleccion_id=${coleccionId}`,
+    const response = await fetch(`http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
       {
         method: 'POST',
         headers: {
@@ -107,17 +143,20 @@ const ModalCarga = ({ isOpen, onClose, coleccionId, darkMode = false }: ModalCar
     setError('')
 
     try {
-      await Promise.all(files.map((file) => uploadOneFile(file)))
+      const collection = await createCollection()
+      await Promise.all(files.map((file) => uploadOneFile(file, collection.id)),)
 
-      setMensaje('Archivos subidos correctamente.')
+      setMensaje('Colección creada y archivos subidos correctamente.')
       setFiles([])
 
       setTimeout(() => {
         handleClose()
+        const userId = collection.user_id.split('|')[1] || collection.user_id
+        navigate(`/${userId}/colecciones/${collection.id}/buscador`)
       }, 1200)
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Error inesperado al subir archivos'
+        err instanceof Error ? err.message : 'Error inesperado al crear la colección o subir archivos'
       setError(message)
     } finally {
       setIsUploading(false)
@@ -213,14 +252,23 @@ const ModalCarga = ({ isOpen, onClose, coleccionId, darkMode = false }: ModalCar
 
         {mensaje && <p className="mc-success-message">{mensaje}</p>}
         {error && <p className="mc-error-message">{error}</p>}
-
+        <div className="mc-collection-name">
+          <input
+            type="text"
+            className="mc-input"
+            placeholder="Nombre de colección"
+            value={nombreColeccion}
+            onChange={(e) => setNombreColeccion(e.target.value)}
+            disabled={isUploading}
+          />
+        </div>
         <div className="mc-footer">
           <button className="mc-btn-cancel" onClick={handleClose} disabled={isUploading}>
             Cancelar
           </button>
           <button
             className="mc-btn-upload"
-            disabled={files.length === 0 || isUploading}
+            disabled={files.length === 0 || isUploading || !nombreColeccion.trim()}
             onClick={handleUpload}
           >
             {isUploading
