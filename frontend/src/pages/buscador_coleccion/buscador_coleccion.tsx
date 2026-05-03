@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import ModalNoDisponible from '../../components/modal_no_disponible/modal_no_disponible'
 import ModalCarga from '../../components/modal_carga/modal_carga'
+import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
 import './buscador_coleccion.css'
 
 interface Fuente {
@@ -92,7 +93,6 @@ function Highlight({ text, query }: { text: string; query: string }) {
   )
 }
 
-// Búsqueda permisiva: retorna true si ALGUNA palabra de la query aparece en el texto
 function matcheaBusqueda(resultado: Resultado, query: string): boolean {
   if (!query.trim()) return false
   const haystack = (resultado.extracto + ' ' + resultado.fuenteTitulo).toLowerCase()
@@ -112,6 +112,8 @@ const BuscadorColeccion = () => {
 
   const [modalCargaOpen, setModalCargaOpen] = useState(location.state?.abrirModalCarga === true)
   const [modalGrafoOpen, setModalGrafoOpen] = useState(false)
+  const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false) // Nuevo estado para el modal
+  
   const [filtroBarra, setFiltroBarra] = useState('')
   const [filtroOpen, setFiltroOpen] = useState(false)
   const [fuenteActiva, setFuenteActiva] = useState<number | null>(null)
@@ -132,17 +134,21 @@ const BuscadorColeccion = () => {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
-  // FIX: recibe valor directo del input, evita stale closure
   const handleBuscar = (valor: string) => {
     const trimmed = valor.trim()
     trimmed ? setSearchParams({ q: trimmed }) : setSearchParams({})
     setBusquedaEnviada(trimmed)
   }
 
+  // Modificado para abrir el modal
   const handleBorrarColeccion = () => {
-    if (window.confirm('¿Estás seguro de que quieres borrar esta colección permanentemente?')) {
-      navigate(`/${id_usuario}`)
-    }
+    setIsEliminarModalOpen(true)
+  }
+
+  // Función que se ejecuta al confirmar en el modal
+  const confirmarBorrado = () => {
+    setIsEliminarModalOpen(false)
+    navigate(`/${id_usuario}`)
   }
 
   const handleClearAllFilters = () => {
@@ -165,7 +171,6 @@ const BuscadorColeccion = () => {
     f.titulo.toLowerCase().includes(filtroBarra.toLowerCase())
   )
 
-  // Usa función permisiva en vez de un solo .includes()
   const resultados = CORPUS.filter((r) => matcheaBusqueda(r, busquedaEnviada))
 
   return (
@@ -220,7 +225,6 @@ const BuscadorColeccion = () => {
                 placeholder="Busca en tus fuentes..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
-                // FIX: lee e.currentTarget.value directo, sin depender del estado
                 onKeyDown={(e) => e.key === 'Enter' && handleBuscar(e.currentTarget.value)}
               />
               <button
@@ -336,6 +340,14 @@ const BuscadorColeccion = () => {
 
       <ModalNoDisponible isOpen={modalGrafoOpen} onClose={() => setModalGrafoOpen(false)} />
       <ModalCarga isOpen={modalCargaOpen} onClose={() => setModalCargaOpen(false)} darkMode={darkMode} />
+      
+      {/* Nuevo Modal de Eliminación Integrado */}
+      <ModalEliminarColeccion 
+        isOpen={isEliminarModalOpen}
+        onClose={() => setIsEliminarModalOpen(false)}
+        onConfirm={confirmarBorrado}
+        nombreColeccion="esta colección" 
+      />
     </>
   )
 }

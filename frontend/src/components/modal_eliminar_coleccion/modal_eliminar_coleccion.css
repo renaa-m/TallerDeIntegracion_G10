@@ -1,0 +1,202 @@
+/* ── OVERLAY ─────────────────────────────────────────────────────────────── */
+.mea-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 14, 30, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+  animation: mea-overlay-in 0.2s ease both;
+}
+
+@keyframes mea-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── BOX ─────────────────────────────────────────────────────────────────── */
+.mea-box {
+  background: var(--surface, #ffffff);
+  border: 1.5px solid var(--border, rgba(171, 163, 246, 0.3));
+  border-radius: 24px;
+  padding: 36px 32px 28px;
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.12),
+    0 4px 16px rgba(0, 0, 0, 0.06);
+  animation: mea-box-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes mea-box-in {
+  from {
+    opacity: 0;
+    transform: scale(0.88) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* ── ICON ────────────────────────────────────────────────────────────────── */
+.mea-icon-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.mea-icon-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.08);
+  border: 2px solid rgba(239, 68, 68, 0.2);
+  animation: mea-ring-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes mea-ring-pulse {
+  0%, 100% { transform: scale(1);   opacity: 1; }
+  50%       { transform: scale(1.1); opacity: 0.6; }
+}
+
+.mea-icon-svg {
+  width: 28px;
+  height: 28px;
+  color: #ef4444;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── TEXTO ───────────────────────────────────────────────────────────────── */
+.mea-title {
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 20px;
+  color: var(--text-1, #111111);
+  margin: 0 0 12px;
+  line-height: 1.2;
+}
+
+.mea-text {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  color: var(--text-2, #4f4f5c);
+  margin: 0 0 8px;
+}
+
+.mea-filename {
+  font-weight: 700;
+  color: var(--text-1, #111111);
+  word-break: break-all;
+}
+
+.mea-warning {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ef4444;
+  margin: 0 0 28px;
+  opacity: 0.85;
+}
+
+/* ── ACCIONES ────────────────────────────────────────────────────────────── */
+.mea-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.mea-btn {
+  flex: 1;
+  padding: 11px 16px;
+  border-radius: 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  border: 1.5px solid transparent;
+}
+
+.mea-btn-cancel {
+  background: transparent;
+  border-color: var(--border, rgba(171, 163, 246, 0.3));
+  color: var(--text-2, #4f4f5c);
+}
+
+.mea-btn-cancel:hover {
+  background: var(--surface-2, rgba(255, 255, 255, 0.45));
+  border-color: var(--accent, #aba3f6);
+  color: var(--text-1, #111111);
+}
+
+.mea-btn-confirm {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);
+}
+
+.mea-btn-confirm:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  box-shadow: 0 6px 18px rgba(239, 68, 68, 0.4);
+  transform: translateY(-1px);
+}
+
+.mea-btn-confirm:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+}
+
+/* ── DARK MODE ───────────────────────────────────────────────────────────── */
+.bc-dark .mea-box {
+  background: var(--surface, #141d35);
+  border-color: var(--border, #1e2d50);
+}
+
+.bc-dark .mea-title {
+  color: var(--text-1, #dce4f5);
+}
+
+.bc-dark .mea-text {
+  color: var(--text-2, #8394b4);
+}
+
+.bc-dark .mea-filename {
+  color: var(--text-1, #dce4f5);
+}
+
+.bc-dark .mea-btn-cancel {
+  border-color: var(--border, #1e2d50);
+  color: var(--text-2, #8394b4);
+}
+
+.bc-dark .mea-btn-cancel:hover {
+  background: var(--surface-2, #0d1426);
+  border-color: var(--accent, #aba3f6);
+  color: var(--text-1, #dce4f5);
+}
+
+@media (max-width: 480px) {
+  .mea-box {
+    margin: 0 16px;
+    padding: 28px 20px 22px;
+  }
+  .mea-actions {
+    flex-direction: column;
+  }
+}
