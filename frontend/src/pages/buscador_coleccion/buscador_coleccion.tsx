@@ -155,6 +155,7 @@ const BuscadorColeccion = () => {
   )
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState(nombreColeccion)
+  const coleccionIdActiva = id_usuario || '123e4567-e89b-12d3-a456-426614174000'
 
   // Estados de Búsqueda
   const queryFromUrl = searchParams.get('q') ?? ''
@@ -478,11 +479,15 @@ const BuscadorColeccion = () => {
         isOpen={modalGrafoOpen}
         onClose={() => setModalGrafoOpen(false)}
       />
+
       <ModalCarga
         isOpen={modalCargaOpen}
         onClose={() => setModalCargaOpen(false)}
         darkMode={darkMode}
+        coleccionId={coleccionIdActiva}
+        onUploadSuccess={() => console.log('Upload exitoso')}
       />
+
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
         onClose={() => setIsEliminarModalOpen(false)}
@@ -494,6 +499,12 @@ const BuscadorColeccion = () => {
         fuentes={FUENTES}
         onClose={() => setIsModalFuentesOpen(false)}
         darkMode={darkMode}
+      />
+      <ModalEliminarColeccion
+        isOpen={isEliminarModalOpen}
+        onClose={() => setIsEliminarModalOpen(false)}
+        onConfirm={confirmarBorrado}
+        nombreColeccion={nombreColeccion}
       />
     </>
   )
