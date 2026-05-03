@@ -474,7 +474,7 @@ const BuscadorColeccion = () => {
         </main>
       </div>
 
-      {/* MODALES */}
+      {/* MODALES - SIN DUPLICADOS */}
       <ModalNoDisponible
         isOpen={modalGrafoOpen}
         onClose={() => setModalGrafoOpen(false)}
@@ -494,17 +494,12 @@ const BuscadorColeccion = () => {
         onConfirm={confirmarBorrado}
         nombreColeccion={nombreColeccion}
       />
+
       <ModalDocumentosDisponibles
         isOpen={isModalFuentesOpen}
         fuentes={FUENTES}
         onClose={() => setIsModalFuentesOpen(false)}
         darkMode={darkMode}
-      />
-      <ModalEliminarColeccion
-        isOpen={isEliminarModalOpen}
-        onClose={() => setIsEliminarModalOpen(false)}
-        onConfirm={confirmarBorrado}
-        nombreColeccion={nombreColeccion}
       />
     </>
   )
