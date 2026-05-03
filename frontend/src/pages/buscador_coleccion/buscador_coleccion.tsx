@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { 
   useNavigate, 
   useParams, 
@@ -8,19 +8,25 @@ import {
 import {
   Search,
   Network,
-  ChevronRight,
   SlidersHorizontal,
   X,
   User,
   CalendarRange,
   Trash2,
-  Flag
+  Flag,
+  Files
 } from 'lucide-react'
+
+// Componentes
 import ModalNoDisponible from '../../components/modal_no_disponible/modal_no_disponible'
 import ModalCarga from '../../components/modal_carga/modal_carga'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
+import ModalDocumentosDisponibles from '../../components/modal_documentos_disponibles/modal_documentos_disponibles'
+
+// Estilos
 import './buscador_coleccion.css'
 
+// --- INTERFACES ---
 interface Fuente {
   id: number
   titulo: string
@@ -37,6 +43,7 @@ interface Resultado {
   pagina?: number
 }
 
+// --- MOCKS ---
 const FUENTES: Fuente[] = [
   { id: 1, titulo: 'Especificaciones Técnicas Dr. House', tipo: 'PDF', estado: 'ok' },
   { id: 2, titulo: 'Notas de Reunión IMFD', tipo: 'Doc', estado: 'ok' },
@@ -84,6 +91,7 @@ const CORPUS: Resultado[] = [
   },
 ]
 
+// --- SUB-COMPONENTES HELPER ---
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>
   const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
@@ -100,24 +108,26 @@ function matcheaBusqueda(resultado: Resultado, query: string): boolean {
   return palabras.some(p => p.length > 1 && haystack.includes(p))
 }
 
+// --- COMPONENTE PRINCIPAL ---
 const BuscadorColeccion = () => {
   const { id_usuario } = useParams<{ id_usuario: string }>()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // Estados de Búsqueda
   const queryFromUrl = searchParams.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(queryFromUrl)
   const [busquedaEnviada, setBusquedaEnviada] = useState(queryFromUrl)
 
+  // Estados de Modales
   const [modalCargaOpen, setModalCargaOpen] = useState(location.state?.abrirModalCarga === true)
   const [modalGrafoOpen, setModalGrafoOpen] = useState(false)
-  const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false) // Nuevo estado para el modal
+  const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
+  const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   
-  const [filtroBarra, setFiltroBarra] = useState('')
+  // Estados de Filtros
   const [filtroOpen, setFiltroOpen] = useState(false)
-  const [fuenteActiva, setFuenteActiva] = useState<number | null>(null)
-
   const [personas, setPersonas] = useState<string[]>([])
   const [inputPersona, setInputPersona] = useState('')
   const [eventos, setEventos] = useState<string[]>([])
@@ -134,18 +144,13 @@ const BuscadorColeccion = () => {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
+  // Manejadores
   const handleBuscar = (valor: string) => {
     const trimmed = valor.trim()
     trimmed ? setSearchParams({ q: trimmed }) : setSearchParams({})
     setBusquedaEnviada(trimmed)
   }
 
-  // Modificado para abrir el modal
-  const handleBorrarColeccion = () => {
-    setIsEliminarModalOpen(true)
-  }
-
-  // Función que se ejecuta al confirmar en el modal
   const confirmarBorrado = () => {
     setIsEliminarModalOpen(false)
     navigate(`/${id_usuario}`)
@@ -167,11 +172,7 @@ const BuscadorColeccion = () => {
   }
 
   const hayFiltrosActivos = personas.length > 0 || eventos.length > 0 || !!fechaDesde || !!fechaHasta
-  const fuentesFiltradas = FUENTES.filter((f) =>
-    f.titulo.toLowerCase().includes(filtroBarra.toLowerCase())
-  )
-
-  const resultados = CORPUS.filter((r) => matcheaBusqueda(r, busquedaEnviada))
+  const resultados = useMemo(() => CORPUS.filter((r) => matcheaBusqueda(r, busquedaEnviada)), [busquedaEnviada])
 
   return (
     <>
@@ -182,37 +183,17 @@ const BuscadorColeccion = () => {
               <Network size={15} /> <span>Ver Grafo</span>
             </button>
 
-            <button className="bc-delete-collection-btn" onClick={handleBorrarColeccion}>
+            {/* BOTÓN QUE ACTIVA EL MODAL DE DOCUMENTOS */}
+            <button className="bc-add-btn" onClick={() => setIsModalFuentesOpen(true)}>
+              <Files size={15} /> <span>Ver Documentos</span>
+            </button>
+
+            <button className="bc-delete-collection-btn" onClick={() => setIsEliminarModalOpen(true)}>
               <Trash2 size={14} /> <span>Borrar colección</span>
             </button>
 
-            <div className="bc-search-wrap">
-              <Search size={13} className="bc-search-icon" />
-              <input
-                className="bc-search-input"
-                placeholder="Mis Fuentes..."
-                value={filtroBarra}
-                onChange={(e) => setFiltroBarra(e.target.value)}
-              />
-            </div>
-
-            <div className="bc-section-label">Fuentes · {fuentesFiltradas.length}</div>
-            <div className="bc-sources-list">
-              {fuentesFiltradas.map((f) => (
-                <button
-                  key={f.id}
-                  className={`bc-source-item ${fuenteActiva === f.id ? 'active' : ''}`}
-                  onClick={() => setFuenteActiva(f.id)}
-                >
-                  <div className={`bc-source-dot ${f.estado === 'error' ? 'dot-error' : ''}`} />
-                  <div className="bc-source-text">
-                    <span className="bc-source-title">{f.titulo}</span>
-                    <span className="bc-source-meta">{f.tipo}</span>
-                  </div>
-                  <ChevronRight size={11} className="bc-chevron" />
-                </button>
-              ))}
-            </div>
+            <div className="bc-sidebar-divider" />
+            
           </div>
         </aside>
 
@@ -338,18 +319,29 @@ const BuscadorColeccion = () => {
         </main>
       </div>
 
+      {/* MODALES */}
       <ModalNoDisponible isOpen={modalGrafoOpen} onClose={() => setModalGrafoOpen(false)} />
+      
       <ModalCarga isOpen={modalCargaOpen} onClose={() => setModalCargaOpen(false)} darkMode={darkMode} />
       
-      {/* Nuevo Modal de Eliminación Integrado */}
       <ModalEliminarColeccion 
         isOpen={isEliminarModalOpen}
         onClose={() => setIsEliminarModalOpen(false)}
         onConfirm={confirmarBorrado}
         nombreColeccion="esta colección" 
       />
+
+      <ModalDocumentosDisponibles 
+        isOpen={isModalFuentesOpen}
+        fuentes={FUENTES}
+        onClose={() => setIsModalFuentesOpen(false)}
+        onSelectFuente={(f) => {
+          console.log("Seleccionado:", f);
+          setIsModalFuentesOpen(false);
+        }}
+      />
     </>
   )
 }
 
-export default BuscadorColeccion
+export default BuscadorColeccion;

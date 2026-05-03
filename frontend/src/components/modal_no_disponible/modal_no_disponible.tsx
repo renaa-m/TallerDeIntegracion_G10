@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { X, AlertCircle } from 'lucide-react'
+import {AlertCircle } from 'lucide-react'
 import './modal_no_disponible.css'
 
 interface ModalNoDisponibleProps {
