@@ -18,10 +18,17 @@ function ModalEliminarColeccion({
   return (
     <div className="mea-overlay" onClick={onClose}>
       <div className="mea-box" onClick={(e) => e.stopPropagation()}>
-
         <div className="mea-icon-wrap">
           <div className="mea-icon-ring" />
-          <svg className="mea-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            className="mea-icon-svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <polyline points="3 6 5 6 21 6" />
             <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
             <path d="M10 11v6" />
@@ -34,10 +41,14 @@ function ModalEliminarColeccion({
 
         <p className="mea-text">
           ¿Estás seguro de que quieres eliminar{' '}
-          {nombreColeccion
-            ? <><span className="mea-filename">"{nombreColeccion}"</span>{' '}permanentemente?</>
-            : 'esta colección permanentemente?'
-          }
+          {nombreColeccion ? (
+            <>
+              <span className="mea-filename">"{nombreColeccion}"</span>{' '}
+              permanentemente?
+            </>
+          ) : (
+            'esta colección permanentemente?'
+          )}
         </p>
 
         <p className="mea-warning">Esta acción no se puede deshacer.</p>
@@ -50,7 +61,6 @@ function ModalEliminarColeccion({
             Sí, eliminar
           </button>
         </div>
-
       </div>
     </div>
   )

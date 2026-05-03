@@ -2,33 +2,33 @@
 
 /* ── VARIABLES (light) ───────────────────────────────────────────────────── */
 .mnd-overlay {
-  --surface:   #ffffff;
+  --surface: #ffffff;
   --surface-2: #f4f6fb;
-  --border:    #dde3ef;
-  --text-1:    #1a2550;
-  --text-2:    #526080;
-  --text-3:    #96a4bb;
-  --navy:      #243166;
-  --red:       #D93025;
-  --red-bg:    #FDEDED;
-  --red-border:#f5c2c0;
-  --shadow:    rgba(26, 37, 80, 0.13);
+  --border: #dde3ef;
+  --text-1: #1a2550;
+  --text-2: #526080;
+  --text-3: #96a4bb;
+  --navy: #243166;
+  --red: #d93025;
+  --red-bg: #fdeded;
+  --red-border: #f5c2c0;
+  --shadow: rgba(26, 37, 80, 0.13);
 }
 
 /* ── VARIABLES (dark) ────────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
   .mnd-overlay {
-    --surface:   #141d35;
+    --surface: #141d35;
     --surface-2: #182038;
-    --border:    #1e2d50;
-    --text-1:    #dce4f5;
-    --text-2:    #8394b4;
-    --text-3:    #465672;
-    --navy:      #a8a3f6;
-    --red:       #f87171;
-    --red-bg:    rgba(239, 68, 68, 0.12);
-    --red-border:rgba(239, 68, 68, 0.25);
-    --shadow:    rgba(0, 0, 0, 0.4);
+    --border: #1e2d50;
+    --text-1: #dce4f5;
+    --text-2: #8394b4;
+    --text-3: #465672;
+    --navy: #a8a3f6;
+    --red: #f87171;
+    --red-bg: rgba(239, 68, 68, 0.12);
+    --red-border: rgba(239, 68, 68, 0.25);
+    --shadow: rgba(0, 0, 0, 0.4);
   }
 }
 
@@ -79,7 +79,10 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 .mnd-close:hover {
   background: var(--surface-2);
@@ -169,7 +172,10 @@
   font-family: 'DM Sans', sans-serif;
   color: var(--text-2);
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
 }
 .mnd-btn-close:hover {
   background: var(--surface);
@@ -179,11 +185,21 @@
 
 /* ── ANIMATIONS ──────────────────────────────────────────────────────────── */
 @keyframes mnd-fadein {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes mnd-slidein {
-  from { opacity: 0; transform: translateY(10px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }

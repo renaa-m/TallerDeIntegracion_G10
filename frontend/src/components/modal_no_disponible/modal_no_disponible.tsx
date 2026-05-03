@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import {AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import './modal_no_disponible.css'
 
 interface ModalNoDisponibleProps {
@@ -22,7 +22,6 @@ const ModalNoDisponible = ({ isOpen, onClose }: ModalNoDisponibleProps) => {
   return (
     <div className="mnd-overlay" onClick={onClose}>
       <div className="mnd-panel" onClick={(e) => e.stopPropagation()}>
-
         {/* Icon area - similar al dropzone original pero como error */}
         <div className="mnd-icon-area">
           <div className="mnd-icon-wrap">
@@ -30,7 +29,9 @@ const ModalNoDisponible = ({ isOpen, onClose }: ModalNoDisponibleProps) => {
           </div>
           <p className="mnd-icon-label">Próximamente</p>
           <p className="mnd-icon-sub">
-            Esta función aún no está disponible.<br />Estamos trabajando en ella.
+            Esta función aún no está disponible.
+            <br />
+            Estamos trabajando en ella.
           </p>
         </div>
 
@@ -40,7 +41,6 @@ const ModalNoDisponible = ({ isOpen, onClose }: ModalNoDisponibleProps) => {
             Cerrar
           </button>
         </div>
-
       </div>
     </div>
   )

@@ -42,15 +42,16 @@
   --green: #22c55e;
   --accent: #aba3f6;
 
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   display: flex;
   height: calc(100vh - 64px);
   overflow: hidden;
-  
+
   /* Aplicación del fondo dinámico */
   background: var(--bg-gradient);
   color: var(--text-1);
-  
+
   margin: 0;
   padding: 0;
   transition: background 0.3s ease; /* Transición suave al cambiar de modo */
@@ -857,12 +858,12 @@
   gap: 7px;
   width: 100%;
   padding: 10px;
-  
+
   /* Estilo base Rojo */
   background: rgba(239, 68, 68, 0.08); /* Rojo muy suave de fondo */
   border: 1.5px solid rgba(239, 68, 68, 0.2);
   color: #ef4444; /* Color rojo vibrante */
-  
+
   border-radius: 12px;
   font-size: 11.5px;
   font-weight: 700;
@@ -973,7 +974,9 @@
   padding: 4px;
   color: var(--text-3);
   opacity: 0; /* Oculto por defecto */
-  transition: opacity 0.2s, color 0.2s;
+  transition:
+    opacity 0.2s,
+    color 0.2s;
   cursor: pointer;
   display: flex;
   align-items: center;
