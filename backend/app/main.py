@@ -5,11 +5,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import health
-from app.api.routes import collections
-from app.api.routes import documentos
+from app.api.routes import health, collections, documentos, usuarios
 from app.config import settings
-from app.api.routes import usuarios
 
 app = FastAPI(
     title=settings.app_name,
@@ -22,15 +19,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
+        "http://127.0.0.1:5173",  # FIX: agregar esta variante
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(health.router)
-app.include_router(collections.router)
-app.include_router(documentos.router)
+# FIX: cada router incluido una sola vez
 app.include_router(health.router)
 app.include_router(collections.router)
 app.include_router(documentos.router)
