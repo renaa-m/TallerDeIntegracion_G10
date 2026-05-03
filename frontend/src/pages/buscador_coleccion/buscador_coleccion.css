@@ -936,3 +936,101 @@
   cursor: pointer;
   margin-left: auto;
 }
+
+/* --- SIDEBAR HEADER & EDIT NAME --- */
+.bc-sidebar-header {
+  padding: 4px 4px 10px 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.bc-sidebar-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 2px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+
+.bc-sidebar-collection-name {
+  font-family: 'DM Serif Display', serif;
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--text-1);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
+
+.bc-edit-name-icon-btn {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  color: var(--text-3);
+  opacity: 0; /* Oculto por defecto */
+  transition: opacity 0.2s, color 0.2s;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.bc-sidebar-title-group:hover .bc-edit-name-icon-btn {
+  opacity: 1;
+}
+
+.bc-sidebar-collection-label {
+  font-size: 10px;
+  color: var(--text-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Input para editar nombre */
+.bc-edit-name-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1.5px solid var(--accent);
+}
+
+.bc-sidebar-name-input {
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text-1);
+  width: 100%;
+  outline: none;
+}
+
+.bc-save-name-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 7px;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bc-sidebar-divider {
+  height: 1.5px;
+  background: var(--border);
+  margin: 8px 0;
+}
+
+/* Ajuste de los botones para que no choquen */
+.bc-sidebar-inner {
+  gap: 12px;
+}

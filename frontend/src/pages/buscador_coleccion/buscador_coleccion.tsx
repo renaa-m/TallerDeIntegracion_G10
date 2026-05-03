@@ -14,7 +14,9 @@ import {
   CalendarRange,
   Trash2,
   Flag,
-  Files
+  Files,
+  Edit2,
+  Check
 } from 'lucide-react'
 
 // Componentes
@@ -52,43 +54,11 @@ const FUENTES: Fuente[] = [
 ]
 
 const CORPUS: Resultado[] = [
-  {
-    id: 1,
-    fuenteId: 1,
-    fuenteTitulo: 'Especificaciones Técnicas Dr. House',
-    fuenteTipo: 'PDF',
-    extracto: 'El diagnóstico diferencial incluye lupus eritematoso sistémico, sarcoidosis y vasculitis.',
-    pagina: 12
-  },
-  {
-    id: 2,
-    fuenteId: 2,
-    fuenteTitulo: 'Notas de Reunión IMFD',
-    fuenteTipo: 'Doc',
-    extracto: 'Se acordó presentar los avances del proyecto de análisis semántico en el congreso de junio.'
-  },
-  {
-    id: 3,
-    fuenteId: 1,
-    fuenteTitulo: 'Especificaciones Técnicas Dr. House',
-    fuenteTipo: 'PDF',
-    extracto: 'El paciente presenta fiebre persistente y erupciones cutáneas compatibles con diagnóstico autoinmune.',
-    pagina: 3
-  },
-  {
-    id: 4,
-    fuenteId: 2,
-    fuenteTitulo: 'Notas de Reunión IMFD',
-    fuenteTipo: 'Doc',
-    extracto: 'El equipo de grafos de conocimiento presentará resultados preliminares en la próxima reunión semanal.'
-  },
-  {
-    id: 5,
-    fuenteId: 3,
-    fuenteTitulo: 'Dataset H&M Chile - Outfits',
-    fuenteTipo: 'CSV',
-    extracto: 'Registro de 1.200 combinaciones de prendas evaluadas por usuarios en Santiago durante 2023.'
-  },
+  { id: 1, fuenteId: 1, fuenteTitulo: 'Especificaciones Técnicas Dr. House', fuenteTipo: 'PDF', extracto: 'El diagnóstico diferencial incluye lupus eritematoso sistémico, sarcoidosis y vasculitis.', pagina: 12 },
+  { id: 2, fuenteId: 2, fuenteTitulo: 'Notas de Reunión IMFD', fuenteTipo: 'Doc', extracto: 'Se acordó presentar los avances del proyecto de análisis semántico en el congreso de junio.' },
+  { id: 3, fuenteId: 1, fuenteTitulo: 'Especificaciones Técnicas Dr. House', fuenteTipo: 'PDF', extracto: 'El paciente presenta fiebre persistente y erupciones cutáneas compatibles con diagnóstico autoinmune.', pagina: 3 },
+  { id: 4, fuenteId: 2, fuenteTitulo: 'Notas de Reunión IMFD', fuenteTipo: 'Doc', extracto: 'El equipo de grafos de conocimiento presentará resultados preliminares en la próxima reunión semanal.' },
+  { id: 5, fuenteId: 3, fuenteTitulo: 'Dataset H&M Chile - Outfits', fuenteTipo: 'CSV', extracto: 'Registro de 1.200 combinaciones de prendas evaluadas por usuarios en Santiago durante 2023.' },
 ]
 
 // --- SUB-COMPONENTES HELPER ---
@@ -114,6 +84,11 @@ const BuscadorColeccion = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
+
+  // Estados de Nombre de Colección (Nuevo)
+  const [nombreColeccion, setNombreColeccion] = useState("Investigación IMFD 2024")
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [tempNombre, setTempNombre] = useState(nombreColeccion)
 
   // Estados de Búsqueda
   const queryFromUrl = searchParams.get('q') ?? ''
@@ -151,6 +126,11 @@ const BuscadorColeccion = () => {
     setBusquedaEnviada(trimmed)
   }
 
+  const saveNombre = () => {
+    if (tempNombre.trim()) setNombreColeccion(tempNombre)
+    setIsEditingName(false)
+  }
+
   const confirmarBorrado = () => {
     setIsEliminarModalOpen(false)
     navigate(`/${id_usuario}`)
@@ -160,12 +140,7 @@ const BuscadorColeccion = () => {
     setPersonas([]); setEventos([]); setFechaDesde(''); setFechaHasta('');
   }
 
-  const agregarTag = (
-    val: string,
-    lista: string[],
-    setLista: (v: string[]) => void,
-    setInput: (v: string) => void
-  ) => {
+  const agregarTag = (val: string, lista: string[], setLista: (v: string[]) => void, setInput: (v: string) => void) => {
     const trimmed = val.trim()
     if (trimmed && !lista.includes(trimmed)) setLista([...lista, trimmed])
     setInput('')
@@ -179,11 +154,39 @@ const BuscadorColeccion = () => {
       <div className={`bc-root${darkMode ? ' bc-dark' : ''}`}>
         <aside className="bc-sidebar">
           <div className="bc-sidebar-inner">
+            
+            {/* --- CABECERA DE COLECCIÓN CON EDICIÓN --- */}
+            <div className="bc-sidebar-header">
+              {isEditingName ? (
+                <div className="bc-edit-name-container">
+                  <input 
+                    className="bc-sidebar-name-input"
+                    value={tempNombre}
+                    onChange={(e) => setTempNombre(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && saveNombre()}
+                    autoFocus
+                  />
+                  <button className="bc-save-name-btn" onClick={saveNombre}>
+                    <Check size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div className="bc-sidebar-title-group" onClick={() => { setIsEditingName(true); setTempNombre(nombreColeccion); }}>
+                  <h2 className="bc-sidebar-collection-name">{nombreColeccion}</h2>
+                  <button className="bc-edit-name-icon-btn">
+                    <Edit2 size={12} />
+                  </button>
+                </div>
+              )}
+              <span className="bc-sidebar-collection-label">Colección actual</span>
+            </div>
+
+            <div className="bc-sidebar-divider" />
+
             <button className="bc-add-btn" onClick={() => setModalGrafoOpen(true)}>
               <Network size={15} /> <span>Ver Grafo</span>
             </button>
 
-            {/* BOTÓN QUE ACTIVA EL MODAL DE DOCUMENTOS */}
             <button className="bc-add-btn" onClick={() => setIsModalFuentesOpen(true)}>
               <Files size={15} /> <span>Ver Documentos</span>
             </button>
@@ -193,7 +196,6 @@ const BuscadorColeccion = () => {
             </button>
 
             <div className="bc-sidebar-divider" />
-            
           </div>
         </aside>
 
@@ -279,9 +281,7 @@ const BuscadorColeccion = () => {
                       <Trash2 size={12} /> Limpiar filtros
                     </button>
                   )}
-                  <button className="bc-filter-save-btn" onClick={() => setFiltroOpen(false)}>
-                    Guardar filtros
-                  </button>
+                  <button className="bc-filter-save-btn" onClick={() => setFiltroOpen(false)}>Guardar filtros</button>
                 </div>
               </div>
             )}
@@ -306,13 +306,8 @@ const BuscadorColeccion = () => {
               <div className="bc-empty">
                 <div className="bc-empty-icon"><Search size={26} /></div>
                 <p className="bc-empty-title">
-                  {busquedaEnviada.trim()
-                    ? 'No se encontraron resultados'
-                    : 'Busca en tu colección'}
+                  {busquedaEnviada.trim() ? 'No se encontraron resultados' : 'Busca en tu colección'}
                 </p>
-                {busquedaEnviada.trim() && (
-                  <p className="bc-empty-sub">Intenta con otras palabras clave</p>
-                )}
               </div>
             )}
           </div>
@@ -321,24 +316,18 @@ const BuscadorColeccion = () => {
 
       {/* MODALES */}
       <ModalNoDisponible isOpen={modalGrafoOpen} onClose={() => setModalGrafoOpen(false)} />
-      
       <ModalCarga isOpen={modalCargaOpen} onClose={() => setModalCargaOpen(false)} darkMode={darkMode} />
-      
       <ModalEliminarColeccion 
-        isOpen={isEliminarModalOpen}
-        onClose={() => setIsEliminarModalOpen(false)}
-        onConfirm={confirmarBorrado}
-        nombreColeccion="esta colección" 
+        isOpen={isEliminarModalOpen} 
+        onClose={() => setIsEliminarModalOpen(false)} 
+        onConfirm={confirmarBorrado} 
+        nombreColeccion={nombreColeccion} 
       />
-
       <ModalDocumentosDisponibles 
-        isOpen={isModalFuentesOpen}
-        fuentes={FUENTES}
-        onClose={() => setIsModalFuentesOpen(false)}
-        onSelectFuente={(f) => {
-          console.log("Seleccionado:", f);
-          setIsModalFuentesOpen(false);
-        }}
+        isOpen={isModalFuentesOpen} 
+        fuentes={FUENTES} 
+        onClose={() => setIsModalFuentesOpen(false)} 
+        darkMode={darkMode}
       />
     </>
   )
