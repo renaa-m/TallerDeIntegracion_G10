@@ -7,7 +7,6 @@ import {
 } from 'react-router-dom'
 import {
   Search,
-  FileText,
   Network,
   ChevronRight,
   SlidersHorizontal,
@@ -45,8 +44,43 @@ const FUENTES: Fuente[] = [
 ]
 
 const CORPUS: Resultado[] = [
-  { id: 1, fuenteId: 1, fuenteTitulo: 'Especificaciones Técnicas Dr. House', fuenteTipo: 'PDF', extracto: 'El diagnóstico diferencial incluye lupus eritematoso sistémico, sarcoidosis y vasculitis...', pagina: 12 },
-  { id: 2, fuenteId: 2, fuenteTitulo: 'Notas de Reunión IMFD', fuenteTipo: 'Doc', extracto: 'Se acordó presentar los avances del proyecto de análisis semántico en el congreso de junio.' }
+  {
+    id: 1,
+    fuenteId: 1,
+    fuenteTitulo: 'Especificaciones Técnicas Dr. House',
+    fuenteTipo: 'PDF',
+    extracto: 'El diagnóstico diferencial incluye lupus eritematoso sistémico, sarcoidosis y vasculitis.',
+    pagina: 12
+  },
+  {
+    id: 2,
+    fuenteId: 2,
+    fuenteTitulo: 'Notas de Reunión IMFD',
+    fuenteTipo: 'Doc',
+    extracto: 'Se acordó presentar los avances del proyecto de análisis semántico en el congreso de junio.'
+  },
+  {
+    id: 3,
+    fuenteId: 1,
+    fuenteTitulo: 'Especificaciones Técnicas Dr. House',
+    fuenteTipo: 'PDF',
+    extracto: 'El paciente presenta fiebre persistente y erupciones cutáneas compatibles con diagnóstico autoinmune.',
+    pagina: 3
+  },
+  {
+    id: 4,
+    fuenteId: 2,
+    fuenteTitulo: 'Notas de Reunión IMFD',
+    fuenteTipo: 'Doc',
+    extracto: 'El equipo de grafos de conocimiento presentará resultados preliminares en la próxima reunión semanal.'
+  },
+  {
+    id: 5,
+    fuenteId: 3,
+    fuenteTitulo: 'Dataset H&M Chile - Outfits',
+    fuenteTipo: 'CSV',
+    extracto: 'Registro de 1.200 combinaciones de prendas evaluadas por usuarios en Santiago durante 2023.'
+  },
 ]
 
 function Highlight({ text, query }: { text: string; query: string }) {
@@ -56,6 +90,14 @@ function Highlight({ text, query }: { text: string; query: string }) {
   return (
     <>{parts.map((part, i) => regex.test(part) ? <mark key={i} className="bc-hl">{part}</mark> : part)}</>
   )
+}
+
+// Búsqueda permisiva: retorna true si ALGUNA palabra de la query aparece en el texto
+function matcheaBusqueda(resultado: Resultado, query: string): boolean {
+  if (!query.trim()) return false
+  const haystack = (resultado.extracto + ' ' + resultado.fuenteTitulo).toLowerCase()
+  const palabras = query.toLowerCase().trim().split(/\s+/)
+  return palabras.some(p => p.length > 1 && haystack.includes(p))
 }
 
 const BuscadorColeccion = () => {
@@ -90,8 +132,9 @@ const BuscadorColeccion = () => {
     return () => mq.removeEventListener('change', handler)
   }, [])
 
-  const handleBuscar = () => {
-    const trimmed = busqueda.trim()
+  // FIX: recibe valor directo del input, evita stale closure
+  const handleBuscar = (valor: string) => {
+    const trimmed = valor.trim()
     trimmed ? setSearchParams({ q: trimmed }) : setSearchParams({})
     setBusquedaEnviada(trimmed)
   }
@@ -106,18 +149,24 @@ const BuscadorColeccion = () => {
     setPersonas([]); setEventos([]); setFechaDesde(''); setFechaHasta('');
   }
 
-  const agregarTag = (val: string, lista: string[], setLista: (v: string[]) => void, setInput: (v: string) => void) => {
+  const agregarTag = (
+    val: string,
+    lista: string[],
+    setLista: (v: string[]) => void,
+    setInput: (v: string) => void
+  ) => {
     const trimmed = val.trim()
     if (trimmed && !lista.includes(trimmed)) setLista([...lista, trimmed])
     setInput('')
   }
 
   const hayFiltrosActivos = personas.length > 0 || eventos.length > 0 || !!fechaDesde || !!fechaHasta
-  const fuentesFiltradas = FUENTES.filter((f) => f.titulo.toLowerCase().includes(filtroBarra.toLowerCase()))
-  const resultados = CORPUS.filter((r) => {
-    if (!busquedaEnviada.trim()) return false
-    return (r.extracto + ' ' + r.fuenteTitulo).toLowerCase().includes(busquedaEnviada.toLowerCase())
-  })
+  const fuentesFiltradas = FUENTES.filter((f) =>
+    f.titulo.toLowerCase().includes(filtroBarra.toLowerCase())
+  )
+
+  // Usa función permisiva en vez de un solo .includes()
+  const resultados = CORPUS.filter((r) => matcheaBusqueda(r, busquedaEnviada))
 
   return (
     <>
@@ -127,20 +176,29 @@ const BuscadorColeccion = () => {
             <button className="bc-add-btn" onClick={() => setModalGrafoOpen(true)}>
               <Network size={15} /> <span>Ver Grafo</span>
             </button>
-            
+
             <button className="bc-delete-collection-btn" onClick={handleBorrarColeccion}>
               <Trash2 size={14} /> <span>Borrar colección</span>
             </button>
 
             <div className="bc-search-wrap">
               <Search size={13} className="bc-search-icon" />
-              <input className="bc-search-input" placeholder="Mis Fuentes..." value={filtroBarra} onChange={(e) => setFiltroBarra(e.target.value)} />
+              <input
+                className="bc-search-input"
+                placeholder="Mis Fuentes..."
+                value={filtroBarra}
+                onChange={(e) => setFiltroBarra(e.target.value)}
+              />
             </div>
 
             <div className="bc-section-label">Fuentes · {fuentesFiltradas.length}</div>
             <div className="bc-sources-list">
               {fuentesFiltradas.map((f) => (
-                <button key={f.id} className={`bc-source-item ${fuenteActiva === f.id ? 'active' : ''}`} onClick={() => setFuenteActiva(f.id)}>
+                <button
+                  key={f.id}
+                  className={`bc-source-item ${fuenteActiva === f.id ? 'active' : ''}`}
+                  onClick={() => setFuenteActiva(f.id)}
+                >
                   <div className={`bc-source-dot ${f.estado === 'error' ? 'dot-error' : ''}`} />
                   <div className="bc-source-text">
                     <span className="bc-source-title">{f.titulo}</span>
@@ -157,29 +215,73 @@ const BuscadorColeccion = () => {
           <div className="bc-searchbar-wrap">
             <div className="bc-searchbar">
               <Search size={17} className="bc-searchbar-icon" />
-              <input className="bc-searchbar-input" placeholder="Busca en tus fuentes..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleBuscar()} />
-              <button className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`} onClick={() => setFiltroOpen(!filtroOpen)}>
+              <input
+                className="bc-searchbar-input"
+                placeholder="Busca en tus fuentes..."
+                value={busqueda}
+                onChange={(e) => setBusqueda(e.target.value)}
+                // FIX: lee e.currentTarget.value directo, sin depender del estado
+                onKeyDown={(e) => e.key === 'Enter' && handleBuscar(e.currentTarget.value)}
+              />
+              <button
+                className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
+                onClick={() => setFiltroOpen(!filtroOpen)}
+              >
                 <SlidersHorizontal size={14} /> <span>Filtrar</span>
-                {hayFiltrosActivos && <span className="bc-filter-badge">{personas.length + eventos.length + (fechaDesde || fechaHasta ? 1 : 0)}</span>}
+                {hayFiltrosActivos && (
+                  <span className="bc-filter-badge">
+                    {personas.length + eventos.length + (fechaDesde || fechaHasta ? 1 : 0)}
+                  </span>
+                )}
               </button>
             </div>
 
             {filtroOpen && (
               <div className="bc-filter-panel">
                 <div className="bc-filter-group">
-                  <div className="bc-filter-group-header"><User size={12} /> <span className="bc-filter-label">Personas</span></div>
-                  <input className="bc-filter-tag-input" placeholder="Añadir..." value={inputPersona} onChange={(e) => setInputPersona(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputPersona, personas, setPersonas, setInputPersona)} />
-                  <div className="bc-filter-chips">{personas.map(p => <button key={p} className="bc-filter-chip selected" onClick={() => setPersonas(personas.filter(x => x !== p))}>{p} <X size={10} /></button>)}</div>
+                  <div className="bc-filter-group-header">
+                    <User size={12} /> <span className="bc-filter-label">Personas</span>
+                  </div>
+                  <input
+                    className="bc-filter-tag-input"
+                    placeholder="Añadir..."
+                    value={inputPersona}
+                    onChange={(e) => setInputPersona(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputPersona, personas, setPersonas, setInputPersona)}
+                  />
+                  <div className="bc-filter-chips">
+                    {personas.map(p => (
+                      <button key={p} className="bc-filter-chip selected" onClick={() => setPersonas(personas.filter(x => x !== p))}>
+                        {p} <X size={10} />
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="bc-filter-divider" />
                 <div className="bc-filter-group">
-                  <div className="bc-filter-group-header"><Flag size={12} /> <span className="bc-filter-label">Eventos</span></div>
-                  <input className="bc-filter-tag-input" placeholder="Añadir..." value={inputEvento} onChange={(e) => setInputEvento(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputEvento, eventos, setEventos, setInputEvento)} />
-                  <div className="bc-filter-chips">{eventos.map(e => <button key={e} className="bc-filter-chip selected" onClick={() => setEventos(eventos.filter(x => x !== e))}>{e} <X size={10} /></button>)}</div>
+                  <div className="bc-filter-group-header">
+                    <Flag size={12} /> <span className="bc-filter-label">Eventos</span>
+                  </div>
+                  <input
+                    className="bc-filter-tag-input"
+                    placeholder="Añadir..."
+                    value={inputEvento}
+                    onChange={(e) => setInputEvento(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputEvento, eventos, setEventos, setInputEvento)}
+                  />
+                  <div className="bc-filter-chips">
+                    {eventos.map(e => (
+                      <button key={e} className="bc-filter-chip selected" onClick={() => setEventos(eventos.filter(x => x !== e))}>
+                        {e} <X size={10} />
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 <div className="bc-filter-divider" />
                 <div className="bc-filter-group">
-                  <div className="bc-filter-group-header"><CalendarRange size={12} /> <span className="bc-filter-label">Fechas</span></div>
+                  <div className="bc-filter-group-header">
+                    <CalendarRange size={12} /> <span className="bc-filter-label">Fechas</span>
+                  </div>
                   <div className="bc-filter-date-row">
                     <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="bc-filter-date" />
                     <span className="bc-filter-date-sep">→</span>
@@ -192,7 +294,9 @@ const BuscadorColeccion = () => {
                       <Trash2 size={12} /> Limpiar filtros
                     </button>
                   )}
-                  <button className="bc-filter-save-btn" onClick={() => setFiltroOpen(false)}>Guardar filtros</button>
+                  <button className="bc-filter-save-btn" onClick={() => setFiltroOpen(false)}>
+                    Guardar filtros
+                  </button>
                 </div>
               </div>
             )}
@@ -203,24 +307,37 @@ const BuscadorColeccion = () => {
               <div className="bc-results-list">
                 {resultados.map((r) => (
                   <article key={r.id} className="bc-result-card">
-                    <div className="bc-result-source"><span className="bc-result-source-name">{r.fuenteTitulo}</span><span className="bc-result-badge">{r.fuenteTipo}</span></div>
-                    <p className="bc-result-excerpt"><Highlight text={r.extracto} query={busquedaEnviada} /></p>
+                    <div className="bc-result-source">
+                      <span className="bc-result-source-name">{r.fuenteTitulo}</span>
+                      <span className="bc-result-badge">{r.fuenteTipo}</span>
+                    </div>
+                    <p className="bc-result-excerpt">
+                      <Highlight text={r.extracto} query={busquedaEnviada} />
+                    </p>
                   </article>
                 ))}
               </div>
             ) : (
               <div className="bc-empty">
                 <div className="bc-empty-icon"><Search size={26} /></div>
-                <p className="bc-empty-title">Busca en tu colección</p>
+                <p className="bc-empty-title">
+                  {busquedaEnviada.trim()
+                    ? 'No se encontraron resultados'
+                    : 'Busca en tu colección'}
+                </p>
+                {busquedaEnviada.trim() && (
+                  <p className="bc-empty-sub">Intenta con otras palabras clave</p>
+                )}
               </div>
             )}
           </div>
         </main>
       </div>
+
       <ModalNoDisponible isOpen={modalGrafoOpen} onClose={() => setModalGrafoOpen(false)} />
       <ModalCarga isOpen={modalCargaOpen} onClose={() => setModalCargaOpen(false)} darkMode={darkMode} />
     </>
   )
 }
 
-export default BuscadorColeccion;
+export default BuscadorColeccion
