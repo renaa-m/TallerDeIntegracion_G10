@@ -8,14 +8,14 @@
   background: rgba(10, 14, 30, 0.55);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  
+
   display: flex;
   align-items: center; /* Centrado vertical */
   justify-content: center; /* Centrado horizontal */
-  
+
   /* IMPORTANTE: z-index muy alto para estar sobre el Navbar */
-  z-index: 9999; 
-  
+  z-index: 9999;
+
   animation: mea-overlay-in 0.2s ease both;
 }
 
@@ -34,12 +34,12 @@
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.12),
     0 4px 16px rgba(0, 0, 0, 0.06);
-/* Aseguramos que no se salga en pantallas pequeñas */
+  /* Aseguramos que no se salga en pantallas pequeñas */
   max-width: 380px;
-  width: 90%; 
+  width: 90%;
   max-height: 90vh; /* Evita que el modal sea más alto que la pantalla */
   overflow-y: auto; /* Permite scroll interno si el contenido es muy largo */
-  
+
   animation: mea-box-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
@@ -75,8 +75,15 @@
 }
 
 @keyframes mea-ring-pulse {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.15); opacity: 0.4; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.4;
+  }
 }
 
 .mea-icon-svg {
@@ -169,8 +176,12 @@
   border-color: #1e2d50;
 }
 
-.bc-dark .mea-title { color: #dce4f5; }
-.bc-dark .mea-text { color: #8394b4; }
+.bc-dark .mea-title {
+  color: #dce4f5;
+}
+.bc-dark .mea-text {
+  color: #8394b4;
+}
 .bc-dark .mea-btn-cancel {
   border-color: #1e2d50;
   color: #8394b4;

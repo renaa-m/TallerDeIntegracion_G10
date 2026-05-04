@@ -31,7 +31,7 @@ const Navbar = () => {
       const response = await fetch(url, {
         method: 'DELETE',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`,
         },
       })
 
@@ -56,19 +56,39 @@ const Navbar = () => {
   return (
     <nav className="navbar">
       <div className="navbar-container">
-        <Link to={isAuthenticated ? `/landing-page/${displayId}` : "/"} className="navbar-brand">
-          <img src="https://portalpsw.dcc.uchile.cl/media/Logo_Principal_Color.png" alt="IMFD logo" className="navbar-logo" />
+        <Link
+          to={isAuthenticated ? `/landing-page/${displayId}` : '/'}
+          className="navbar-brand"
+        >
+          <img
+            src="https://portalpsw.dcc.uchile.cl/media/Logo_Principal_Color.png"
+            alt="IMFD logo"
+            className="navbar-logo"
+          />
         </Link>
 
         <div className="navbar-actions">
           {isAuthenticated && (
             <div className="profile-wrapper">
-              <button className="profile-trigger" onClick={() => setIsDropdownOpen(!isDropdownOpen)}>
-                {user?.picture
-                  ? <img src={user.picture} alt={user.name} className="nav-avatar" />
-                  : <div className="nav-avatar-placeholder"><User size={20} /></div>
-                }
-                <ChevronDown size={16} className={`chevron ${isDropdownOpen ? 'rotate' : ''}`} />
+              <button
+                className="profile-trigger"
+                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              >
+                {user?.picture ? (
+                  <img
+                    src={user.picture}
+                    alt={user.name}
+                    className="nav-avatar"
+                  />
+                ) : (
+                  <div className="nav-avatar-placeholder">
+                    <User size={20} />
+                  </div>
+                )}
+                <ChevronDown
+                  size={16}
+                  className={`chevron ${isDropdownOpen ? 'rotate' : ''}`}
+                />
               </button>
 
               {isDropdownOpen && (
