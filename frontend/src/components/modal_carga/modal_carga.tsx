@@ -51,7 +51,6 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const [nombreColeccion, setNombreColeccion] = useState('')
   const navigate = useNavigate()
 
-
   const handleClose = useCallback(() => {
     if (isUploading) return // No dejar cerrar si está subiendo
     setFiles([])
