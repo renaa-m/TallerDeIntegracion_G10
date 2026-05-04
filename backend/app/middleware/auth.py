@@ -37,8 +37,8 @@ async def get_current_user_id(
                     "kty": key["kty"],
                     "kid": key["kid"],
                     "use": key["use"],
-                    "n":   key["n"],
-                    "e":   key["e"],
+                    "n": key["n"],
+                    "e": key["e"],
                 }
                 break
 
@@ -63,11 +63,12 @@ async def get_current_user_id(
     except JWTError as e:
         raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
 
+
 async def get_current_user(request: Request) -> str:
     auth_header = request.headers.get("Authorization", "")
     if not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=403, detail="No autenticado.")
-    token = auth_header[len("Bearer "):]
+    token = auth_header[len("Bearer ") :]
     try:
         jwks = await _get_jwks()
         header = jwt.get_unverified_header(token)

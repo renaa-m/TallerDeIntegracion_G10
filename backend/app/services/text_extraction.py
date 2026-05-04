@@ -56,9 +56,7 @@ def process_txt_document(
         return {"status": "ok", "document_id": document_id}
 
     except Exception as e:
-        update_document_status(
-            document_id, user_id, "error", error_message=str(e)
-        )
+        update_document_status(document_id, user_id, "error", error_message=str(e))
         return {"status": "error", "document_id": document_id, "error": str(e)}
 
 
@@ -131,9 +129,7 @@ def process_pdf_document(
         return {"status": "ok", "document_id": document_id}
 
     except Exception as e:
-        update_document_status(
-            document_id, user_id, "error", error_message=str(e)
-        )
+        update_document_status(document_id, user_id, "error", error_message=str(e))
         return {"status": "error", "document_id": document_id, "error": str(e)}
 
     finally:

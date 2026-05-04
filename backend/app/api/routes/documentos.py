@@ -45,14 +45,13 @@ async def upload_documento(
 ):
     # --- NUEVO: VALIDACIÓN DE AISLAMIENTO (SEGURIDAD) ---
     coleccion = supabase_client.get_collection_by_id(str(coleccion_id))
-    
+
     if not coleccion:
         raise HTTPException(status_code=404, detail="La colección no existe.")
-        
+
     if coleccion["user_id"] != user_id:
         raise HTTPException(
-            status_code=403, 
-            detail="Acceso denegado. Esta colección no te pertenece."
+            status_code=403, detail="Acceso denegado. Esta colección no te pertenece."
         )
     # ----------------------------------------------------
     if file.size is not None and file.size > _TAMANO_MAXIMO_BYTES:

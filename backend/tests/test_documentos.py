@@ -45,9 +45,12 @@ def client_sin_auth():
 class TestUploadDocumento:
     @pytest.fixture(autouse=True)
     def mock_coleccion(self):
-        with patch("app.api.routes.documentos.supabase_client.get_collection_by_id") as mock:
+        with patch(
+            "app.api.routes.documentos.supabase_client.get_collection_by_id"
+        ) as mock:
             mock.return_value = {"user_id": MOCK_USER_ID}
             yield mock
+
     def test_upload_pdf_exitoso(self, client):
         with (
             patch(
@@ -62,7 +65,9 @@ class TestUploadDocumento:
         ):
             response = client.post(
                 f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
-                files={"file": ("informe.pdf", b"%PDF-1.4 contenido", "application/pdf")},
+                files={
+                    "file": ("informe.pdf", b"%PDF-1.4 contenido", "application/pdf")
+                },
             )
 
         assert response.status_code == 201
@@ -84,7 +89,9 @@ class TestUploadDocumento:
         ):
             response = client.post(
                 f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
-                files={"file": ("notas.txt", b"contenido de texto plano", "text/plain")},
+                files={
+                    "file": ("notas.txt", b"contenido de texto plano", "text/plain")
+                },
             )
 
         assert response.status_code == 201
@@ -105,7 +112,13 @@ class TestUploadDocumento:
     def test_upload_sin_extension_muestra_error_claro(self, client):
         response = client.post(
             f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
-            files={"file": ("archivo_sin_extension", b"contenido", "application/octet-stream")},
+            files={
+                "file": (
+                    "archivo_sin_extension",
+                    b"contenido",
+                    "application/octet-stream",
+                )
+            },
         )
 
         assert response.status_code == 422
