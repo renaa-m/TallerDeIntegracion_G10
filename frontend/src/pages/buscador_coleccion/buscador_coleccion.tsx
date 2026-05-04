@@ -145,9 +145,8 @@ function matcheaBusqueda(resultado: Resultado, query: string): boolean {
 const BuscadorColeccion = () => {
   //const { id_usuario } = useParams();
   //const { user } = useAuth0();
-  const { id_usuario, id_coleccion } = useParams<{
+  const { id_usuario } = useParams<{
     id_usuario: string
-    id_coleccion: string
   }>()
   const navigate = useNavigate()
   const location = useLocation()
