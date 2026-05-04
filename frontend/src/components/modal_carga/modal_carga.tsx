@@ -87,8 +87,9 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
   const removeFile = (i: number) => {
     if (isUploading) return
-    setFiles((prev) => prev.filter((_, idx) => idx !== i)) }
-  
+    setFiles((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
   const createCollection = async (): Promise<CollectionResponse> => {
     const token = await getAccessTokenSilently()
 
@@ -113,14 +114,18 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     return data
   }
-  
-  const uploadOneFile = async (file: File, collectionId: string,): Promise<DocumentResponse> => {
+
+  const uploadOneFile = async (
+    file: File,
+    collectionId: string,
+  ): Promise<DocumentResponse> => {
     const token = await getAccessTokenSilently()
 
     const formData = new FormData()
     formData.append('file', file)
     ///VER RUTA BACKEND
-    const response = await fetch(`http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
+    const response = await fetch(
+      `http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
       {
         method: 'POST',
         headers: {
@@ -149,7 +154,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     try {
       const collection = await createCollection()
-      await Promise.all(files.map((file) => uploadOneFile(file, collection.id)),)
+      await Promise.all(files.map((file) => uploadOneFile(file, collection.id)))
 
       setMensaje('Colección creada y archivos subidos correctamente.')
       setFiles([])
@@ -161,7 +166,9 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
       }, 1200)
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : 'Error inesperado al crear la colección o subir archivos'
+        err instanceof Error
+          ? err.message
+          : 'Error inesperado al crear la colección o subir archivos'
       setError(message)
     } finally {
       setIsUploading(false)
@@ -232,8 +239,11 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
               Sube documentos para indexar en tu colección
             </p>
           </div>
-          <button className="mc-close" onClick={handleClose}
-            disabled={isUploading}>
+          <button
+            className="mc-close"
+            onClick={handleClose}
+            disabled={isUploading}
+          >
             <X size={18} />
           </button>
         </div>
@@ -254,7 +264,9 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             setIsDragging(false)
             if (!isUploading) addFiles(e.dataTransfer.files)
           }}
-          onClick={() => {if (!isUploading) fileInputRef.current?.click()}}
+          onClick={() => {
+            if (!isUploading) fileInputRef.current?.click()
+          }}
         >
           <input
             type="file"
@@ -273,9 +285,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
               ? 'Suelta los archivos aquí'
               : 'Arrastra tus archivos aquí'}
           </p>
-          <p className="mc-drop-sub">
-            PDF, o  TXT · Máx. 25 MB por archivo
-          </p>
+          <p className="mc-drop-sub">PDF, o TXT · Máx. 25 MB por archivo</p>
           <button
             className="mc-drop-btn"
             disabled={isUploading}
@@ -321,12 +331,18 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           />
         </div>
         <div className="mc-footer">
-          <button className="mc-btn-cancel" onClick={handleClose} disabled={isUploading}>
+          <button
+            className="mc-btn-cancel"
+            onClick={handleClose}
+            disabled={isUploading}
+          >
             Cancelar
           </button>
           <button
             className="mc-btn-upload"
-            disabled={files.length === 0 || isUploading || !nombreColeccion.trim()}
+            disabled={
+              files.length === 0 || isUploading || !nombreColeccion.trim()
+            }
             onClick={handleUpload}
           >
             {isUploading

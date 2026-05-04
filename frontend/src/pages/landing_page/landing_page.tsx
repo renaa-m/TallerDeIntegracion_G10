@@ -37,7 +37,10 @@ function LandingPage() {
   }
 
   const editarColeccion = async (idColeccion: string, nombreActual: string) => {
-    const nuevoNombre = window.prompt('Nuevo nombre de la colección:', nombreActual)
+    const nuevoNombre = window.prompt(
+      'Nuevo nombre de la colección:',
+      nombreActual,
+    )
 
     if (!nuevoNombre || nuevoNombre.trim() === '') return
 

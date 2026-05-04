@@ -348,17 +348,16 @@
 }
 
 .mc-input {
-  width: 100%; 
+  width: 100%;
   padding: 16px 18px;
   border-radius: 18px;
   font-family: 'DM Sans', sans-serif;
   border: 2px solid #dfe5f2;
   font-size: 18px;
-  box-sizing: border-box;     
+  box-sizing: border-box;
 }
 
 .mc-input:focus {
   outline: none;
   border-color: #aba3f6;
 }
-
