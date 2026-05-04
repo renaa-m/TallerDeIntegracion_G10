@@ -5,10 +5,11 @@ import { BrowserRouter, useNavigate } from 'react-router-dom'
 import App from './App.tsx'
 import './index.css'
 
-const domain = 'dev-cz6hwcuqrlsmuej4.us.auth0.com'
-const clientId = 'Am1qXEru783KHoCiPSgWNA3Rk6K6tckC'
+// FIX: leer desde variables de entorno en vez de hardcodear
+const domain   = import.meta.env.VITE_AUTH0_DOMAIN
+const clientId = import.meta.env.VITE_AUTH0_CLIENT_ID
+const audience = import.meta.env.VITE_AUTH0_AUDIENCE
 
-// Wrapper necesario para usar useNavigate dentro de Auth0Provider
 export function Auth0ProviderWithNavigate({
   children,
 }: {
@@ -22,7 +23,7 @@ export function Auth0ProviderWithNavigate({
       clientId={clientId}
       authorizationParams={{
         redirect_uri: `${window.location.origin}/callback`,
-        audience: 'https://dev-cz6hwcuqrlsmuej4.us.auth0.com/api/v2/',
+        audience: audience,
       }}
       cacheLocation="localstorage"
       useRefreshTokens={true}

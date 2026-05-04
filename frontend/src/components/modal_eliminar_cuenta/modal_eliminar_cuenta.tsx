@@ -10,7 +10,8 @@ interface Props {
 }
 
 const ModalEliminarCuenta = ({ isOpen, onClose, onConfirm, isDeleting }: Props) => {
-  if (!isOpen) return null;
+  console.log('Modal isOpen:', isOpen) // <-- agrega esto
+  if (!isOpen) return null
 
   // Creamos el contenido del modal
   const modalContent = (
