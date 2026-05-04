@@ -325,3 +325,6 @@ yapf==0.43.0
 yarl==1.23.0
 z3-solver==4.11.2.0
 zstandard==0.23.0
+auth0-python==5.3.0
+pytest==8.3.5
+pytest-asyncio==0.26.0
