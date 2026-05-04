@@ -8,6 +8,8 @@ interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
   darkMode?: boolean
+  coleccionId: string // NUEVO: Necesitamos saber a qué colección va el archivo
+  onUploadSuccess?: () => void // NUEVO: Para avisarle a la página que recargue la lista
 }
 
 interface DocumentResponse {
@@ -49,13 +51,16 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const [nombreColeccion, setNombreColeccion] = useState('')
   const navigate = useNavigate()
 
+  const { getAccessTokenSilently } = useAuth0() // NUEVO: Hook para sacar el token de Auth0
+
   const handleClose = useCallback(() => {
+    if (isUploading) return // No dejar cerrar si está subiendo
     setFiles([])
     setMensaje('')
     setError('')
     setIsUploading(false)
     onClose()
-  }, [onClose])
+  }, [onClose, isUploading])
 
   useEffect(() => {
     if (!isOpen) return
@@ -163,6 +168,57 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     }
   }
 
+  // NUEVO: Función real para subir los archivos al backend
+  const handleUpload = async () => {
+    if (files.length === 0) return
+    setIsUploading(true)
+
+    try {
+      // 1. Obtener el token de Auth0 de forma silenciosa
+      const token = await getAccessTokenSilently()
+
+      // 2. Como el backend recibe 1 archivo por endpoint, subimos todos en paralelo
+      const uploadPromises = files.map(async (file) => {
+        const formData = new FormData()
+        formData.append('file', file)
+
+        // Usamos la URL base de tu API (ajusta el import.meta.env si tienen otro nombre)
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+        const response = await fetch(
+          `${apiUrl}/api/documentos/upload?coleccion_id=${coleccionId}`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`, // Inyectamos la seguridad aquí
+            },
+            body: formData,
+          },
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.detail || `Error al subir ${file.name}`)
+        }
+      })
+
+      // Esperamos a que todos suban
+      await Promise.all(uploadPromises)
+
+      // Si todo sale bien:
+      setFiles([])
+      onUploadSuccess?.() // Avisamos al componente padre (la página) para que actualice la tabla
+      onClose()
+    } catch (error) {
+      console.error('Error en subida:', error)
+      const errorMessage =
+        error instanceof Error ? error.message : 'Error desconocido'
+      alert(`Hubo un error al subir los archivos: ${errorMessage}`)
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
   return (
     <div className="mc-overlay" onClick={isUploading ? undefined : handleClose}>
       <div
@@ -183,7 +239,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
         </div>
 
         <div
-          className={`mc-dropzone${isDragging ? ' dragging' : ''}`}
+          className={`mc-dropzone${isDragging ? ' dragging' : ''} ${isUploading ? ' disabled' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
             if (!isUploading) setIsDragging(true)
@@ -207,6 +263,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             ref={fileInputRef}
             accept=".pdf,.txt"
             onChange={(e) => addFiles(e.target.files)}
+            disabled={isUploading}
           />
           <div className="mc-drop-icon">
             <CloudUpload size={26} />
@@ -242,6 +299,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
                   className="mc-file-remove"
                   disabled={isUploading}
                   onClick={() => removeFile(i)}
+                  disabled={isUploading}
                 >
                   <Trash2 size={13} />
                 </button>

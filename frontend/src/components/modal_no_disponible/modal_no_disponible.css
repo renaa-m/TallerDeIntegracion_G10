@@ -1,0 +1,205 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+
+/* ── VARIABLES (light) ───────────────────────────────────────────────────── */
+.mnd-overlay {
+  --surface: #ffffff;
+  --surface-2: #f4f6fb;
+  --border: #dde3ef;
+  --text-1: #1a2550;
+  --text-2: #526080;
+  --text-3: #96a4bb;
+  --navy: #243166;
+  --red: #d93025;
+  --red-bg: #fdeded;
+  --red-border: #f5c2c0;
+  --shadow: rgba(26, 37, 80, 0.13);
+}
+
+/* ── VARIABLES (dark) ────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .mnd-overlay {
+    --surface: #141d35;
+    --surface-2: #182038;
+    --border: #1e2d50;
+    --text-1: #dce4f5;
+    --text-2: #8394b4;
+    --text-3: #465672;
+    --navy: #a8a3f6;
+    --red: #f87171;
+    --red-bg: rgba(239, 68, 68, 0.12);
+    --red-border: rgba(239, 68, 68, 0.25);
+    --shadow: rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* ── OVERLAY ─────────────────────────────────────────────────────────────── */
+.mnd-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 15, 35, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: mnd-fadein 0.18s ease both;
+}
+
+/* ── PANEL ───────────────────────────────────────────────────────────────── */
+.mnd-panel {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 8px 40px var(--shadow);
+  width: 100%;
+  max-width: 440px;
+  margin: 16px;
+  padding: 28px 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-family: 'DM Sans', sans-serif;
+  animation: mnd-slidein 0.22s ease both;
+}
+
+/* ── CLOSE BUTTON ────────────────────────────────────────────────────────── */
+.mnd-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.mnd-close:hover {
+  background: var(--surface-2);
+  color: var(--text-1);
+  border-color: var(--text-3);
+}
+
+/* ── HEADER ──────────────────────────────────────────────────────────────── */
+.mnd-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  padding-right: 24px; /* evita solaparse con el botón cerrar */
+  padding-left: 24px;
+}
+
+.mnd-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 19px;
+  color: var(--text-1);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.mnd-subtitle {
+  font-size: 13px;
+  color: var(--text-3);
+  margin: 0;
+  font-weight: 500;
+}
+
+/* ── ICON AREA ───────────────────────────────────────────────────────────── */
+.mnd-icon-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 24px 20px;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+}
+
+.mnd-icon-wrap {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--red-bg);
+  border: 1.5px solid var(--red-border);
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mnd-icon-label {
+  font-family: 'DM Serif Display', serif;
+  font-size: 16px;
+  color: var(--text-1);
+  margin: 0;
+}
+
+.mnd-icon-sub {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ── FOOTER ──────────────────────────────────────────────────────────────── */
+.mnd-footer {
+  display: flex;
+  justify-content: center;
+}
+
+.mnd-btn-close {
+  padding: 9px 28px;
+  border-radius: 11px;
+  border: 1.5px solid var(--border);
+  background: var(--surface-2);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+.mnd-btn-close:hover {
+  background: var(--surface);
+  border-color: var(--text-3);
+  color: var(--text-1);
+}
+
+/* ── ANIMATIONS ──────────────────────────────────────────────────────────── */
+@keyframes mnd-fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes mnd-slidein {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

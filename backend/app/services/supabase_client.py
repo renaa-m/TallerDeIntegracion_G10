@@ -184,6 +184,17 @@ def _list_documents_sync(user_id: str, collection_id: str | None) -> list[dict]:
         query = query.eq("collection_id", collection_id)
     return query.order("created_at", desc=True).execute().data
 
+def get_collection_by_id(collection_id: str) -> dict | None:
+    """Busca una colección por su ID para verificar su propietario."""
+    client = get_supabase_client()
+    response = (
+        client.table("collections")
+        .select("*")
+        .eq("id", collection_id)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
 
 # ── Documents — async (usados por las rutas async) ─────────────────────────────
 
