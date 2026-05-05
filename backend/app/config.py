@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     auth0_domain: str = ""
     auth0_api_audience: str = ""
     auth0_algorithms: str = "RS256"
+    auth0_m2m_client_id: str = ""  # App Machine to Machine en Auth0
+    auth0_m2m_client_secret: str = ""  # Secret de la app M2M
 
     openai_api_key: str = ""
 

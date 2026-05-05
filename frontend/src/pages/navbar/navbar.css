@@ -14,31 +14,27 @@
   --card-bg: rgba(255, 255, 255, 0.85);
   --border-color: rgba(0, 0, 0, 0.08);
   --hover-bg: rgba(0, 0, 0, 0.05);
+  --danger-soft: rgba(239, 68, 68, 0.1);
+  --danger-main: #ef4444;
 
   /* ACCENT */
   --accent: #7c3aed;
 }
 
 .dark {
-  /* NAVBAR */
   --navbar-bg: rgba(15, 32, 69, 0.82);
   --navbar-border: rgba(96, 165, 250, 0.16);
   --navbar-shadow: rgba(15, 85, 166, 0.3);
-
-  /* TEXTOS */
   --text-main: #e5e7eb;
   --text-sub: #9ca3af;
-
-  /* UI */
   --card-bg: rgba(30, 41, 59, 0.8);
   --border-color: rgba(255, 255, 255, 0.08);
   --hover-bg: rgba(255, 255, 255, 0.08);
-
-  /* ACCENT */
   --accent: #a78bfa;
+  --danger-soft: rgba(239, 68, 68, 0.2);
 }
 
-/* NAVBAR */
+/* NAVBAR BASE */
 .navbar {
   position: fixed;
   top: 0;
@@ -46,20 +42,15 @@
   right: 0;
   width: 100%;
   height: 72px;
-
   background: var(--navbar-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-
   border-bottom: 1px solid var(--navbar-border);
   box-shadow: 0 4px 20px var(--navbar-shadow);
-
   z-index: 2000;
-
   display: flex;
   align-items: center;
   box-sizing: border-box;
-
   transition:
     background 0.3s ease,
     border 0.3s ease;
@@ -79,10 +70,6 @@
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  font-weight: 900;
-  font-size: 22px;
-  color: var(--text-main);
-  letter-spacing: -0.04em;
 }
 
 .navbar-logo {
@@ -99,20 +86,7 @@
   gap: 24px;
 }
 
-.nav-link {
-  text-decoration: none;
-  color: var(--text-main);
-  font-weight: 600;
-  font-size: 14px;
-  opacity: 0.8;
-  transition: opacity 0.2s;
-}
-
-.nav-link:hover {
-  opacity: 1;
-}
-
-/* PERFIL */
+/* PERFIL & TRIGGER */
 .profile-wrapper {
   position: relative;
 }
@@ -124,7 +98,7 @@
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 6px 10px;
   border-radius: 12px;
   transition: background 0.2s;
 }
@@ -162,14 +136,15 @@
 /* DROPDOWN */
 .nav-dropdown {
   position: absolute;
-  top: 52px;
+  top: calc(100% + 8px);
   right: 0;
-  width: 220px;
+  width: 240px;
   background: var(--card-bg);
   backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-color);
   border-radius: 20px;
-  padding: 16px;
+  padding: 12px;
   box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
   animation: slideDown 0.2s ease-out;
 }
@@ -186,7 +161,7 @@
 }
 
 .dropdown-user-info {
-  margin-bottom: 12px;
+  padding: 8px 12px 12px;
 }
 
 .user-name {
@@ -208,25 +183,48 @@
 .dropdown-divider {
   height: 1px;
   background: var(--border-color);
-  margin: 12px 0;
+  margin: 8px 0;
 }
 
-.logout-action {
+/* UNIFICACIÓN DE ACCIONES (Logout & Delete) */
+.logout-action,
+.delete-account-action {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
+  gap: 12px;
+  padding: 10px 14px;
   border: none;
-  background: none;
-  color: #ef4444;
-  font-weight: 700;
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 600;
   font-size: 13px;
-  border-radius: 10px;
+  border-radius: 12px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+/* Logout específico */
+.logout-action {
+  color: var(--text-main);
 }
 
 .logout-action:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--hover-bg);
+}
+
+/* Delete específico */
+.delete-account-action {
+  color: var(--danger-main);
+}
+
+.delete-account-action:hover {
+  background: var(--danger-soft);
+}
+
+/* Iconos dentro de las acciones */
+.logout-action svg,
+.delete-account-action svg {
+  flex-shrink: 0;
 }
