@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { X, CloudUpload, FileText, Trash2, Loader2 } from 'lucide-react'
-// Asumimos que usan @auth0/auth0-react para la autenticación.
-// Si usan otro hook, avísame para ajustarlo.
 import { useAuth0 } from '@auth0/auth0-react'
+import { X, CloudUpload, FileText, Trash2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import './modal_carga.css'
 
 interface ModalCargaProps {
@@ -13,40 +12,63 @@ interface ModalCargaProps {
   onUploadSuccess?: () => void // NUEVO: Para avisarle a la página que recargue la lista
 }
 
+interface DocumentResponse {
+  id: string
+  user_id: string
+  collection_id: string
+  filename: string
+  file_type: string
+  file_size_bytes: number | null
+  storage_path: string
+  status: string
+  error_message: string | null
+  created_at: string
+}
+
+interface CollectionResponse {
+  id: string
+  user_id: string
+  name: string
+  description: string | null
+  status: string
+  created_at: string
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const ModalCarga = ({
-  isOpen,
-  onClose,
-  darkMode = false,
-  coleccionId,
-  onUploadSuccess,
-}: ModalCargaProps) => {
+const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
+  const { getAccessTokenSilently } = useAuth0()
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
-  const [isUploading, setIsUploading] = useState(false) // NUEVO: Estado para mostrar un loader
+  const [isUploading, setIsUploading] = useState(false)
+  const [mensaje, setMensaje] = useState('')
+  const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  const { getAccessTokenSilently } = useAuth0() // NUEVO: Hook para sacar el token de Auth0
+  const [nombreColeccion, setNombreColeccion] = useState('')
+  const navigate = useNavigate()
 
   const handleClose = useCallback(() => {
     if (isUploading) return // No dejar cerrar si está subiendo
     setFiles([])
+    setMensaje('')
+    setError('')
+    setIsUploading(false)
     onClose()
+    navigate('/landing_page')
   }, [onClose, isUploading])
 
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') handleClose()
+      if (e.key === 'Escape' && !isUploading) handleClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, handleClose])
+  }, [isOpen, handleClose, isUploading])
 
   if (!isOpen) return null
 
@@ -62,62 +84,98 @@ const ModalCarga = ({
     })
   }
 
-  const removeFile = (i: number) =>
+  const removeFile = (i: number) => {
+    if (isUploading) return
     setFiles((prev) => prev.filter((_, idx) => idx !== i))
+  }
 
-  // NUEVO: Función real para subir los archivos al backend
+  const createCollection = async (): Promise<CollectionResponse> => {
+    const token = await getAccessTokenSilently()
+    ////CAMBIAR POR LINK DEPLOY
+    const response = await fetch('http://localhost:8000/api/collections', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: nombreColeccion || 'Nueva colección',
+        description: '',
+      }),
+    })
+
+    const text = await response.text()
+    const data = text ? JSON.parse(text) : null
+
+    if (!response.ok) {
+      throw new Error(data?.detail || 'Error al crear colección')
+    }
+
+    return data
+  }
+
+  const uploadOneFile = async (
+    file: File,
+    collectionId: string,
+  ): Promise<DocumentResponse> => {
+    const token = await getAccessTokenSilently()
+
+    const formData = new FormData()
+    formData.append('file', file)
+    ////CAMBIAR POR LINK DEPLOY
+    const response = await fetch(
+      `http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      },
+    )
+
+    const text = await response.text()
+    const data = text ? JSON.parse(text) : null
+
+    if (!response.ok) {
+      throw new Error(data?.detail || 'Error al subir archivo')
+    }
+
+    return data
+  }
+
   const handleUpload = async () => {
     if (files.length === 0) return
+
     setIsUploading(true)
+    setMensaje('')
+    setError('')
 
     try {
-      // 1. Obtener el token de Auth0 de forma silenciosa
-      const token = await getAccessTokenSilently()
+      const collection = await createCollection()
+      await Promise.all(files.map((file) => uploadOneFile(file, collection.id)))
 
-      // 2. Como el backend recibe 1 archivo por endpoint, subimos todos en paralelo
-      const uploadPromises = files.map(async (file) => {
-        const formData = new FormData()
-        formData.append('file', file)
-
-        // Usamos la URL base de tu API (ajusta el import.meta.env si tienen otro nombre)
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-
-        const response = await fetch(
-          `${apiUrl}/api/documentos/upload?coleccion_id=${coleccionId}`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`, // Inyectamos la seguridad aquí
-            },
-            body: formData,
-          },
-        )
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.detail || `Error al subir ${file.name}`)
-        }
-      })
-
-      // Esperamos a que todos suban
-      await Promise.all(uploadPromises)
-
-      // Si todo sale bien:
+      setMensaje('Colección creada y archivos subidos correctamente.')
       setFiles([])
-      onUploadSuccess?.() // Avisamos al componente padre (la página) para que actualice la tabla
-      onClose()
-    } catch (error) {
-      console.error('Error en subida:', error)
-      const errorMessage =
-        error instanceof Error ? error.message : 'Error desconocido'
-      alert(`Hubo un error al subir los archivos: ${errorMessage}`)
+
+      setTimeout(() => {
+        handleClose()
+        const userId = collection.user_id.split('|')[1] || collection.user_id
+        navigate(`/${userId}/colecciones/${collection.id}/buscador`)
+      }, 1200)
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : 'Error inesperado al crear la colección o subir archivos'
+      setError(message)
     } finally {
       setIsUploading(false)
     }
   }
 
   return (
-    <div className="mc-overlay" onClick={handleClose}>
+    <div className="mc-overlay" onClick={isUploading ? undefined : handleClose}>
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -154,14 +212,16 @@ const ModalCarga = ({
             setIsDragging(false)
             if (!isUploading) addFiles(e.dataTransfer.files)
           }}
-          onClick={() => !isUploading && fileInputRef.current?.click()}
+          onClick={() => {
+            if (!isUploading) fileInputRef.current?.click()
+          }}
         >
           <input
             type="file"
             multiple
             hidden
             ref={fileInputRef}
-            accept=".pdf,.txt" // CORRECCIÓN: Según HU-01 solo PDF y TXT
+            accept=".pdf,.txt"
             onChange={(e) => addFiles(e.target.files)}
             disabled={isUploading}
           />
@@ -173,10 +233,7 @@ const ModalCarga = ({
               ? 'Suelta los archivos aquí'
               : 'Arrastra tus archivos aquí'}
           </p>
-          <p className="mc-drop-sub">
-            PDF o TXT · Máx. 50 MB por archivo{' '}
-            {/* CORRECCIÓN: Texto ajustado a la HU */}
-          </p>
+          <p className="mc-drop-sub">PDF, o TXT · Máx. 25 MB por archivo</p>
           <button
             className="mc-drop-btn"
             disabled={isUploading}
@@ -192,14 +249,14 @@ const ModalCarga = ({
         {files.length > 0 && (
           <div className="mc-file-list">
             {files.map((f, i) => (
-              <div key={i} className="mc-file-item">
+              <div key={`${f.name}-${f.size}`} className="mc-file-item">
                 <FileText size={14} className="mc-file-icon" />
                 <span className="mc-file-name">{f.name}</span>
                 <span className="mc-file-size">{formatSize(f.size)}</span>
                 <button
                   className="mc-file-remove"
-                  onClick={() => removeFile(i)}
                   disabled={isUploading}
+                  onClick={() => removeFile(i)}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -208,6 +265,18 @@ const ModalCarga = ({
           </div>
         )}
 
+        {mensaje && <p className="mc-success-message">{mensaje}</p>}
+        {error && <p className="mc-error-message">{error}</p>}
+        <div className="mc-collection-name">
+          <input
+            type="text"
+            className="mc-input"
+            placeholder="Nombre de colección"
+            value={nombreColeccion}
+            onChange={(e) => setNombreColeccion(e.target.value)}
+            disabled={isUploading}
+          />
+        </div>
         <div className="mc-footer">
           <button
             className="mc-btn-cancel"
@@ -218,23 +287,16 @@ const ModalCarga = ({
           </button>
           <button
             className="mc-btn-upload"
-            disabled={files.length === 0 || isUploading}
-            onClick={handleUpload} // NUEVO: Llamamos a nuestra función real
+            disabled={
+              files.length === 0 || isUploading || !nombreColeccion.trim()
+            }
+            onClick={handleUpload}
           >
-            {isUploading ? (
-              <>
-                <Loader2
-                  className="animate-spin"
-                  size={16}
-                  style={{ marginRight: '8px', display: 'inline' }}
-                />{' '}
-                Subiendo...
-              </>
-            ) : files.length > 0 ? (
-              `Añadir ${files.length} archivo${files.length > 1 ? 's' : ''}`
-            ) : (
-              'Añadir a la colección'
-            )}
+            {isUploading
+              ? 'Subiendo...'
+              : files.length > 0
+                ? `Añadir ${files.length} archivo${files.length > 1 ? 's' : ''}`
+                : 'Añadir a la colección'}
           </button>
         </div>
       </div>

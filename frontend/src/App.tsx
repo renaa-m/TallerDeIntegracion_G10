@@ -54,7 +54,6 @@ function App() {
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
-        overflow: 'hidden',
       }}
     >
       <Navbar />
@@ -63,7 +62,6 @@ function App() {
       <main
         style={{
           flex: 1,
-          overflow: 'hidden',
           minHeight: 0,
           width: '100%',
           height: 'calc(100vh - 70px)',

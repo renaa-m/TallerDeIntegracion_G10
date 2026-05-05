@@ -301,3 +301,63 @@
     transform: translateY(0) scale(1);
   }
 }
+
+.mc-success-message {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f8ffa1;
+  color: #2d3a00;
+  border: 1.5px solid #aba3f6;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.mc-error-message {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #f6d5ee;
+  color: #7a1c4a;
+  border: 1.5px solid #d88bbb;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.mc-btn-upload:disabled,
+.mc-btn-cancel:disabled,
+.mc-drop-btn:disabled,
+.mc-close:disabled,
+.mc-file-remove:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mc-collection-name {
+  width: calc(100% - 80px);
+  margin: 16px 40px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mc-label {
+  font-size: 14px;
+  color: #4b5563;
+}
+
+.mc-input {
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 18px;
+  font-family: 'DM Sans', sans-serif;
+  border: 2px solid #dfe5f2;
+  font-size: 18px;
+  box-sizing: border-box;
+}
+
+.mc-input:focus {
+  outline: none;
+  border-color: #aba3f6;
+}

@@ -24,6 +24,7 @@ export function Auth0ProviderWithNavigate({
       authorizationParams={{
         redirect_uri: `${window.location.origin}/callback`,
         audience: audience,
+        scope: 'openid profile email offline_access',
       }}
       cacheLocation="localstorage"
       useRefreshTokens={true}

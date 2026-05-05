@@ -1,6 +1,6 @@
 import asyncio
 from functools import lru_cache
-
+from uuid import uuid4
 from supabase import Client, create_client
 
 from app.config import settings
@@ -10,7 +10,7 @@ BUCKET = "documentos"
 
 @lru_cache(maxsize=1)
 def get_supabase_client() -> Client:
-    return create_client(settings.supabase_url, settings.supabase_key)
+    return create_client(settings.supabase_url, settings.supabase_service_key)
 
 
 @lru_cache(maxsize=1)
@@ -20,21 +20,65 @@ def _get_service_client() -> Client:
 
 # ── Collections ────────────────────────────────────────────────────────────────
 
-
-def create_collection(user_id: str, name: str, description: str | None = None) -> dict:
+def create_collection(user_id: str, name: str, description: str | None = None,) -> dict:
     client = get_supabase_client()
-    response = (
-        client.table("collections")
-        .insert({"user_id": user_id, "name": name, "description": description})
-        .execute()
-    )
+    data = {
+        "id": str(uuid4()),  
+        "user_id": user_id,
+        "name": name,
+        "description": description,
+        "status": "active", 
+    }
+    response = client.table("collections").insert(data).execute()
     return response.data[0]
-
 
 def get_collections(user_id: str) -> list:
     client = get_supabase_client()
-    response = client.table("collections").select("*").eq("user_id", user_id).execute()
+    response = (
+        client.table("collections").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
+    )
     return response.data
+
+def get_collection(collection_id: str, user_id: str) -> dict | None:
+    client = get_supabase_client()
+
+    response = (
+        client.table("collections")
+        .select("*")
+        .eq("id", collection_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    if not response.data:
+        return None
+
+    return response.data[0]
+
+
+def delete_collection(collection_id: str, user_id: str) -> bool:
+    client = get_supabase_client()
+
+    response = (
+        client.table("collections")
+        .delete()
+        .eq("id", collection_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    return len(response.data) > 0
+
+def update_collection_name(collection_id: str,user_id: str,new_name: str,) -> dict | None:
+    client = get_supabase_client()
+
+    result = (client.table("collections").update({"name": new_name}).eq("id", collection_id).eq("user_id", user_id).execute()
+    )
+
+    if not result.data:
+        return None
+
+    return result.data[0]
 
 
 # ── Documents — sync ───────────────────────────────────────────────────────────
@@ -155,7 +199,7 @@ def _upload_sync(path: str, content: bytes, content_type: str) -> None:
     _get_service_client().storage.from_(BUCKET).upload(
         path=path,
         file=content,
-        file_options={"content-type": content_type, "upsert": False},
+        file_options={"content-type": content_type}, ##se retiró upsert: False (tiraba error)
     )
 
 

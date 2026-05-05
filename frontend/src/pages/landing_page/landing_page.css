@@ -331,3 +331,48 @@ body {
   color: #7a1c4a;
   border: 2px solid #d88bbb;
 }
+
+.card {
+  position: relative;
+}
+
+.card-actions {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+}
+
+.card-icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(171, 163, 246, 0.45);
+  border-radius: 999px;
+  background-color: #fef3c7;
+  color: #000000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.card-icon-btn:hover {
+  transform: translateY(-2px);
+  background-color: #fde68a;
+  border-color: #aba3f6;
+}
+
+.card-icon-delete {
+  background-color: #ff95a5;
+  color: #000000;
+}
+
+.card h3 {
+  padding-top: 28px;
+}

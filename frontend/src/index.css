@@ -42,6 +42,7 @@ html {
   width: 100%;
   height: 100%;
   overflow-x: hidden; /* Evita scroll horizontal si hay contenido que sobresale */
+  overflow-y: auto;
 }
 
 @media (prefers-color-scheme: dark) {
