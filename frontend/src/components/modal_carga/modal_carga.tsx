@@ -58,6 +58,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     setError('')
     setIsUploading(false)
     onClose()
+    navigate('/landing_page')
   }, [onClose, isUploading])
 
   useEffect(() => {
@@ -90,7 +91,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
   const createCollection = async (): Promise<CollectionResponse> => {
     const token = await getAccessTokenSilently()
-
+    ////CAMBIAR POR LINK DEPLOY
     const response = await fetch('http://localhost:8000/api/collections', {
       method: 'POST',
       headers: {
@@ -121,7 +122,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     const formData = new FormData()
     formData.append('file', file)
-    ///VER RUTA BACKEND
+    ////CAMBIAR POR LINK DEPLOY
     const response = await fetch(
       `http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
       {

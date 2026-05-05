@@ -203,7 +203,7 @@ def _upload_sync(path: str, content: bytes, content_type: str) -> None:
     _get_service_client().storage.from_(BUCKET).upload(
         path=path,
         file=content,
-        file_options={"content-type": content_type, "upsert": False},
+        file_options={"content-type": content_type}, ##se retiró upsert: False (tiraba error)
     )
 
 
