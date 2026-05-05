@@ -7,6 +7,7 @@ import './index.css'
 
 const domain = 'dev-cz6hwcuqrlsmuej4.us.auth0.com'
 const clientId = 'Am1qXEru783KHoCiPSgWNA3Rk6K6tckC'
+const audience = 'https://dev-cz6hwcuqrlsmuej4.us.auth0.com/api/v2/'
 
 // Wrapper necesario para usar useNavigate dentro de Auth0Provider
 export function Auth0ProviderWithNavigate({
@@ -22,7 +23,8 @@ export function Auth0ProviderWithNavigate({
       clientId={clientId}
       authorizationParams={{
         redirect_uri: `${window.location.origin}/callback`,
-        audience: 'https://dev-cz6hwcuqrlsmuej4.us.auth0.com/api/v2/',
+        audience: audience,
+        scope: 'openid profile email offline_access',
       }}
       cacheLocation="localstorage"
       useRefreshTokens={true}

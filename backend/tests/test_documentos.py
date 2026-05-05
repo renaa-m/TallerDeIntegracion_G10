@@ -10,7 +10,7 @@ from app.middleware.auth import get_current_user
 MOCK_USER_ID = "auth0|testuser123"
 MOCK_COLECCION_ID = uuid4()
 MOCK_DOC_ID = uuid4()
-
+safe_user_id = MOCK_USER_ID.replace("|", "_")
 MOCK_DOC = {
     "id": str(MOCK_DOC_ID),
     "user_id": MOCK_USER_ID,
@@ -20,7 +20,7 @@ MOCK_DOC = {
     "file_size_bytes": 1024,
     "status": "uploaded",
     "error_message": None,
-    "storage_path": f"{MOCK_USER_ID}/{MOCK_COLECCION_ID}/{MOCK_DOC_ID}",
+    "storage_path": f"{safe_user_id}/{MOCK_COLECCION_ID}/{MOCK_DOC_ID}",
     "created_at": "2024-01-01T00:00:00+00:00",
 }
 
@@ -149,7 +149,8 @@ class TestUploadDocumento:
         mock_upload.assert_called_once()
         mock_insert.assert_called_once()
         ruta_llamada = mock_upload.call_args[0][0]
-        assert ruta_llamada.startswith(MOCK_USER_ID)
+        safe_user_id = MOCK_USER_ID.replace("|", "_")
+        assert ruta_llamada.startswith(safe_user_id)
 
 
 # ── Listar ─────────────────────────────────────────────────────────────────────
