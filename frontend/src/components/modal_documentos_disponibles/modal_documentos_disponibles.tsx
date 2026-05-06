@@ -20,7 +20,7 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
   if (!isOpen) return null
 
   return (
-    // Se aplica 'bc-dark' solo si darkMode ezs true para activar el CSS que adjuntaste
+    
     <div className={`mdd-overlay ${darkMode ? 'bc-dark' : ''}`} onClick={onClose}>
       <div className="mdd-panel" onClick={(e) => e.stopPropagation()}>
         <header className="mdd-header">
@@ -37,7 +37,11 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
               <div className="mdd-empty">No hay documentos cargados.</div>
             ) : (
               fuentes.map((f) => (
-                <div key={f.id} className="mdd-card">
+                <div 
+                  key={f.id} 
+                  className="mdd-card"
+                  onClick={() => console.log("Documento seleccionado:", f.id)} // Aquí puedes añadir la lógica de selección
+                >
                   <div className="mdd-card-icon">
                     {f.status === 'processing' ? (
                       <Loader2 className="mdd-spin" size={20} />
@@ -48,11 +52,6 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
                   <div className="mdd-card-content">
                     <span className="mdd-card-title">{f.filename}</span>
                     <div className="mdd-card-footer">
-                      <span className="mdd-tag">{f.file_type}</span>
-                      {/* Usamos las clases status que ya tienes en el CSS */}
-                      <span className={`mdd-error-tag ${f.status}`}>
-                        {f.status === 'ok' ? 'Listo' : f.status}
-                      </span>
                     </div>
                   </div>
                 </div>

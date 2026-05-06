@@ -311,7 +311,7 @@ const BuscadorColeccion = () => {
         isOpen={modalCargaOpen} 
         onClose={() => setModalCargaOpen(false)} 
         coleccionId={id_coleccion || ''} 
-        darkMode={darkMode}
+        darkMode={darkMode} 
       />
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
