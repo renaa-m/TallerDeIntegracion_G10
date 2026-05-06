@@ -42,3 +42,6 @@ coverage/
 
 # Supabase local
 supabase/.temp/
+
+# GCP credentials
+gcp-vision-key.json

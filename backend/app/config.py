@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     millenniumdb_port: int = 1234
 
     gcp_project_id: str = ""
+    google_application_credentials: str = ""
     cloud_tasks_queue: str = ""
     cloud_tasks_location: str = ""
 

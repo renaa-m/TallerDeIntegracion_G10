@@ -2,6 +2,7 @@ import os
 import tempfile
 
 import fitz
+from google.cloud import vision
 
 from app.services.supabase_client import (
     get_supabase_client,
@@ -80,6 +81,38 @@ def extract_text_pymupdf(file_path: str) -> str:
     return "\n\n".join(pages)
 
 
+def extract_text_vision(file_path: str) -> str:
+    """
+    Extrae texto de un PDF escaneado usando Google Cloud Vision API.
+    Estrategia: página por página como imagen PNG.
+    Si cualquier página falla, se lanza la excepción (fallo total del documento).
+    El llamador es responsable de marcar el documento como 'error'.
+    """
+    client = vision.ImageAnnotatorClient()
+    doc = fitz.open(file_path)
+    pages_text = []
+
+    try:
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            pix = page.get_pixmap(dpi=300)
+            image_bytes = pix.tobytes("png")
+
+            image = vision.Image(content=image_bytes)
+            response = client.document_text_detection(image=image)
+
+            if response.error.message:
+                raise RuntimeError(
+                    f"Cloud Vision error en página {page_num + 1}: {response.error.message}"
+                )
+
+            pages_text.append(response.full_text_annotation.text)
+    finally:
+        doc.close()
+
+    return "\n\n".join(pages_text)
+
+
 def process_pdf_document(
     document_id: str,
     user_id: str,
@@ -96,7 +129,7 @@ def process_pdf_document(
     6. Guarda el texto en la tabla document_texts
     7. Marca el documento como 'text_extracted'
 
-    Si el PDF es escaneado, lanza NotImplementedError (pendiente Sprint 2).
+    Si el PDF es escaneado, extrae el texto con Google Cloud Vision API (OCR).
     Si algo falla, marca el documento como 'error' con el mensaje.
     """
     tmp_path = None
@@ -112,7 +145,16 @@ def process_pdf_document(
         file_type = detect_file_type(tmp_path)
 
         if file_type == "pdf_scanned":
-            raise NotImplementedError("OCR no implementado — Sprint 2")
+            extracted_text = extract_text_vision(tmp_path)
+            save_document_text(
+                document_id=document_id,
+                user_id=user_id,
+                collection_id=collection_id,
+                extracted_text=extracted_text,
+                extraction_method="ocr",
+            )
+            update_document_status(document_id, user_id, "text_extracted")
+            return {"status": "ok", "document_id": document_id}
 
         extracted_text = extract_text_pymupdf(tmp_path)
 
