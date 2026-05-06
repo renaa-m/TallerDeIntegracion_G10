@@ -17,6 +17,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Necesario para backend/wukong-engine (submódulo): default.toml y tests de _run_wukong.
+          submodules: recursive
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
