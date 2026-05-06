@@ -52,6 +52,7 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
                   <div className="mdd-card-content">
                     <span className="mdd-card-title">{f.filename}</span>
                     <div className="mdd-card-footer">
+
                     </div>
                   </div>
                 </div>
