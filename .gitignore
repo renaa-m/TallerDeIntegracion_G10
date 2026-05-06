@@ -42,3 +42,6 @@ coverage/
 
 # Supabase local
 supabase/.temp/
+
+# Wukong: snapshots locales del workdir (ver WUKONG_ARTIFACTS_DIR en .env)
+backend/wukong_artifacts/

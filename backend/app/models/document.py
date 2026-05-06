@@ -15,6 +15,9 @@ class CollectionResponse(BaseModel):
     name: str
     description: str | None
     status: str
+    processing_status: str = "idle"
+    processing_error_message: str | None = None
+    processed_at: datetime | None = None
     created_at: datetime
 
 
