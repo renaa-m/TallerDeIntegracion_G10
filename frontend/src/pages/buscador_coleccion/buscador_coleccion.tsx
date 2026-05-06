@@ -311,6 +311,7 @@ const BuscadorColeccion = () => {
         isOpen={modalCargaOpen} 
         onClose={() => setModalCargaOpen(false)} 
         coleccionId={id_coleccion || ''} 
+        darkMode={darkMode}
       />
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
@@ -322,6 +323,7 @@ const BuscadorColeccion = () => {
         isOpen={isModalFuentesOpen}
         fuentes={fuentes}
         onClose={() => setIsModalFuentesOpen(false)}
+        darkMode={darkMode}
       />
     </>
   )
