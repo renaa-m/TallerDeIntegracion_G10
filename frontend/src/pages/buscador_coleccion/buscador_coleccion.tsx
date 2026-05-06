@@ -504,4 +504,3 @@ const BuscadorColeccion = () => {
 }
 
 export default BuscadorColeccion
-
