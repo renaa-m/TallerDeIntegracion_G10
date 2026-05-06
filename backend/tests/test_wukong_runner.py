@@ -216,24 +216,37 @@ class TestProcessCollection:
         assert statuses[-1] == "error"
 
 
+def _stub_wukong_config_path(tmp_path):
+    """default.toml del submódulo no está en CI (repo privado / no clonable); los tests solo necesitan un archivo existente."""
+    p = tmp_path / "wukong-default-stub.toml"
+    p.write_text("# stub para tests\n", encoding="utf-8")
+    return p
+
+
 class TestRunWukong:
     @patch("app.services.wukong_runner.subprocess.run")
     def test_subprocess_ok_devuelve_none(self, mock_run, tmp_path):
+        cfg = _stub_wukong_config_path(tmp_path)
         mock_run.return_value = subprocess.CompletedProcess([], 0, "", "")
-        assert wukong_runner._run_wukong(tmp_path) is None
+        with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
+            assert wukong_runner._run_wukong(tmp_path) is None
 
     @patch("app.services.wukong_runner.subprocess.run")
     def test_subprocess_falla_devuelve_mensaje(self, mock_run, tmp_path):
+        cfg = _stub_wukong_config_path(tmp_path)
         mock_run.side_effect = subprocess.CalledProcessError(
             returncode=1, cmd=[], stderr="boom"
         )
-        result = wukong_runner._run_wukong(tmp_path)
+        with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
+            result = wukong_runner._run_wukong(tmp_path)
         assert result is not None
         assert "boom" in result
 
     @patch("app.services.wukong_runner.subprocess.run")
     def test_wukong_no_instalado_devuelve_mensaje_claro(self, mock_run, tmp_path):
+        cfg = _stub_wukong_config_path(tmp_path)
         mock_run.side_effect = FileNotFoundError()
-        result = wukong_runner._run_wukong(tmp_path)
+        with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
+            result = wukong_runner._run_wukong(tmp_path)
         assert result is not None
         assert "wukong_engine" in result.lower()
