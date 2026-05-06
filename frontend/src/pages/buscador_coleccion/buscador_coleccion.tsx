@@ -50,15 +50,14 @@ const BuscadorColeccion = () => {
   const { id_usuario, id_coleccion } = useParams<{ id_usuario: string; id_coleccion: string }>()
   const { getAccessTokenSilently } = useAuth0()
   const navigate = useNavigate()
-  const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // --- ESTADOS DE DATOS (BACKEND) ---
+  // --- ESTADOS DE DATOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Nueva Colección')
   const [fuentes, setFuentes] = useState<Fuente[]>([])
-  const [resultados, setResultados] = useState<any[]>([]) // Aquí conectarás tu RAG/Search
+  const [resultados, setResultados] = useState<any[]>([]) 
 
-  // --- ESTADOS DE UI ORIGINALES ---
+  // --- ESTADOS DE UI ---
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState(nombreColeccion)
   
@@ -71,24 +70,40 @@ const BuscadorColeccion = () => {
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
 
+  // --- ESTADOS DE FILTROS REALES (Los que afectan la búsqueda) ---
   const [filtroOpen, setFiltroOpen] = useState(false)
   const [personas, setPersonas] = useState<string[]>([])
-  const [inputPersona, setInputPersona] = useState('')
   const [eventos, setEventos] = useState<string[]>([])
-  const [inputEvento, setInputEvento] = useState('')
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
 
-  const [darkMode, setDarkMode] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+  // --- ESTADOS DE FILTROS TEMPORALES (Solo para la UI del panel) ---
+  const [tempPersonas, setTempPersonas] = useState<string[]>([])
+  const [inputPersona, setInputPersona] = useState('')
+  const [tempEventos, setTempEventos] = useState<string[]>([])
+  const [inputEvento, setInputEvento] = useState('')
+  const [tempFechaDesde, setTempFechaDesde] = useState('')
+  const [tempFechaHasta, setTempFechaHasta] = useState('')
 
-  // --- EFECTOS DE CARGA (BACKEND) ---
+  const [darkMode] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+  // Sincronizar temporales al abrir el panel
+  useEffect(() => {
+    if (filtroOpen) {
+      setTempPersonas(personas)
+      setTempEventos(eventos)
+      setTempFechaDesde(fechaDesde)
+      setTempFechaHasta(fechaHasta)
+    }
+  }, [filtroOpen, personas, eventos, fechaDesde, fechaHasta])
+
+  // --- CARGA DE DATOS ---
   const cargarDatos = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva') return
     try {
       const token = await getAccessTokenSilently()
       const headers = { Authorization: `Bearer ${token}` }
 
-      // 1. Obtener nombre de la colección
       const resColl = await fetch(`http://localhost:8000/api/collections/${id_coleccion}`, { headers })
       if (resColl.ok) {
         const data = await resColl.json()
@@ -96,7 +111,6 @@ const BuscadorColeccion = () => {
         setTempNombre(data.name)
       }
 
-      // 2. Obtener documentos
       const resDocs = await fetch(`http://localhost:8000/api/documentos?coleccion_id=${id_coleccion}`, { headers })
       if (resDocs.ok) {
         setFuentes(await resDocs.json())
@@ -111,7 +125,6 @@ const BuscadorColeccion = () => {
     const trimmed = valor.trim()
     setSearchParams(trimmed ? { q: trimmed } : {})
     setBusquedaEnviada(trimmed)
-    // Aquí es donde dispararías la petición de búsqueda a tu API de documentos
   }
 
   const saveNombre = async () => {
@@ -120,10 +133,7 @@ const BuscadorColeccion = () => {
         const token = await getAccessTokenSilently()
         await fetch(`http://localhost:8000/api/collections/${id_coleccion}`, {
           method: 'PATCH',
-          headers: { 
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}` 
-          },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ name: tempNombre })
         })
         setNombreColeccion(tempNombre)
@@ -132,22 +142,18 @@ const BuscadorColeccion = () => {
     setIsEditingName(false)
   }
 
-  const confirmarBorrado = async () => {
-    if (id_coleccion && id_coleccion !== 'nueva') {
-      try {
-        const token = await getAccessTokenSilently()
-        await fetch(`http://localhost:8000/api/collections/${id_coleccion}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` }
-        })
-      } catch (e) { console.error(e) }
-    }
-    setIsEliminarModalOpen(false)
-    navigate(`/${id_usuario || ''}`)
-  }
-
   const handleClearAllFilters = () => {
     setPersonas([]); setEventos([]); setFechaDesde(''); setFechaHasta('')
+    setTempPersonas([]); setTempEventos([]); setTempFechaDesde(''); setTempFechaHasta('')
+  }
+
+  const handleSaveFilters = () => {
+    setPersonas(tempPersonas)
+    setEventos(tempEventos)
+    setFechaDesde(tempFechaDesde)
+    setFechaHasta(tempFechaHasta)
+    setFiltroOpen(false)
+    // Opcional: disparar búsqueda aquí
   }
 
   const agregarTag = (val: string, lista: string[], setLista: (v: string[]) => void, setInput: (v: string) => void) => {
@@ -230,11 +236,11 @@ const BuscadorColeccion = () => {
                     placeholder="Añadir..."
                     value={inputPersona}
                     onChange={(e) => setInputPersona(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputPersona, personas, setPersonas, setInputPersona)}
+                    onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputPersona, tempPersonas, setTempPersonas, setInputPersona)}
                   />
                   <div className="bc-filter-chips">
-                    {personas.map((p) => (
-                      <button key={p} className="bc-filter-chip selected" onClick={() => setPersonas(personas.filter((x) => x !== p))}>
+                    {tempPersonas.map((p) => (
+                      <button key={p} className="bc-filter-chip selected" onClick={() => setTempPersonas(tempPersonas.filter((x) => x !== p))}>
                         {p} <X size={10} />
                       </button>
                     ))}
@@ -248,11 +254,11 @@ const BuscadorColeccion = () => {
                     placeholder="Añadir..."
                     value={inputEvento}
                     onChange={(e) => setInputEvento(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputEvento, eventos, setEventos, setInputEvento)}
+                    onKeyDown={(e) => e.key === 'Enter' && agregarTag(inputEvento, tempEventos, setTempEventos, setInputEvento)}
                   />
                   <div className="bc-filter-chips">
-                    {eventos.map((e) => (
-                      <button key={e} className="bc-filter-chip selected" onClick={() => setEventos(eventos.filter((x) => x !== e))}>
+                    {tempEventos.map((e) => (
+                      <button key={e} className="bc-filter-chip selected" onClick={() => setTempEventos(tempEventos.filter((x) => x !== e))}>
                         {e} <X size={10} />
                       </button>
                     ))}
@@ -262,18 +268,18 @@ const BuscadorColeccion = () => {
                 <div className="bc-filter-group">
                   <div className="bc-filter-group-header"><CalendarRange size={12} /> <span className="bc-filter-label">Fechas</span></div>
                   <div className="bc-filter-date-row">
-                    <input type="date" value={fechaDesde} onChange={(e) => setFechaDesde(e.target.value)} className="bc-filter-date" />
+                    <input type="date" value={tempFechaDesde} onChange={(e) => setTempFechaDesde(e.target.value)} className="bc-filter-date" />
                     <span className="bc-filter-date-sep">→</span>
-                    <input type="date" value={fechaHasta} onChange={(e) => setFechaHasta(e.target.value)} className="bc-filter-date" />
+                    <input type="date" value={tempFechaHasta} onChange={(e) => setTempFechaHasta(e.target.value)} className="bc-filter-date" />
                   </div>
                 </div>
                 <div className="bc-filter-footer-actions">
-                  {hayFiltrosActivos && (
+                  {(tempPersonas.length > 0 || tempEventos.length > 0 || !!tempFechaDesde || !!tempFechaHasta) && (
                     <button className="bc-filter-clear-all-link" onClick={handleClearAllFilters}>
                       <Trash2 size={12} /> Limpiar filtros
                     </button>
                   )}
-                  <button className="bc-filter-save-btn" onClick={() => setFiltroOpen(false)}>Guardar filtros</button>
+                  <button className="bc-filter-save-btn" onClick={handleSaveFilters}>Guardar filtros</button>
                 </div>
               </div>
             )}
@@ -316,7 +322,7 @@ const BuscadorColeccion = () => {
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
         onClose={() => setIsEliminarModalOpen(false)}
-        onConfirm={confirmarBorrado}
+        onConfirm={() => {/* implementar borrado */}}
         nombreColeccion={nombreColeccion}
       />
       <ModalDocumentosDisponibles
