@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     cloud_tasks_queue: str = ""
     cloud_tasks_location: str = ""
 
+    # HU-13: Upload resilience — configurable via .env, sensible defaults apply
+    max_upload_retries: int = 3
+    upload_retry_delay_seconds: float = 1.0
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
