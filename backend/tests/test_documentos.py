@@ -20,6 +20,7 @@ MOCK_DOC = {
     "file_size_bytes": 1024,
     "status": "uploaded",
     "error_message": None,
+    "sha256_hash": None,
     "storage_path": f"{safe_user_id}/{MOCK_COLECCION_ID}/{MOCK_DOC_ID}",
     "created_at": "2024-01-01T00:00:00+00:00",
 }
@@ -49,6 +50,15 @@ class TestUploadDocumento:
             "app.api.routes.documentos.supabase_client.get_collection_by_id"
         ) as mock:
             mock.return_value = {"user_id": MOCK_USER_ID}
+            yield mock
+
+    @pytest.fixture(autouse=True)
+    def mock_find_hash(self):
+        with patch(
+            "app.api.routes.documentos.supabase_client.find_document_by_hash",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock:
             yield mock
 
     def test_upload_pdf_exitoso(self, client):
