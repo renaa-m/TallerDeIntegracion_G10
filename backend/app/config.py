@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
 
+    # Opcional: carpeta bajo backend/ o ruta absoluta (ver wukong_runner).
+    wukong_artifacts_dir: str = ""
+
     millenniumdb_host: str = "localhost"
     millenniumdb_port: int = 1234
 

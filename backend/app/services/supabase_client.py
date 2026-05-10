@@ -87,6 +87,37 @@ def update_collection_name(collection_id: str, user_id: str, new_name: str) -> d
     return result.data[0]
 
 
+def update_collection_processing_status(
+    collection_id: str,
+    processing_status: str,
+    error_message: str | None = None,
+    processed_at: str | None = None,
+) -> dict | None:
+    """
+    Actualiza el estado de procesamiento de una colección.
+
+    Estados válidos: idle, processing_text, processing_graph,
+    graph_ready, partial_error, error.
+
+    Cuando se llega a un estado terminal (graph_ready, partial_error, error)
+    conviene pasar también processed_at con el timestamp ISO.
+    """
+    client = _get_service_client()
+    payload: dict = {"processing_status": processing_status}
+    if error_message is not None:
+        payload["processing_error_message"] = error_message
+    if processed_at is not None:
+        payload["processed_at"] = processed_at
+
+    response = (
+        client.table("collections")
+        .update(payload)
+        .eq("id", collection_id)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
+
 # ── Documents — sync ───────────────────────────────────────────────────────────
 
 
@@ -120,6 +151,22 @@ def get_documents(user_id: str, collection_id: str) -> list:
         client.table("documents")
         .select("*")
         .eq("user_id", user_id)
+        .eq("collection_id", collection_id)
+        .execute()
+    )
+    return response.data
+
+
+def get_documents_by_collection(collection_id: str) -> list:
+    """
+    Devuelve todos los documentos de una colección sin filtrar por user
+    (uso interno del backend, una vez ya se valida el ownership en el
+    endpoint que llama).
+    """
+    client = _get_service_client()
+    response = (
+        client.table("documents")
+        .select("*")
         .eq("collection_id", collection_id)
         .execute()
     )
@@ -168,6 +215,21 @@ def save_document_text(
         .execute()
     )
     return response.data[0]
+
+
+def get_document_texts_by_collection(collection_id: str) -> list[dict]:
+    """
+    Devuelve todos los textos extraídos para los documentos de una colección.
+    Cada elemento tiene al menos: document_id, extracted_text, extraction_method.
+    """
+    client = _get_service_client()
+    response = (
+        client.table("document_texts")
+        .select("document_id, extracted_text, extraction_method")
+        .eq("collection_id", collection_id)
+        .execute()
+    )
+    return response.data or []
 
 
 def _get_document_sync(doc_id: str, user_id: str) -> dict | None:
