@@ -31,9 +31,34 @@ class DocumentResponse(BaseModel):
     storage_path: str
     status: str
     error_message: str | None
+    sha256_hash: str | None = None
     created_at: datetime
 
 
 class DocumentStatusUpdate(BaseModel):
     status: str
     error_message: str | None = None
+
+
+# ── HU-13: Batch upload response ──────────────────────────────────────────────
+
+
+class ArchivoExitoso(BaseModel):
+    filename: str
+    documento: DocumentResponse
+
+
+class ArchivoDuplicado(BaseModel):
+    filename: str
+    documento_existente: DocumentResponse
+
+
+class ArchivoFallido(BaseModel):
+    filename: str
+    motivo: str
+
+
+class BatchUploadResponse(BaseModel):
+    exitos: list[ArchivoExitoso]
+    duplicados: list[ArchivoDuplicado]
+    fallidos: list[ArchivoFallido]
