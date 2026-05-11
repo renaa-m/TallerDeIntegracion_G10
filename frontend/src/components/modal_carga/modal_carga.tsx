@@ -144,7 +144,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     return data
   }
-  
+
   const uploadWithQueue = async (
     files: File[],
     collectionId: string,
