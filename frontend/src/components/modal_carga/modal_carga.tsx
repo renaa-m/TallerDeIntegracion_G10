@@ -376,7 +376,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
         {mensaje && <p className="mc-success-message">{mensaje}</p>}
         {error && <p className="mc-error-message">{error}</p>}
-        {isLocked && (
+        {isUploading && (
           <p className="mc-success-message">
             Subiendo {uploadedCount + failedCount} de {files.length} archivos...
           </p>
