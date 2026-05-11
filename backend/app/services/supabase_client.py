@@ -44,7 +44,7 @@ def get_collections(user_id: str) -> list:
         .order("created_at", desc=True)
         .execute()
     )
-    return response.data
+    return response.data or []
 
 
 def get_collection(collection_id: str, user_id: str) -> dict | None:
@@ -86,13 +86,6 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
     ]
     if storage_paths:
         client.storage.from_(BUCKET).remove(storage_paths)
-    response = (
-        client.table("collections")
-        .delete()
-        .eq("id", collection_id)
-        .eq("user_id", user_id)
-        .execute()
-    )
     delete_response = (
         client.table("collections")
         .delete()
