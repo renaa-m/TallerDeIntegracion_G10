@@ -456,9 +456,6 @@ const ModalCarga = ({
             <div className="mc-footer">
               {pipelineStatus === 'idle' && (
                 <>
-                  <button className="mc-btn-cancel" onClick={handleClose}>
-                    Luego
-                  </button>
                   <button
                     className="mc-btn-upload"
                     onClick={handleIniciarPipeline}
