@@ -13,6 +13,9 @@ interface Collection {
   created_at: string
 }
 
+const API_BASE =
+  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:8080'
+
 function LandingPage() {
   const { id_usuario } = useParams<{ id_usuario: string }>() // Captura el parámetro de la URL
   const { user, getAccessTokenSilently } = useAuth0() // Obtenemos la info del usuario logueado
@@ -48,7 +51,7 @@ function LandingPage() {
       const token = await getAccessTokenSilently()
 
       const response = await fetch(
-        `http://localhost:8080/api/collections/${idColeccion}`,
+        `${API_BASE}/api/collections/${idColeccion}`,
         {
           method: 'PATCH',
           headers: {
@@ -92,7 +95,7 @@ function LandingPage() {
       const token = await getAccessTokenSilently()
 
       const response = await fetch(
-        `http://localhost:8080/api/collections/${idColeccion}`,
+        `${API_BASE}/api/collections/${idColeccion}`,
         {
           method: 'DELETE',
           headers: {
@@ -122,7 +125,7 @@ function LandingPage() {
       try {
         const token = await getAccessTokenSilently()
 
-        const response = await fetch('http://localhost:8080/api/collections', {
+        const response = await fetch(`${API_BASE}/api/collections`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },

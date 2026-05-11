@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -5,8 +6,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import health, collections, documentos, usuarios
+from app.api.routes import health, collections, documentos, usuarios, search
 from app.config import settings
+
+# Clientes de Google Cloud leen credenciales solo desde os.environ.
+_backend_root = Path(__file__).resolve().parent.parent
+if settings.google_application_credentials.strip():
+    _p = Path(settings.google_application_credentials.strip())
+    if not _p.is_absolute():
+        _p = _backend_root / _p
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(_p.resolve())
 
 app = FastAPI(
     title=settings.app_name,
@@ -31,6 +40,7 @@ app.include_router(health.router)
 app.include_router(collections.router)
 app.include_router(documentos.router)
 app.include_router(usuarios.router)
+app.include_router(search.router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 

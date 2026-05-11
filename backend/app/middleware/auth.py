@@ -1,5 +1,5 @@
 import httpx
-from fastapi import HTTPException, Request, Depends
+from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
@@ -64,11 +64,10 @@ async def get_current_user_id(
         raise HTTPException(status_code=401, detail=f"Token inválido: {str(e)}")
 
 
-async def get_current_user(request: Request) -> str:
-    auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=403, detail="No autenticado.")
-    token = auth_header[len("Bearer ") :]
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> str:
+    token = credentials.credentials
     try:
         jwks = await _get_jwks()
         header = jwt.get_unverified_header(token)

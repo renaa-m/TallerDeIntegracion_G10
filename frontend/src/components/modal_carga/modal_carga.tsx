@@ -76,6 +76,7 @@ const ModalCarga = ({
   const abortControllersRef = useRef<AbortController[]>([])
   const activeCollectionIdRef = useRef<string | null>(null)
   const isUploadingRef = useRef(false)
+  const totalFilesRef = useRef(0)
   const UPLOAD_IN_PROGRESS_KEY = 'upload_in_progress_collection_id'
 
   useEffect(() => {

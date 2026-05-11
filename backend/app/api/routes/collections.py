@@ -152,8 +152,9 @@ async def process_collection(
     """
     Dispara el procesamiento de una colección (HU-04 — botón "Generar Grafo").
 
-    Encadena en background:
-      1. Extracción de texto de cada documento (TXT, PDF digital, OCR pendiente).
+    Encadena en background (`wukong_runner.process_collection`):
+      1. Extracción de texto por documento: TXT, PDF digital (PyMuPDF), PDF escaneado
+         (OCR con Google Cloud Vision si hay credenciales GCP).
       2. Wukong genera el grafo en formato .qm.
       3. (PDT10-121) Carga del grafo en MillenniumDB.
 

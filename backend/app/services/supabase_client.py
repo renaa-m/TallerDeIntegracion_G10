@@ -299,6 +299,14 @@ def _find_document_by_hash_sync(
 # ── Documents — async (usados por las rutas async) ─────────────────────────────
 
 
+def create_signed_url(storage_path: str, expires_in: int = 3600) -> str:
+    """Genera una URL firmada de Supabase Storage válida por `expires_in` segundos (default 1h)."""
+    response = _get_service_client().storage.from_(BUCKET).create_signed_url(
+        storage_path, expires_in
+    )
+    return response["signedURL"]
+
+
 def _upload_sync(path: str, content: bytes, content_type: str) -> None:
     client = create_client(settings.supabase_url, settings.supabase_service_key)
 
@@ -382,3 +390,53 @@ async def list_documents(user_id: str, collection_id: str | None = None) -> list
 
 async def get_document(doc_id: str, user_id: str) -> dict | None:
     return await asyncio.to_thread(_get_document_sync, doc_id, user_id)
+
+
+# ── Chunk Embeddings ───────────────────────────────────────────────────────────
+
+
+def save_chunk_embeddings(records: list[dict]) -> None:
+    """Inserta embeddings de chunks en bulk en la tabla chunk_embeddings.
+
+    Cada record debe tener: chunk_id, collection_id, document_id, document_name,
+    chunk_index, chunk_text, embedding (list[float]), entity_types (list[str]).
+    """
+    client = _get_service_client()
+    rows = [
+        {
+            "chunk_id": r["chunk_id"],
+            "collection_id": r["collection_id"],
+            "document_id": r["document_id"],
+            "document_name": r["document_name"],
+            "chunk_index": r["chunk_index"],
+            "chunk_text": r["chunk_text"],
+            "embedding": r["embedding"],
+            "entity_types": r.get("entity_types", []),
+        }
+        for r in records
+    ]
+    client.table("chunk_embeddings").insert(rows).execute()
+
+
+def search_chunks(
+    query_embedding: list[float],
+    collection_id: str,
+    limit: int = 10,
+    entity_types: list[str] | None = None,
+    year_min: int | None = None,
+    year_max: int | None = None,
+) -> list[dict]:
+    """Búsqueda semántica sobre chunk_embeddings usando la función SQL search_chunks."""
+    client = _get_service_client()
+    result = client.rpc(
+        "search_chunks",
+        {
+            "query_embedding": query_embedding,
+            "p_collection_id": collection_id,
+            "p_limit": limit,
+            "p_entity_types": entity_types,
+            "p_year_min": year_min,
+            "p_year_max": year_max,
+        },
+    ).execute()
+    return result.data or []
