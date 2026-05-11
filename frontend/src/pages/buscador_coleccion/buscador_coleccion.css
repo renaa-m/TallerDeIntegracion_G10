@@ -1037,3 +1037,203 @@
 .bc-sidebar-inner {
   gap: 12px;
 }
+
+/* ── MEJORAS EN TARJETAS DE RESULTADOS ────────────────────────────────────── */
+
+.bc-result-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: default; /* Ya no es necesario que parezca clickeable si no tiene acción */
+}
+
+.bc-result-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(168, 163, 246, 0.15);
+}
+
+.bc-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.bc-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.bc-doc-icon {
+  color: var(--accent);
+}
+
+.bc-result-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin: 0;
+}
+
+/* Badges de Coincidencia Semántica */
+.bc-score-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.bc-score-badge.high { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
+.bc-score-badge.med { background: rgba(234, 179, 8, 0.12); color: #eab308; }
+.bc-score-badge.low { background: var(--surface-3); color: var(--text-3); }
+
+.bc-score-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Botón de Enlace Externo */
+.bc-external-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-2);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.bc-external-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+/* Cuerpo de la Tarjeta (Fragmento) */
+.bc-card-body {
+  margin: 4px 0;
+}
+
+.bc-result-excerpt {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  margin: 0;
+  /* El borde a la izquierda le da el toque "citado" */
+  padding-left: 12px;
+  border-left: 2px solid var(--border);
+}
+
+.bc-dark .bc-result-excerpt {
+  color: var(--text-2);
+}
+
+/* Footer de la Tarjeta */
+.bc-card-footer {
+  display: flex;
+  gap: 16px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.bc-footer-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-3);
+  text-transform: uppercase;
+}
+
+/* Animación de carga */
+.bc-spin {
+  animation: bc-spin-anim 1s linear infinite;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+@keyframes bc-spin-anim {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* ── BADGE DE COINCIDENCIA (VERSIÓN CLARA) ────────────────────────────────── */
+.bc-score-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1.5px solid transparent;
+  transition: all 0.2s ease;
+}
+
+/* Estado: Alta Coincidencia */
+.status-high {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
+/* Estado: Coincidencia Media */
+.status-med {
+  background: rgba(234, 179, 8, 0.15);
+  color: #ca8a04;
+  border-color: rgba(234, 179, 8, 0.2);
+}
+
+/* Estado: Coincidencia Baja */
+.status-low {
+  background: var(--surface-3);
+  color: var(--text-3);
+  border-color: var(--border);
+}
+
+/* Icono dentro del badge */
+.bc-status-icon {
+  flex-shrink: 0;
+}
+
+.bc-score-value {
+  letter-spacing: 0.01em;
+}
+
+/* ── AJUSTES PARA MODO OSCURO ────────────────────────────────────────────── */
+.bc-dark .status-high {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.bc-dark .status-med {
+  background: rgba(234, 179, 8, 0.2);
+  color: #facc15;
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+/* Efecto hover en la tarjeta para resaltar el badge */
+.bc-result-card:hover .bc-score-status {
+  transform: scale(1.03);
+}

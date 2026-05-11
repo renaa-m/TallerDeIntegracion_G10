@@ -11,6 +11,9 @@ import {
   Edit2,
   AlertCircle,
   ExternalLink,
+  FileText,
+  CheckCircle2,
+  Loader2,
 } from 'lucide-react'
 
 // Componentes
@@ -217,6 +220,8 @@ const BuscadorColeccion = () => {
 
   const hayFiltrosActivos = personas.length > 0 || !!fechaDesde || !!fechaHasta
 
+  // ... (mismos imports y componente Highlight)
+
   return (
     <>
       <div className={`bc-root${darkMode ? ' bc-dark' : ''}`}>
@@ -285,46 +290,67 @@ const BuscadorColeccion = () => {
               </div>
             )}
           </div>
-
+          
           <div className="bc-results-area">
             {loading ? (
               <div className="bc-empty">
-                <p>Buscando en el grafo...</p>
+                <Loader2 className="bc-spin" size={30} />
+                <p>Consultando el grafo de conocimiento...</p>
               </div>
             ) : resultados.length > 0 ? (
               <div className="bc-results-list">
                 {resultados.map((r: any, idx) => (
                   <article key={idx} className="bc-result-card">
-                    <div className="bc-result-source">
-                      <div className="bc-result-header-left">
-                        <span className="bc-result-source-name">{r.titulo}</span>
-                        <span className="bc-result-score">Similitud: {(r.score * 100).toFixed(1)}%</span>
+                    <div className="bc-card-header">
+                      <div className="bc-header-info">
+                        <div className="bc-title-row">
+                          <FileText size={14} className="bc-doc-icon" />
+                          <h3 className="bc-result-title">{r.titulo}</h3>
+                        </div>
+                        
+                        {/* Badge de Similitud Reforzado */}
+                        <div className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}>
+                          <CheckCircle2 size={12} className="bc-status-icon" />
+                          <span className="bc-score-value">{(r.score * 100).toFixed(0)}% de coincidencia</span>
+                        </div>
                       </div>
+                      
                       {r.enlace && (
-                        <a 
-                          href={r.enlace} 
-                          target="_blank" 
-                          rel="noreferrer" 
-                          className="bc-result-link"
-                          title="Abrir documento original"
-                        >
-                          <ExternalLink size={14} />
+                        <a href={r.enlace} target="_blank" rel="noreferrer" className="bc-external-btn">
+                          <ExternalLink size={13} />
+                          <span>Documento</span>
                         </a>
                       )}
                     </div>
-                    <p className="bc-result-excerpt">
-                      <Highlight text={r.fragmento} query={busquedaEnviada} />
-                    </p>
+
+                    <div className="bc-card-body">
+                      <p className="bc-result-excerpt">
+                        <Highlight text={r.fragmento} query={busquedaEnviada} />
+                      </p>
+                    </div>
+
+                    <div className="bc-card-footer">
+                      <div className="bc-footer-tag">
+                        <Network size={12} />
+                        <span>Grafo IMFD</span>
+                      </div>
+                      {r.pagina && (
+                        <div className="bc-footer-tag">
+                          <span>Página {r.pagina}</span>
+                        </div>
+                      )}
+                    </div>
                   </article>
                 ))}
               </div>
             ) : (
               <div className="bc-empty">
-                <Search size={30} />
-                <p>
-                  {busquedaEnviada
-                    ? 'No encontramos fragmentos relevantes'
-                    : 'Realiza una consulta semántica para explorar la colección'}
+                <div className="bc-empty-icon"><Search size={30} /></div>
+                <h3 className="bc-empty-title">Sin resultados todavía</h3>
+                <p className="bc-empty-sub">
+                  {busquedaEnviada 
+                    ? "No hay fragmentos que coincidan con tu búsqueda semántica." 
+                    : "Haz una pregunta para explorar los documentos de esta colección."}
                 </p>
               </div>
             )}
