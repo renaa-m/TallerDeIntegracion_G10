@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     cloud_tasks_queue: str = ""
     cloud_tasks_location: str = ""
 
+    # Opcional: copiar el workdir de Wukong bajo backend/ para inspección local (.qm, txt).
+    wukong_artifacts_dir: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

@@ -81,6 +81,47 @@ def update_collection_name(collection_id: str,user_id: str,new_name: str,) -> di
     return result.data[0]
 
 
+def update_collection_processing_status(
+    collection_id: str,
+    processing_status: str,
+    *,
+    error_message: str | None = None,
+    processed_at: str | None = None,
+) -> None:
+    """Actualiza el estado del procesamiento (extracción + Wukong) de una colección."""
+    client = get_supabase_client()
+    payload: dict[str, str] = {"processing_status": processing_status}
+    if error_message is not None:
+        payload["processing_error_message"] = error_message
+    if processed_at is not None:
+        payload["processed_at"] = processed_at
+    client.table("collections").update(payload).eq("id", collection_id).execute()
+
+
+def get_documents_by_collection(collection_id: str) -> list:
+    """Todos los documentos de la colección (para wukong_runner tras validar la colección)."""
+    client = get_supabase_client()
+    return (
+        client.table("documents")
+        .select("*")
+        .eq("collection_id", collection_id)
+        .execute()
+        .data
+    )
+
+
+def get_document_texts_by_collection(collection_id: str) -> list:
+    """Filas de document_texts para armar el workdir de Wukong."""
+    client = get_supabase_client()
+    return (
+        client.table("document_texts")
+        .select("*")
+        .eq("collection_id", collection_id)
+        .execute()
+        .data
+    )
+
+
 # ── Documents — sync ───────────────────────────────────────────────────────────
 
 
