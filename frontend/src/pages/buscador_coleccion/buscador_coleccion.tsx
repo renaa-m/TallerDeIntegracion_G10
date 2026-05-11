@@ -9,7 +9,6 @@ import {
   Trash2,
   Files,
   Edit2,
-  AlertCircle,
   ExternalLink,
   FileText,
   CheckCircle2,
@@ -79,9 +78,9 @@ const BuscadorColeccion = () => {
 
   // Filtros
   const [filtroOpen, setFiltroOpen] = useState(false)
-  const [personas, setPersonas] = useState<string[]>([]) // Se usa para 'tipo_entidad' en el backend
-  const [fechaDesde, setFechaDesde] = useState('')
-  const [fechaHasta, setFechaHasta] = useState('')
+  const [personas] = useState<string[]>([]) // Se usa para 'tipo_entidad' en el backend
+  const [fechaDesde] = useState('')
+  const [fechaHasta] = useState('')
 
   const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
