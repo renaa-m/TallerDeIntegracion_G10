@@ -115,15 +115,12 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
       try {
         const token = await getAccessTokenSilently()
 
-        await fetch(
-          `${API_BASE}/api/collections/${interruptedCollectionId}`,
-          {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+        await fetch(`${API_BASE}/api/collections/${interruptedCollectionId}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
           },
-        )
+        })
       } catch (err) {
         console.error('No se pudo limpiar la colección incompleta', err)
       }
@@ -383,8 +380,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
         {error && <p className="mc-error-message">{error}</p>}
         {isUploading && (
           <p className="mc-success-message">
-            Subiendo {uploadedCount + failedCount} de {totalFiles}{' '}
-            archivos...
+            Subiendo {uploadedCount + failedCount} de {totalFiles} archivos...
           </p>
         )}
         <div className="mc-collection-name">
@@ -407,9 +403,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           </button>
           <button
             className="mc-btn-upload"
-            disabled={
-              files.length === 0 || isLocked || !nombreColeccion.trim()
-            }
+            disabled={files.length === 0 || isLocked || !nombreColeccion.trim()}
             onClick={handleUpload}
           >
             {isLocked
