@@ -44,6 +44,25 @@ logger = logging.getLogger(__name__) # para registrar errores
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent 
 # para manejar rutas de archivos del backend (identifica la raiz de la rita de éste archivo)la raíz)
 
+
+def _wukong_python_executable() -> str:
+    """Intérprete para ``python -m wukong_engine`` (wukong-engine exige Python >= 3.13).
+
+    Si el proceso FastAPI corre con 3.12 por error, Wukong seguía usando ese binario y fallaba
+    con ``No module named wukong_engine``. Preferimos ``.venv/bin/python3.13`` cuando exista.
+    """
+    if sys.version_info >= (3, 13):
+        return sys.executable
+    v313 = BACKEND_ROOT / ".venv" / "bin" / "python3.13"
+    if v313.is_file():
+        logger.info(
+            "Wukong: el servidor usa Python %s; ejecutando Wukong con %s",
+            sys.version.split()[0],
+            v313,
+        )
+        return str(v313)
+    return sys.executable
+
 # Debe coincidir con parameters.included_documents en default_data_model.json
 WUKONG_DOCUMENT_SET = "preview" # para manejar el conjunto de documentos de Wukong
 
@@ -120,6 +139,17 @@ def process_collection(collection_id: str) -> None:
             if wukong_error is not None:
                 _mark_collection_error(collection_id, wukong_error)
                 return
+
+            # Pipeline 3a: Generar y guardar embeddings de chunks en Supabase pgvector.
+            # Falla silenciosa: un error aquí no bloquea el grafo ya generado.
+            try:
+                n_chunks = _generate_and_store_embeddings(workdir, collection_id)
+                logger.info("Embeddings generados y guardados: %d chunks (colección %s)", n_chunks, collection_id)
+            except Exception:
+                logger.exception(
+                    "Error generando embeddings para colección %s — grafo sigue disponible.",
+                    collection_id,
+                )
 
             # TODO PDT10-121: cargar el .qm de workdir/exports/ en MillenniumDB.
             # Bloqueado hasta confirmar el método con Alejandro
@@ -291,7 +321,7 @@ def _run_wukong(workdir: Path, timeout_seconds: int = 3600) -> str | None:
             # Arma el comando equivalente a:
             # <tu python> -m wukong_engine <workdir> --config <ruta al default.toml>
             [
-                sys.executable, # el mismo Python que usa FastAPI (así encuentra wukong_engine instalado en ese venv)
+                _wukong_python_executable(),
                 "-m", # ejecuta el módulo wukong_engine
                 "wukong_engine", # el nombre del módulo que contiene la función main() de Wukong
                 str(workdir), # la ruta al workdir de Wukong
@@ -330,3 +360,107 @@ def _mark_collection_error(collection_id: str, message: str) -> None:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# ── Pipeline 3a: Embeddings ────────────────────────────────────────────────────
+
+
+def _build_entity_types_map(results_dir: Path) -> dict[str, list[str]]:
+    """Construye {chunk_id: [EntityType, ...]} desde la relación ExtractedFrom.
+
+    Si el archivo no existe (p.ej. no se extrajo ninguna entidad), devuelve {}.
+    """
+    path = results_dir / "relations" / "ExtractedFrom.json"
+    if not path.exists():
+        return {}
+    relations = json.loads(path.read_text(encoding="utf-8"))
+    chunk_types: dict[str, set[str]] = {}
+    for rel in relations:
+        target = rel.get("_TargetId", "")
+        if not target.startswith("Chunk_"):
+            continue
+        # "_OriginId" tiene formato "Persona_1", "Organizacion_2", etc.
+        entity_type = rel.get("_OriginId", "").rsplit("_", 1)[0]
+        chunk_types.setdefault(target, set()).add(entity_type)
+    return {k: sorted(v) for k, v in chunk_types.items()}
+
+
+def _generate_and_store_embeddings(workdir: Path, collection_id: str) -> int:
+    """Lee los artefactos de Wukong, genera embeddings y los guarda en Supabase.
+
+    Devuelve el número de chunks procesados.
+    Lanza excepción si algún paso falla (el llamador la captura con falla silenciosa).
+    """
+    results_dir = workdir / "results"
+
+    # 1. Mapeo Document_N → UUID del documento en Supabase
+    doc_entities_path = results_dir / "entities" / "Document.json"
+    if not doc_entities_path.exists():
+        logger.warning("Document.json no encontrado en %s — omitiendo embeddings.", results_dir)
+        return 0
+    doc_entities = json.loads(doc_entities_path.read_text(encoding="utf-8"))
+    # "name" es el stem del archivo (= document_id UUID en Supabase)
+    doc_obj_to_uuid: dict[str, str] = {e["_ObjectId"]: e["name"] for e in doc_entities}
+
+    # 2. Chunks con su texto
+    chunk_path = results_dir / "entities" / "Chunk.json"
+    if not chunk_path.exists():
+        logger.warning("Chunk.json no encontrado en %s — omitiendo embeddings.", results_dir)
+        return 0
+    chunk_entities = json.loads(chunk_path.read_text(encoding="utf-8"))
+    chunk_text_map: dict[str, str] = {e["_ObjectId"]: e["text"] for e in chunk_entities}
+
+    # 3. Relación Chunk → Document (posición dentro del documento)
+    chunk_of_path = results_dir / "relations" / "ChunkOf.json"
+    if not chunk_of_path.exists():
+        logger.warning("ChunkOf.json no encontrado en %s — omitiendo embeddings.", results_dir)
+        return 0
+    chunk_of = json.loads(chunk_of_path.read_text(encoding="utf-8"))
+    if chunk_of and "chunk_number" not in chunk_of[0]:
+        raise KeyError(
+            f"ChunkOf.json no tiene el campo 'chunk_number' (campos presentes: {list(chunk_of[0].keys())}). "
+            "¿Cambió el schema de wukong-engine?"
+        )
+    chunk_to_doc_obj: dict[str, str] = {r["_OriginId"]: r["_TargetId"] for r in chunk_of}
+    chunk_index_map: dict[str, int] = {r["_OriginId"]: r["chunk_number"] for r in chunk_of}
+
+    # 4. Tipos de entidad por chunk (para filtros)
+    entity_types_map = _build_entity_types_map(results_dir)
+
+    # 5. Nombre de archivo original (para el campo "titulo" en resultados)
+    docs = supabase_client.get_documents_by_collection(collection_id)
+    doc_filename_map: dict[str, str] = {d["id"]: d["filename"] for d in docs}
+
+    # 6. Construir registros
+    records: list[dict] = []
+    for chunk_id, chunk_text in chunk_text_map.items():
+        doc_obj_id = chunk_to_doc_obj.get(chunk_id)
+        if not doc_obj_id:
+            continue
+        doc_uuid = doc_obj_to_uuid.get(doc_obj_id)
+        if not doc_uuid:
+            continue
+        records.append({
+            "chunk_id": chunk_id,
+            "collection_id": collection_id,
+            "document_id": doc_uuid,
+            "document_name": doc_filename_map.get(doc_uuid, doc_uuid),
+            "chunk_index": chunk_index_map.get(chunk_id, 0),
+            "chunk_text": chunk_text,
+            "entity_types": entity_types_map.get(chunk_id, []),
+        })
+
+    if not records:
+        logger.warning("No se encontraron chunks para embeddings en colección %s.", collection_id)
+        return 0
+
+    # 7. Generar embeddings en lote
+    from app.services.embeddings_service import generate_embeddings_batch
+    texts = [r["chunk_text"] for r in records]
+    embeddings = generate_embeddings_batch(texts)
+    for record, embedding in zip(records, embeddings):
+        record["embedding"] = embedding
+
+    # 8. Guardar en Supabase
+    supabase_client.save_chunk_embeddings(records)
+    return len(records)

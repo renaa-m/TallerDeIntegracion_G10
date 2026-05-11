@@ -8,8 +8,8 @@ interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
   darkMode?: boolean
-  coleccionId: string // NUEVO: Necesitamos saber a qué colección va el archivo
-  onUploadSuccess?: () => void // NUEVO: Para avisarle a la página que recargue la lista
+  coleccionId: string
+  onUploadSuccess?: () => void
 }
 
 interface DocumentResponse {
@@ -60,14 +60,16 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const abortControllersRef = useRef<AbortController[]>([])
   const activeCollectionIdRef = useRef<string | null>(null)
   const isUploadingRef = useRef(false)
+  const totalFilesRef = useRef(0)
   const UPLOAD_IN_PROGRESS_KEY = 'upload_in_progress_collection_id'
 
   const handleClose = useCallback(() => {
-    if (isLocked) return // No dejar cerrar si está subiendo
+    if (isLocked) return
     setFiles([])
     setMensaje('')
     setError('')
     setIsUploading(false)
+    setIsFinalizing(false)
     onClose()
     navigate('/landing_page')
   }, [onClose, navigate, isLocked])
@@ -206,7 +208,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   }
 
   const uploadWithQueue = async (
-    files: File[],
+    queue: File[],
     collectionId: string,
     concurrency = 5,
     maxRetries = 3,
@@ -236,8 +238,8 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
       }
     }
 
-    for (let i = 0; i < files.length; i += concurrency) {
-      const batch = files.slice(i, i + concurrency)
+    for (let i = 0; i < queue.length; i += concurrency) {
+      const batch = queue.slice(i, i + concurrency)
       await Promise.all(batch.map(uploadWithRetry))
     }
 
@@ -247,7 +249,11 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const handleUpload = async () => {
     if (files.length === 0) return
 
+    const batch = [...files]
+    totalFilesRef.current = batch.length
+
     setIsUploading(true)
+    setIsFinalizing(false)
     setMensaje('')
     setError('')
     setUploadedCount(0)
@@ -257,7 +263,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
       const collection = await createCollection()
       activeCollectionIdRef.current = collection.id
       sessionStorage.setItem(UPLOAD_IN_PROGRESS_KEY, collection.id)
-      const result = await uploadWithQueue(files, collection.id, 5, 3)
+      const result = await uploadWithQueue(batch, collection.id, 5, 3)
       sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
       activeCollectionIdRef.current = null
       abortControllersRef.current = []
@@ -278,9 +284,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           : 'Error inesperado al crear la colección o subir archivos'
       setError(message)
     } finally {
-      if (!isFinalizing) {
-        setIsUploading(false)
-      }
+      setIsUploading(false)
     }
   }
 
@@ -377,9 +381,10 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
         {mensaje && <p className="mc-success-message">{mensaje}</p>}
         {error && <p className="mc-error-message">{error}</p>}
-        {isLocked && (
+        {isUploading && (
           <p className="mc-success-message">
-            Subiendo {uploadedCount + failedCount} de {files.length} archivos...
+            Subiendo {uploadedCount + failedCount} de {totalFilesRef.current}{' '}
+            archivos...
           </p>
         )}
         <div className="mc-collection-name">
@@ -402,7 +407,9 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           </button>
           <button
             className="mc-btn-upload"
-            disabled={files.length === 0 || isLocked || !nombreColeccion.trim()}
+            disabled={
+              files.length === 0 || isLocked || !nombreColeccion.trim()
+            }
             onClick={handleUpload}
           >
             {isLocked

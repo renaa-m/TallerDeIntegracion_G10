@@ -11,6 +11,9 @@ build/
 venv/
 env/
 
+# Hugging Face cache (p. ej. HF_HOME=backend/.hf_cache en CI/sandbox)
+backend/.hf_cache/
+
 # Node / Frontend
 node_modules/
 frontend/dist/
