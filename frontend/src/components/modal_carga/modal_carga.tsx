@@ -1,289 +1,266 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuth0 } from '@auth0/auth0-react'
-import { X, CloudUpload, FileText, Trash2 } from 'lucide-react'
+import {
+  X,
+  CloudUpload,
+  FileText,
+  Trash2,
+  Loader2,
+  Network,
+  CheckCircle2,
+  AlertCircle,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import './modal_carga.css'
+
+// --- Constantes de Persistencia ---
+const ACTIVE_COLLECTION_KEY = 'active_collection_id'
+const MODAL_ETAPA_KEY = 'modal_carga_etapa'
 
 interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
   darkMode?: boolean
-  coleccionId: string
+  coleccionId?: string
   onUploadSuccess?: () => void
 }
 
-interface DocumentResponse {
-  id: string
-  user_id: string
-  collection_id: string
-  filename: string
-  file_type: string
-  file_size_bytes: number | null
-  storage_path: string
-  status: string
-  error_message: string | null
-  created_at: string
-}
+type Etapa = 'subida' | 'pipeline'
+type PipelineStatus =
+  | 'idle'
+  | 'processing_text'
+  | 'processing_graph'
+  | 'graph_ready'
+  | 'error'
 
-interface CollectionResponse {
-  id: string
-  user_id: string
-  name: string
-  description: string | null
-  status: string
-  created_at: string
-}
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+const PIPELINE_LABELS: Record<PipelineStatus, string> = {
+  idle: 'Listo para procesar',
+  processing_text: 'Extrayendo texto de los documentos...',
+  processing_graph: 'Construyendo grafo con Wukong...',
+  graph_ready: '¡Grafo generado correctamente!',
+  error: 'Ocurrió un error durante el procesamiento.',
 }
 
 const API_BASE =
   import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:8080'
 
-const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
+const ModalCarga = ({
+  isOpen,
+  onClose,
+  darkMode = false,
+  onUploadSuccess,
+}: ModalCargaProps) => {
   const { getAccessTokenSilently } = useAuth0()
+  const navigate = useNavigate()
+
+  // --- Estados ---
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
-  const [isFinalizing, setIsFinalizing] = useState(false)
-  const isLocked = isUploading || isFinalizing
   const [uploadedCount, setUploadedCount] = useState(0)
-  const [failedCount, setFailedCount] = useState(0)
-  const [mensaje, setMensaje] = useState('')
+  const [nombreColeccion, setNombreColeccion] = useState('')
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [nombreColeccion, setNombreColeccion] = useState('')
-  const navigate = useNavigate()
+
+  const [etapa, setEtapa] = useState<Etapa>('subida')
+  const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>('idle')
+  const [pipelineError, setPipelineError] = useState('')
+  const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
+    localStorage.getItem(ACTIVE_COLLECTION_KEY),
+  )
+
+  const isLocked =
+    isUploading ||
+    pipelineStatus === 'processing_text' ||
+    pipelineStatus === 'processing_graph'
+
   const abortControllersRef = useRef<AbortController[]>([])
-  const activeCollectionIdRef = useRef<string | null>(null)
-  const isUploadingRef = useRef(false)
-  const [totalFiles, setTotalFiles] = useState(0)
-  const UPLOAD_IN_PROGRESS_KEY = 'upload_in_progress_collection_id'
 
-  const handleClose = useCallback(() => {
-    if (isLocked) return
-    setFiles([])
-    setMensaje('')
-    setError('')
-    setIsUploading(false)
-    setIsFinalizing(false)
-    onClose()
-    navigate('/landing_page')
-  }, [onClose, navigate, isLocked])
-
+  // --- 1. Sincronización al Recargar ---
   useEffect(() => {
-    if (!isOpen) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isLocked) handleClose()
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, handleClose, isLocked])
+    const syncStatus = async () => {
+      const savedId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+      const savedEtapa = localStorage.getItem(MODAL_ETAPA_KEY) as Etapa
 
-  useEffect(() => {
-    isUploadingRef.current = isUploading
-  }, [isUploading])
+      if (savedId && isOpen) {
+        setActiveCollectionId(savedId)
+        if (savedEtapa) setEtapa(savedEtapa)
 
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (!isUploadingRef.current || !activeCollectionIdRef.current) return
-      sessionStorage.setItem(
-        UPLOAD_IN_PROGRESS_KEY,
-        activeCollectionIdRef.current,
-      )
-      abortControllersRef.current.forEach((controller) => controller.abort())
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-    }
-  }, [])
-
-  useEffect(() => {
-    const cleanupInterruptedUpload = async () => {
-      const interruptedCollectionId = sessionStorage.getItem(
-        UPLOAD_IN_PROGRESS_KEY,
-      )
-
-      if (!interruptedCollectionId) return
-
-      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
-
-      try {
-        const token = await getAccessTokenSilently()
-
-        await fetch(`${API_BASE}/api/collections/${interruptedCollectionId}`, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-      } catch (err) {
-        console.error('No se pudo limpiar la colección incompleta', err)
-      }
-
-      navigate('/landing_page')
-    }
-
-    cleanupInterruptedUpload()
-  }, [getAccessTokenSilently, navigate])
-
-  if (!isOpen) return null
-
-  const addFiles = (list: FileList | null) => {
-    if (!list) return
-    const incoming = Array.from(list)
-    setFiles((prev) => {
-      const existing = new Set(prev.map((f) => f.name + f.size))
-      return [
-        ...prev,
-        ...incoming.filter((f) => !existing.has(f.name + f.size)),
-      ]
-    })
-  }
-
-  const removeFile = (i: number) => {
-    if (isLocked) return
-    setFiles((prev) => prev.filter((_, idx) => idx !== i))
-  }
-
-  const createCollection = async (): Promise<CollectionResponse> => {
-    const token = await getAccessTokenSilently()
-    const response = await fetch(`${API_BASE}/api/collections`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        name: nombreColeccion || 'Nueva colección',
-        description: '',
-      }),
-    })
-
-    const text = await response.text()
-    const data = text ? JSON.parse(text) : null
-
-    if (!response.ok) {
-      throw new Error(data?.detail || 'Error al crear colección')
-    }
-
-    return data
-  }
-
-  const uploadOneFile = async (
-    file: File,
-    collectionId: string,
-    signal?: AbortSignal,
-  ): Promise<DocumentResponse> => {
-    const token = await getAccessTokenSilently()
-
-    const formData = new FormData()
-    formData.append('file', file)
-    const response = await fetch(
-      `${API_BASE}/api/documentos/upload?coleccion_id=${collectionId}`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-        signal,
-      },
-    )
-    const text = await response.text()
-    const data = text ? JSON.parse(text) : null
-
-    if (!response.ok) {
-      throw new Error(data?.detail || 'Error al subir archivo')
-    }
-
-    return data
-  }
-
-  const uploadWithQueue = async (
-    queue: File[],
-    collectionId: string,
-    concurrency = 5,
-    maxRetries = 3,
-  ) => {
-    let uploaded = 0
-    let failed = 0
-
-    const uploadWithRetry = async (file: File) => {
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        const controller = new AbortController()
-        abortControllersRef.current.push(controller)
         try {
-          await uploadOneFile(file, collectionId, controller.signal)
-          uploaded += 1
-          setUploadedCount(uploaded)
-
-          return
-        } catch (err) {
-          if (attempt === maxRetries) {
-            failed += 1
-            setFailedCount(failed)
-            console.error(`Falló la subida de ${file.name}`, err)
-            return
+          const token = await getAccessTokenSilently()
+          const res = await fetch(`${API_BASE}/api/collections/${savedId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (res.ok) {
+            const data = await res.json()
+            setPipelineStatus(data.processing_status ?? 'idle')
           }
-          await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
+        } catch (e) {
+          console.error('Error al recuperar estado tras recarga:', e)
         }
       }
     }
+    syncStatus()
+  }, [isOpen, getAccessTokenSilently])
 
-    for (let i = 0; i < queue.length; i += concurrency) {
-      const batch = queue.slice(i, i + concurrency)
-      await Promise.all(batch.map(uploadWithRetry))
+  // --- 2. Lógica de Cierre y Cancelación Real (CORREGIDO) ---
+  const handleClose = useCallback(async () => {
+    if (isLocked) return
+
+    // CORRECCIÓN: Si el usuario cierra el modal manualmente, borramos la colección
+    // SIEMPRE que exista un ID activo, sin importar si el grafo está listo o no.
+    // Solo el botón de 'Finalizar' se salta esta lógica de borrado.
+    if (activeCollectionId) {
+      try {
+        const token = await getAccessTokenSilently()
+        await fetch(`${API_BASE}/api/collections/${activeCollectionId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+      } catch (err) {
+        console.error('Error borrando colección al cerrar modal:', err)
+      }
     }
 
-    return { uploaded, failed }
-  }
+    // Limpieza total
+    localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+    localStorage.removeItem(MODAL_ETAPA_KEY)
+    setFiles([])
+    setNombreColeccion('')
+    setError('')
+    setEtapa('subida')
+    setPipelineStatus('idle')
+    setActiveCollectionId(null)
+
+    navigate('/landing_page')
+    onClose()
+  }, [onClose, isLocked, activeCollectionId, getAccessTokenSilently, navigate])
+
+  // --- 3. Polling de Pipeline (Sigue funcionando tras recarga) ---
+  useEffect(() => {
+    if (
+      etapa !== 'pipeline' ||
+      !activeCollectionId ||
+      ['graph_ready', 'error', 'idle'].includes(pipelineStatus)
+    )
+      return
+
+    const interval = window.setInterval(async () => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(
+          `${API_BASE}/api/collections/${activeCollectionId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        )
+        if (!res.ok) return
+        const data = await res.json()
+        const status: PipelineStatus = data.processing_status ?? 'idle'
+        setPipelineStatus(status)
+        if (status === 'graph_ready' || status === 'error') {
+          if (status === 'error')
+            setPipelineError(
+              data.processing_error_message ?? 'Error desconocido',
+            )
+          clearInterval(interval)
+        }
+      } catch (e) {
+        console.error('Error en polling:', e)
+      }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [etapa, activeCollectionId, pipelineStatus, getAccessTokenSilently])
 
   const handleUpload = async () => {
     if (files.length === 0) return
-
-    const batch = [...files]
-    setTotalFiles(batch.length)
-
     setIsUploading(true)
-    setIsFinalizing(false)
-    setMensaje('')
     setError('')
-    setUploadedCount(0)
-    setFailedCount(0)
 
     try {
-      const collection = await createCollection()
-      activeCollectionIdRef.current = collection.id
-      sessionStorage.setItem(UPLOAD_IN_PROGRESS_KEY, collection.id)
-      const result = await uploadWithQueue(batch, collection.id, 5, 3)
-      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
-      activeCollectionIdRef.current = null
-      abortControllersRef.current = []
-      setMensaje(
-        `Archivos exitosos: ${result.uploaded} · Archivos fallidos: ${result.failed}`,
-      )
-      setFiles([])
-      setIsFinalizing(true)
-      setTimeout(() => {
-        handleClose()
-        const userId = collection.user_id.split('|')[1] || collection.user_id
-        navigate(`/${userId}/colecciones/${collection.id}/buscador`)
-      }, 5000)
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Error inesperado al crear la colección o subir archivos'
-      setError(message)
+      const token = await getAccessTokenSilently()
+      const res = await fetch(`${API_BASE}/api/collections`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: nombreColeccion || 'Nueva colección',
+          description: '',
+        }),
+      })
+      if (!res.ok) throw new Error('Error al crear colección')
+      const collection = await res.json()
+
+      setActiveCollectionId(collection.id)
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, collection.id)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'subida')
+
+      let uploaded = 0
+      for (const file of files) {
+        const controller = new AbortController()
+        abortControllersRef.current.push(controller)
+
+        const formData = new FormData()
+        formData.append('file', file)
+        const upRes = await fetch(
+          `${API_BASE}/api/documentos/upload?coleccion_id=${collection.id}`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+            body: formData,
+            signal: controller.signal,
+          },
+        )
+        if (upRes.ok) {
+          uploaded++
+          setUploadedCount(uploaded)
+        }
+      }
+
+      if (uploaded === 0) throw new Error('No se subieron archivos.')
+
+      setEtapa('pipeline')
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+      if (onUploadSuccess) onUploadSuccess()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error en la carga')
     } finally {
       setIsUploading(false)
     }
   }
+
+  const handleIniciarPipeline = async () => {
+    if (!activeCollectionId) return
+    setPipelineError('')
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(
+        `${API_BASE}/api/collections/${activeCollectionId}/process`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+      if (!res.ok) throw new Error('Error al iniciar Wukong')
+      setPipelineStatus('processing_text')
+    } catch (e: unknown) {
+      setPipelineError(
+        e instanceof Error ? e.message : 'Error al iniciar el procesamiento',
+      )
+    }
+  }
+
+  // Finalización exitosa (CORREGIDO: No llama a handleClose para no borrar la colección)
+  const handleFinalizarExito = () => {
+    localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+    localStorage.removeItem(MODAL_ETAPA_KEY)
+    onClose()
+    navigate(`/user/colecciones/${activeCollectionId}/buscador`)
+  }
+
+  if (!isOpen) return null
 
   return (
     <div className="mc-overlay" onClick={isLocked ? undefined : handleClose}>
@@ -293,9 +270,13 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
       >
         <div className="mc-header">
           <div>
-            <h2 className="mc-title">Añadir fuentes</h2>
+            <h2 className="mc-title">
+              {etapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}
+            </h2>
             <p className="mc-subtitle">
-              Sube documentos para indexar en tu colección
+              {etapa === 'subida'
+                ? 'Sube documentos para indexar'
+                : 'Construye el grafo de conocimiento'}
             </p>
           </div>
           <button
@@ -307,112 +288,176 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           </button>
         </div>
 
-        <div
-          className={`mc-dropzone${isDragging ? ' dragging' : ''} ${isLocked ? ' disabled' : ''}`}
-          onDragOver={(e) => {
-            e.preventDefault()
-            if (!isLocked) setIsDragging(true)
-          }}
-          onDragEnter={(e) => {
-            e.preventDefault()
-            if (!isLocked) setIsDragging(true)
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setIsDragging(false)
-            if (!isLocked) addFiles(e.dataTransfer.files)
-          }}
-          onClick={() => {
-            if (!isLocked) fileInputRef.current?.click()
-          }}
-        >
-          <input
-            type="file"
-            multiple
-            hidden
-            ref={fileInputRef}
-            accept=".pdf,.txt"
-            onChange={(e) => addFiles(e.target.files)}
-            disabled={isLocked}
-          />
-          <div className="mc-drop-icon">
-            <CloudUpload size={26} />
-          </div>
-          <p className="mc-drop-title">
-            {isDragging
-              ? 'Suelta los archivos aquí'
-              : 'Arrastra tus archivos aquí'}
-          </p>
-          <p className="mc-drop-sub">PDF, o TXT · Máx. 50 MB por archivo</p>
-          <button
-            className="mc-drop-btn"
-            disabled={isLocked}
-            onClick={(e) => {
-              e.stopPropagation()
-              fileInputRef.current?.click()
-            }}
-          >
-            Seleccionar archivos
-          </button>
-        </div>
-
-        {files.length > 0 && (
-          <div className="mc-file-list">
-            {files.map((f, i) => (
-              <div key={`${f.name}-${f.size}`} className="mc-file-item">
-                <FileText size={14} className="mc-file-icon" />
-                <span className="mc-file-name">{f.name}</span>
-                <span className="mc-file-size">{formatSize(f.size)}</span>
-                <button
-                  className="mc-file-remove"
-                  disabled={isLocked}
-                  onClick={() => removeFile(i)}
-                >
-                  <Trash2 size={13} />
-                </button>
+        {etapa === 'subida' ? (
+          <>
+            <div
+              className={`mc-dropzone ${isDragging ? 'dragging' : ''} ${isLocked ? 'disabled' : ''}`}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (!isLocked) setIsDragging(true)
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault()
+                setIsDragging(false)
+                if (!isLocked) setFiles(Array.from(e.dataTransfer.files))
+              }}
+              onClick={() => {
+                if (!isLocked) fileInputRef.current?.click()
+              }}
+            >
+              <input
+                type="file"
+                multiple
+                hidden
+                ref={fileInputRef}
+                accept=".pdf,.txt"
+                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                disabled={isLocked}
+              />
+              <div className="mc-drop-icon">
+                <CloudUpload size={26} />
               </div>
-            ))}
+              <p className="mc-drop-title">
+                {isDragging
+                  ? 'Suelta los archivos'
+                  : 'Arrastra tus archivos aquí'}
+              </p>
+              <p className="mc-drop-sub">PDF o TXT · Máx. 50 MB</p>
+            </div>
+
+            {files.length > 0 && (
+              <div className="mc-file-list">
+                {files.map((f, i) => (
+                  <div key={`${f.name}-${i}`} className="mc-file-item">
+                    <FileText size={14} className="mc-file-icon" />
+                    <span className="mc-file-name">{f.name}</span>
+                    <button
+                      className="mc-file-remove"
+                      disabled={isLocked}
+                      onClick={() =>
+                        setFiles((prev) => prev.filter((_, idx) => idx !== i))
+                      }
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {error && (
+              <p className="mc-error-message">
+                <AlertCircle size={14} /> {error}
+              </p>
+            )}
+            {isUploading && (
+              <p className="mc-success-message">
+                Subiendo {uploadedCount} de {files.length}...
+              </p>
+            )}
+
+            <div className="mc-collection-name">
+              <input
+                type="text"
+                className="mc-input"
+                placeholder="Nombre de colección"
+                value={nombreColeccion}
+                onChange={(e) => setNombreColeccion(e.target.value)}
+                disabled={isLocked}
+              />
+            </div>
+
+            <div className="mc-footer">
+              <button
+                className="mc-btn-cancel"
+                onClick={handleClose}
+                disabled={isLocked}
+              >
+                Cancelar
+              </button>
+              <button
+                className="mc-btn-upload"
+                onClick={handleUpload}
+                disabled={
+                  files.length === 0 || isLocked || !nombreColeccion.trim()
+                }
+              >
+                {isUploading ? 'Subiendo...' : 'Añadir archivos'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="mc-pipeline">
+            <div className="mc-steps">
+              {['processing_text', 'processing_graph', 'graph_ready'].map(
+                (s, idx) => {
+                  const stepLabel = ['Extracción', 'Construcción', 'Listo'][idx]
+                  const isDone =
+                    (s === 'processing_text' &&
+                      (pipelineStatus === 'processing_graph' ||
+                        pipelineStatus === 'graph_ready')) ||
+                    (s === 'processing_graph' &&
+                      pipelineStatus === 'graph_ready') ||
+                    s === pipelineStatus
+                  const isActive =
+                    s === pipelineStatus && pipelineStatus !== 'graph_ready'
+                  return (
+                    <div
+                      key={s}
+                      className={`mc-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
+                    >
+                      <div className="mc-step-icon">
+                        {isActive ? (
+                          <Loader2 size={16} className="mc-spin" />
+                        ) : isDone ? (
+                          <CheckCircle2 size={16} />
+                        ) : (
+                          <div className="mc-step-dot" />
+                        )}
+                      </div>
+                      <span className="mc-step-label">{stepLabel}</span>
+                    </div>
+                  )
+                },
+              )}
+            </div>
+            <p className="mc-pipeline-status">
+              {PIPELINE_LABELS[pipelineStatus]}
+            </p>
+            {pipelineError && (
+              <div className="mc-pipeline-error">
+                <AlertCircle size={14} /> {pipelineError}
+              </div>
+            )}
+            <div className="mc-footer">
+              {pipelineStatus === 'idle' && (
+                <button
+                  className="mc-btn-upload"
+                  onClick={handleIniciarPipeline}
+                >
+                  <Network size={14} /> Generar grafo
+                </button>
+              )}
+              {pipelineStatus === 'graph_ready' && (
+                <button
+                  className="mc-btn-upload"
+                  onClick={handleFinalizarExito}
+                >
+                  <CheckCircle2 size={14} /> Finalizar
+                </button>
+              )}
+              {pipelineStatus === 'error' && (
+                <button
+                  className="mc-btn-upload"
+                  onClick={handleIniciarPipeline}
+                >
+                  Reintentar
+                </button>
+              )}
+            </div>
           </div>
         )}
-
-        {mensaje && <p className="mc-success-message">{mensaje}</p>}
-        {error && <p className="mc-error-message">{error}</p>}
-        {isUploading && (
-          <p className="mc-success-message">
-            Subiendo {uploadedCount + failedCount} de {totalFiles} archivos...
-          </p>
-        )}
-        <div className="mc-collection-name">
-          <input
-            type="text"
-            className="mc-input"
-            placeholder="Nombre de colección"
-            value={nombreColeccion}
-            onChange={(e) => setNombreColeccion(e.target.value)}
-            disabled={isLocked}
-          />
-        </div>
-        <div className="mc-footer">
-          <button
-            className="mc-btn-cancel"
-            onClick={handleClose}
-            disabled={isLocked}
-          >
-            Cancelar
-          </button>
-          <button
-            className="mc-btn-upload"
-            disabled={files.length === 0 || isLocked || !nombreColeccion.trim()}
-            onClick={handleUpload}
-          >
-            {isLocked
-              ? 'Subiendo...'
-              : files.length > 0
-                ? `Añadir ${files.length} archivo${files.length > 1 ? 's' : ''}`
-                : 'Añadir a la colección'}
-          </button>
-        </div>
       </div>
     </div>
   )

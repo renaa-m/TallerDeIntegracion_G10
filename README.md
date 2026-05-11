@@ -29,19 +29,19 @@
 Plataforma web tipo **buscador** (no un chat) que permite a investigadores del IMFD:
 
 1. Subir colecciones de documentos (PDF/TXT)
-2. Definir qué entidades y relaciones quieren extraer (formulario → data model)
-3. Procesar la colección con Wukong para construir un grafo de conocimiento
-4. **Buscar** entidades, relaciones y documentos dentro del grafo generado
+2. Definir qué entidades y relaciones quieren extraer (formulario → `data_model.json`; en paralelo el backend puede usar un modelo por defecto en desarrollo)
+3. Procesar la colección con Wukong para construir un grafo de conocimiento (export `.qm`) y generar **embeddings de chunks** almacenados en **Supabase (pgvector)**
+4. **Buscar** de forma **semántica** sobre fragmentos indexados (`POST /api/search`) cuando la colección está lista; el **grafo en MillenniumDB** queda como línea de evolución para consultas directas al grafo
 
 ### Funcionalidades principales
 
 | Funcionalidad | Descripción |
 |---|---|
-| **Carga de documentos** | El usuario sube PDFs y/o TXTs a una colección. Se guardan tal cual en Supabase (Storage) |
-| **Definición del data model** | El investigador define qué entidades y relaciones quiere extraer mediante un formulario. Esto genera el `data_model.json` que Wukong necesita |
-| **Procesamiento (botón "Procesar")** | El usuario presiona "Procesar" y se dispara todo el pipeline: extracción de texto (Pipeline 1) + construcción del grafo con Wukong (Pipeline 2). Los textos quedan en Supabase, el grafo queda en MillenniumDB |
-| **Búsqueda** | Buscador tipo Google: el usuario escribe una query → FastAPI consulta MillenniumDB (grafo) → devuelve resultados al frontend |
-| **Visualización de grafo** | Cytoscape.js para explorar nodos y aristas interactivamente |
+| **Carga de documentos** | El usuario sube PDFs y/o TXTs a una colección. Se guardan en Supabase **Storage** con registro en la base |
+| **Definición del data model** | Objetivo de producto: formulario en el frontend que produce el `data_model.json` que Wukong consume. Hoy el backend suele apoyarse en `app/services/default_data_model.json` mientras esa persistencia por colección evoluciona |
+| **Procesamiento (“Generar Grafo”)** | `POST /api/collections/{id}/process` devuelve **202 Accepted** y delega en **FastAPI BackgroundTasks** (`wukong_runner.process_collection`). El frontend debe **consultar de forma periódica (polling)** `GET /api/collections/{id}` y revisar `processing_status` / `processing_error_message`. Flujo: extracción (TXT / PyMuPDF / **Google Cloud Vision** en PDFs escaneados) → Wukong → escritura de **`chunk_embeddings`** en Supabase. La **carga automática del `.qm` en MillenniumDB** es **pendiente de integrar** en el código (p. ej. PDT10-121); en muchos entornos el import sigue siendo operación en el servidor IMFD |
+| **Búsqueda** | **`POST /api/search`**: misma familia de modelos que en indexación (**sentence-transformers**, `paraphrase-multilingual-MiniLM-L12-v2`) + RPC SQL **`search_chunks`** sobre `chunk_embeddings`. La colección debe estar en `graph_ready` o `partial_error` |
+| **Visualización** | UI en React: landing, login Auth0, flujo de colección, **buscador por colección**, modales de carga y documentos (no hay Cytoscape en el frontend actual) |
 
 ---
 
@@ -53,8 +53,8 @@ Plataforma web tipo **buscador** (no un chat) que permite a investigadores del I
 Investigador sube archivos (PDF y/o TXT) a una colección
         │
         ▼
-Se guardan TAL CUAL en Supabase (Storage)
-No se procesan todavía. Solo se almacenan.
+Se guardan TAL CUAL en Supabase (Storage) y se registran en la base
+No corre el pipeline hasta usar “Generar Grafo” / POST .../process.
 ```
 
 ### Fase 2 — Definición del data model
@@ -67,14 +67,15 @@ El investigador llena un formulario en el frontend indicando qué quiere extraer
 
 Esto genera un `data_model.json` que Wukong usa para saber exactamente qué extraer.
 
-### Fase 3 — Procesamiento (botón "Procesar")
+> **Implementación actual:** el workdir que arma el backend incluye un `data_model.json` (por defecto copiado desde `app/services/default_data_model.json`, alineado con el conjunto `preview` en Wukong). Cuando el formulario persista un modelo por colección, reemplazará ese archivo en el flujo.
 
-El usuario presiona **"Procesar"** y se dispara el pipeline completo.
-Todo esto pasa **dentro del backend** (el servidor), de forma invisible para el usuario:
+### Fase 3 — Procesamiento (botón “Generar Grafo” / `POST .../process`)
+
+El usuario dispara el procesamiento. La API responde **de inmediato con HTTP 202** y el trabajo sigue en **segundo plano**; no hay que bloquear la UI esperando el fin del pipeline.
 
 ```
-Botón "Procesar"
-        │
+POST /api/collections/{id}/process   →   202 Accepted
+        │   (BackgroundTasks → wukong_runner.process_collection)
         ▼
 ═══════════════════════════════════════════════════════
   PIPELINE 1 — Extracción de texto (por documento)
@@ -84,89 +85,90 @@ Botón "Procesar"
         │
         ▼
   Para cada archivo:
-  ├── Es .txt?          → se usa tal cual, no se procesa
+  ├── Es .txt?          → lectura directa del texto
   ├── PDF digital?      → PyMuPDF extrae el texto
-  └── PDF escaneado?    → OpenAI OCR extrae el texto
+  └── PDF escaneado?    → Google Cloud Vision (OCR por página renderizada)
         │
         ▼
-  Resultado: todos los documentos convertidos a .txt
-  Se guardan en Supabase (como respaldo)
-
-        │
-        ▼
-═══════════════════════════════════════════════════════
-  CARPETA TEMPORAL — Se arma en el servidor (/tmp/)
-═══════════════════════════════════════════════════════
-
-  El backend crea una carpeta temporal en el servidor
-  y la llena con la estructura que Wukong necesita:
-
-  /tmp/coleccion-abc123/
-  ├── docs/
-  │   └── text/
-  │       └── mi-coleccion/
-  │           ├── archivo1.txt   ← vino de un PDF digital
-  │           ├── archivo2.txt   ← vino de un PDF escaneado
-  │           └── archivo3.txt   ← subido como .txt directo
-  └── data_model.json            ← generado del formulario (Fase 2)
-
-  Esta carpeta es TEMPORAL. Se borra al terminar.
+  El texto extraído se guarda en Supabase (tabla de textos / estados por documento)
 
         │
         ▼
 ═══════════════════════════════════════════════════════
-  PIPELINE 2 — Wukong procesa la carpeta
+  CARPETA TEMPORAL — Workdir Wukong (p. ej. bajo /tmp/)
 ═══════════════════════════════════════════════════════
 
-  El backend ejecuta:
-    python -m wukong_engine /tmp/coleccion-abc123/
+  Estructura que espera Wukong (simplificado):
 
-  Wukong lee TODOS los .txt + el data_model.json y:
-    1. Divide cada .txt en pedazos (chunks)
-    2. Usa OpenAI para extraer entidades (personas, sentencias, etc.)
-    3. Usa OpenAI para extraer relaciones (quién votó en qué, etc.)
-    4. Genera el grafo en formato .qm
+  .../docs/text/preview/
+  │     ├── <id-doc>.txt
+  │     └── ...
+  └── data_model.json
 
-  Resultado: /tmp/coleccion-abc123/exports/mdb/  ← archivo .qm
+  Opcional en desarrollo: si defines `WUKONG_ARTIFACTS_DIR`, se conserva una copia del workdir.
 
         │
         ▼
 ═══════════════════════════════════════════════════════
-  CARGA EN MILLENNIUMDB
+  PIPELINE 2 — Wukong procesa el workdir
 ═══════════════════════════════════════════════════════
 
-  El .qm se carga en MillenniumDB (servidor del IMFD):
-    mdb import knowledge_graph.qm /path/to/db
+  El backend ejecuta (subprocess), por ejemplo:
+    python -m wukong_engine <workdir> --config backend/wukong-engine/config/default.toml
 
-  Se borra la carpeta temporal. Fin del procesamiento.
+  Wukong lee los .txt + data_model.json y:
+    1. Divide cada .txt en chunks
+    2. Usa OpenAI para extraer entidades y relaciones
+    3. Emite artefactos bajo exports/ (incl. .qm y JSON de Document / Chunk / …)
+
+        │
+        ▼
+═══════════════════════════════════════════════════════
+  PIPELINE 3 — Índice semántico en Supabase (pgvector)
+═══════════════════════════════════════════════════════
+
+  Con los artefactos de chunks, el backend genera embeddings locales
+  (sentence-transformers) y los inserta en la tabla chunk_embeddings
+  (índice HNSW + RPC search_chunks).
+
+        │
+        ▼
+═══════════════════════════════════════════════════════
+  MillenniumDB (evolución / operación IMFD)
+═══════════════════════════════════════════════════════
+
+  El .qm puede importarse en el servidor IMFD (mdb import …). Ese paso
+  puede ser manual u orquestado según el despliegue; el código actual
+  documenta la integración como trabajo pendiente.
+
+  La carpeta temporal se elimina al terminar (salvo copia vía WUKONG_ARTIFACTS_DIR).
 ```
 
 > **Resumen**:
-> - Los documentos originales y los textos extraídos quedan en **Supabase**
-> - El grafo de conocimiento (entidades + relaciones) queda en **MillenniumDB**
-> - La carpeta temporal en el servidor **se borra** después de procesar
-> - El usuario solo presiona un botón y espera
+> - Originales y textos extraídos quedan en **Supabase**
+> - Chunks + embeddings para búsqueda quedan en **Supabase (`chunk_embeddings`)**
+> - El **grafo lógico** (.qm / MillenniumDB) depende de la operación IMFD y de la integración pendiente
+> - Estados de colección incluyen: `idle`, `processing_text`, `processing_graph`, `graph_ready`, `partial_error`, `error`
 
-### Fase 4 — Búsqueda (el producto principal)
+### Fase 4 — Búsqueda (producto actual)
 
 ```
-Investigador escribe en el buscador: "Pérez González"
+Investigador escribe en el buscador de la colección
         │
         ▼
-FastAPI recibe la query
+POST /api/search  { coleccion_id, query, filtros opcionales, … }
         │
         ▼
-Consulta a MillenniumDB → entidades y relaciones del grafo
+FastAPI genera el embedding de la consulta (mismo modelo que en indexación)
         │
         ▼
-FastAPI devuelve resultados al frontend
+Supabase: RPC search_chunks (similitud coseno; filtros por tipo / años si aplica)
         │
         ▼
-Frontend muestra:
-  ├── Grafo interactivo (Cytoscape.js)
-  ├── Lista de entidades encontradas
-  ├── Documentos/fragmentos relacionados
-  └── Filtros por tipo, colección, fecha
+FastAPI devuelve fragmentos, score y enlace firmado al PDF cuando corresponde
+        │
+        ▼
+Frontend muestra lista de resultados relevantes a la colección
 ```
 
 ---
@@ -174,6 +176,8 @@ Frontend muestra:
 ## Arquitectura del Sistema
 
 ### Diagrama A — Flujo de carga y procesamiento
+
+Misma forma que en la rama **main** (pasos numerados 0–10, mismos bloques Browser / Auth0 / GCP / IMFD). Actualización respecto a `main`: **BackgroundTasks** en lugar de Cloud Tasks, **Cloud Vision** en lugar de OpenAI para OCR, **Pipeline 2** incluye embeddings y **10a/10b** separan índice en Supabase del export **.qm** hacia IMFD.
 
 ```mermaid
 graph LR
@@ -187,17 +191,18 @@ graph LR
 
     subgraph GCP ["Google Cloud Platform"]
         API[FastAPI\nCloud Run]
-        SUPA[(Supabase\nDB + Storage)]
-        CT[Cloud Tasks]
+        SUPA[(Supabase\nDB + pgvector)]
+        BT[BackgroundTasks\nHTTP 202]
 
         subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
-            OCR[OpenAI OCR]
+            VISION[Cloud Vision\nOCR]
             PYMUPDF[PyMuPDF]
             TXT_PASS[Ya es .txt\nsin procesar]
         end
 
-        subgraph Pipeline_2 ["Pipeline 2 — Construcción de grafo"]
+        subgraph Pipeline_2 ["Pipeline 2 — Grafo e índice semántico"]
             WK[Wukong]
+            EMB[Embeddings\nsentence-transformers]
         end
     end
 
@@ -210,19 +215,23 @@ graph LR
     U -->|"1. Sube PDF/TXT"| API
     API -->|"2. Guarda originales"| SUPA
     U -->|"3. Define data model (formulario)"| API
-    API -->|"4. Guarda data_model.json"| SUPA
+    API -->|"4. data_model.json\n"| SUPA
     U -->|"5. Botón PROCESAR"| API
-    API -->|"6. Lanza pipeline"| CT
-    CT -->|"7a. PDF digital"| PYMUPDF
-    CT -->|"7b. PDF escaneado"| OCR
-    CT -->|"7c. Archivo .txt"| TXT_PASS
-    Pipeline_1 -->|"8. Textos .txt"| SUPA
-    SUPA -->|"9a. Todos los .txt"| WK
-    SUPA -->|"9b. data_model.json"| WK
-    WK -->|"10. .qm"| MDB
+    API -->|"6. Encola pipeline"| BT
+    BT -->|"7a. PDF digital"| PYMUPDF
+    BT -->|"7b. PDF escaneado"| VISION
+    BT -->|"7c. Archivo .txt"| TXT_PASS
+    Pipeline_1 -->|"8. Textos + estados"| SUPA
+    SUPA -->|"9a. Textos"| WK
+    SUPA -->|"9b. data_model"| WK
+    WK --> EMB
+    EMB -->|"10a. chunk_embeddings"| SUPA
+    WK -.->|"10b. .qm\n(import según entorno)"| MDB
 ```
 
-### Diagrama B — Flujo de consulta/búsqueda
+### Diagrama B — Flujo de consulta / búsqueda
+
+Misma composición que en **main**: `graph RL`, tres bloques (navegador, **Google Cloud Platform** con solo FastAPI, y un bloque de **servidor de datos** — en `main` era IMFD/MillenniumDB; aquí **Supabase** cumple ese rol para la búsqueda productiva). Cuatro pasos numerados 1–4 como en el original.
 
 ```mermaid
 graph RL
@@ -234,38 +243,40 @@ graph RL
         API[FastAPI\nCloud Run]
     end
 
-    subgraph IMFD_servers ["Servidores IMFD"]
-        MDB[(MillenniumDB)]
+    subgraph Data_platform ["Supabase"]
+        SUPA[(Postgres + pgvector)]
     end
 
     U -->|"1. Query de búsqueda (HTTPS)"| API
-    API -->|"2. Consulta grafo (WebSocket)"| MDB
-    MDB -->|"3. Entidades + relaciones (JSON)"| API
+    API -->|"2. Embedding local +\nRPC search_chunks"| SUPA
+    SUPA -->|"3. Chunks + similitud"| API
     API -->|"4. Resultados (JSON)"| U
 ```
+
+> Consultas interactivas directas al grafo en **MillenniumDB** (WebSocket) son un flujo aparte, no el que ejecuta hoy `POST /api/search`.
 
 ### Protocolos de comunicación
 
 | Conexión | Protocolo | Detalle |
 |---|---|---|
-| Browser ↔ FastAPI | **HTTPS** | Requests REST. Frontend hace `fetch()` a la API |
-| Browser → Auth0 | **HTTPS (OAuth2)** | Redirect al login de Auth0, devuelve JWT |
-| FastAPI → Auth0 | **HTTPS (JWKS)** | Descarga las public keys de Auth0 para validar tokens JWT |
-| FastAPI → Supabase | **HTTPS (REST API)** | Cliente de Supabase con anon key para DB + Storage |
-| FastAPI → MillenniumDB | **WebSocket** | Driver oficial `millenniumdb-driver` se conecta vía `ws://host:port` |
-| FastAPI → OpenAI | **HTTPS (REST API)** | Llamadas a la API de OpenAI para OCR de PDFs escaneados |
-| FastAPI → Cloud Tasks | **gRPC (GCP SDK)** | Crea tasks en la cola de GCP |
-| FastAPI ↔ Wukong | **Python (local)** | Wukong es un paquete Python instalado en el backend. Se llama directo |
-| Wukong → OpenAI | **HTTPS (REST API)** | Wukong usa OpenAI internamente para extraer entidades/relaciones |
+| Browser ↔ FastAPI | **HTTPS** (producción) / **HTTP** (local) | REST; CORS permite el origen del dev server de Vite |
+| Browser → Auth0 | **HTTPS (OAuth2)** | Login; el front obtiene JWT para la API |
+| FastAPI → Auth0 | **HTTPS (JWKS)** | Validación de JWT (middleware) |
+| FastAPI → Supabase | **HTTPS (REST)** | Cliente PostgREST / Storage / RPC (`search_chunks`, etc.) |
+| FastAPI → Google Cloud Vision | **API cliente oficial** | Credenciales vía `GOOGLE_APPLICATION_CREDENTIALS` |
+| FastAPI → MillenniumDB | **WebSocket** | Driver `millenniumdb_driver` (`ws://host:puerto`) cuando se use desde el backend |
+| FastAPI → OpenAI | **HTTPS** | **Wukong** (entidades/relaciones); no reemplaza el OCR escaneado, que es Vision |
+| Embeddings | **Proceso local** | `sentence-transformers` (sin API key; descarga modelo a caché) |
+| FastAPI ↔ Wukong | **Subproceso Python** | `python -m wukong_engine` en el mismo contenedor / máquina |
+| Cloud Tasks | **(Reservado)** | Variables en `config.py`; el flujo **implementado** hoy usa **BackgroundTasks**, no Cloud Tasks |
 
 ### Notas clave
 
-- **FastAPI sirve todo**: la API REST y el frontend estático compilado (React/Vite). No hay Firebase ni hosting separado.
-- **Auth0** es externo a GCP. Maneja login (OAuth2) y emite tokens JWT que FastAPI valida.
-- **MillenniumDB** corre en servidores del IMFD (fuera de GCP). FastAPI se conecta vía WebSocket usando el driver oficial (`millenniumdb-driver`).
-- **Wukong** ya está incluido como git submodule en `backend/wukong-engine/`. Se instala como paquete Python local. No es un servicio HTTP externo.
-- **Cloud Tasks** maneja los jobs de procesamiento de forma asíncrona dentro de GCP.
-- **Archivos `.txt`** subidos directamente se guardan en Supabase sin pasar por Pipeline 1 (ya son texto plano).
+- **FastAPI sirve**: la API REST y, si existe el build, el frontend estático bajo `backend/static/` (catch-all SPA).
+- **Auth0** es externo. JWT validados en rutas protegidas.
+- **Búsqueda entregada al usuario** hoy es **vectorial sobre chunks en Supabase**, no una consulta obligatoria a MillenniumDB por cada búsqueda.
+- **Wukong** es submódulo en `backend/wukong-engine/`; hay que instalarlo con pip **editable** (ver setup).
+- **Archivos .txt** subidos se procesan igual que otros: se normalizan a texto en Pipeline 1 (lectura directa), no se “saltan” el pipeline de extracción en el sentido de omitir el paso de registro de texto.
 
 ---
 
@@ -274,13 +285,15 @@ graph RL
 | Capa | Tecnología | Versión |
 |---|---|---|
 | Frontend | React + TypeScript + Vite | React 19, Vite 8, Node 20 |
-| Backend / API | FastAPI (Python) en Cloud Run | Python 3.13, FastAPI 0.115 |
+| Backend / API | FastAPI (Python), despliegue típico Cloud Run | Python 3.13, FastAPI 0.115 |
 | Autenticación | Auth0 (JWT / OAuth2) | Servicio externo |
-| Base de datos + Storage | Supabase (DB + Storage) | — |
-| Extracción de texto | PyMuPDF + OpenAI (OCR) | — |
-| Grafo de conocimiento + Búsqueda | Wukong (IMFD) → MillenniumDB (IMFD) | Python 3.13 |
-| Cola de tareas | Cloud Tasks (GCP) | — |
-| Visualización de grafo | Cytoscape.js (react-cytoscapejs) | — |
+| Base de datos + Storage + vectores | Supabase (Postgres, Storage, **pgvector**) | — |
+| Extracción de texto | PyMuPDF + **Google Cloud Vision** (OCR escaneados) | `google-cloud-vision` |
+| Grafo de conocimiento | Wukong (IMFD) → export `.qm` | Python 3.13 |
+| Búsqueda semántica | **sentence-transformers** + Supabase `search_chunks` | `paraphrase-multilingual-MiniLM-L12-v2` |
+| Grafo en IMFD | MillenniumDB + driver WebSocket | — |
+| Orquestación async (actual) | FastAPI **BackgroundTasks** | — |
+| Cola (planeada / env) | Cloud Tasks (GCP) | Variables preparadas en config |
 | CI/CD | GitHub Actions → Cloud Run | — |
 
 > **Nota sobre Python**: Wukong requiere Python 3.13+. El backend usa la misma versión para compatibilidad.
@@ -296,55 +309,67 @@ TallerDeIntegracion_G10/
 │       └── ci.yml              # Pipeline CI: lint + test en cada push/PR a main
 ├── backend/
 │   ├── app/
-│   │   ├── __init__.py         # Marca app/ como paquete Python
-│   │   ├── main.py             # Punto de entrada FastAPI: CORS, rutas, hosting estático
-│   │   ├── config.py           # Variables de entorno tipadas con Pydantic Settings
+│   │   ├── __init__.py
+│   │   ├── main.py             # FastAPI: CORS, routers, static SPA si existe
+│   │   ├── config.py           # Pydantic Settings
 │   │   ├── api/
 │   │   │   ├── __init__.py
 │   │   │   └── routes/
 │   │   │       ├── __init__.py
-│   │   │       ├── health.py        # GET /health y GET /ready (Cloud Run health checks)
-│   │   │       └── collections.py   # GET y POST /api/collections (esqueleto Sprint 1)
-│   │   ├── models/
-│   │   │   ├── __init__.py
-│   │   │   └── document.py          # Schema Pydantic para documentos
-│   │   ├── services/
-│   │   │   ├── __init__.py
-│   │   │   └── supabase_client.py   # Cliente Supabase (DB + Storage)
-│   │   └── middleware/         # Autenticación JWT con Auth0 (por crear)
-│   │       └── __init__.py
+│   │   │       ├── health.py        # GET /health, GET /ready
+│   │   │       ├── collections.py   # CRUD colecciones + POST .../process (202)
+│   │   │       ├── documentos.py   # Carga y gestión de documentos
+│   │   │       ├── usuarios.py     # Perfil / cuenta (prefijo /usuarios)
+│   │   │       └── search.py       # POST /api/search
+│   │   ├── middleware/
+│   │   │   └── auth.py             # JWT Auth0
+│   │   ├── models/                 # Pydantic (documentos, búsqueda, …)
+│   │   └── services/
+│   │       ├── supabase_client.py  # DB, Storage, chunk_embeddings, RPC búsqueda
+│   │       ├── text_extraction.py  # TXT / PyMuPDF / Vision
+│   │       ├── wukong_runner.py    # Orquestación post “Generar Grafo”
+│   │       ├── embeddings_service.py
+│   │       ├── millenniumdb.py     # Cliente WebSocket (consultas grafo)
+│   │       └── default_data_model.json
 │   ├── supabase/
 │   │   └── migrations/
-│   │       ├── 001_initial_schema.sql   # Schema inicial: tablas collections y documents
-│   │       └── 002_storage_bucket.sql   # Bucket 'documentos' y políticas RLS de storage
-│   ├── wukong-engine/          # Submodule de Wukong (ya incluido)
+│   │       ├── 001_initial_schema.sql
+│   │       ├── 002_storage_bucket.sql
+│   │       ├── 003_collection_processing_status.sql
+│   │       ├── 003_collections_processing.sql
+│   │       ├── 003_document_sha256_hash.sql
+│   │       └── 004_chunk_embeddings.sql
+│   ├── wukong-engine/          # Submodule Wukong
 │   ├── tests/
 │   │   ├── __init__.py
-│   │   └── test_health.py      # Tests de los endpoints /health y /ready
-│   ├── requirements.txt        # Dependencias Python (incluye ./wukong-engine)
-│   ├── Dockerfile              # Imagen Docker del backend para Cloud Run
-│   └── .env.example            # Plantilla de variables de entorno
+│   │   ├── test_health.py
+│   │   ├── test_documentos.py
+│   │   ├── test_text_extraction.py
+│   │   └── test_wukong_runner.py
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── .env.example
 ├── frontend/
 │   ├── src/
-│   │   ├── main.tsx            # Punto de entrada: monta React en el DOM
-│   │   ├── App.tsx             # Componente raíz
-│   │   ├── App.css             # Estilos del componente App
-│   │   ├── index.css           # Estilos globales
-│   │   └── assets/             # Imágenes y recursos estáticos
-│   ├── public/                 # Archivos servidos directamente (favicon)
-│   ├── index.html              # HTML base donde se monta React
-│   ├── package.json            # Dependencias y scripts npm
-│   ├── package-lock.json       # Lockfile de npm
-│   ├── tsconfig.json           # Config base de TypeScript
-│   ├── tsconfig.app.json       # Config TS para código de la app
-│   ├── tsconfig.node.json      # Config TS para archivos de config (vite.config.ts)
-│   ├── vite.config.ts          # Configuración de Vite (bundler y dev server)
-│   ├── eslint.config.js        # ESLint con integración Prettier
-│   ├── .prettierrc             # Formato: sin punto y coma, comillas simples, 2 espacios
-│   └── .gitignore              # Ignora node_modules/ y dist/
-├── Dockerfile                  # Build completo (frontend + backend) para Cloud Run
-├── docker-compose.yml          # Desarrollo local con Docker
-├── .gitignore                  # Exclusiones globales del repo
+│   │   ├── main.tsx
+│   │   ├── App.tsx
+│   │   ├── App.css
+│   │   ├── index.css
+│   │   ├── pages/              # landing, login, buscador_coleccion, navbar, …
+│   │   ├── components/         # modales (carga, documentos, eliminar, …)
+│   │   └── assets/
+│   ├── public/
+│   ├── index.html
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── tsconfig*.json
+│   ├── vite.config.ts
+│   ├── eslint.config.js
+│   ├── .prettierrc
+│   └── .gitignore
+├── Dockerfile
+├── docker-compose.yml
+├── .gitignore
 └── README.md                   # Este archivo
 ```
 
@@ -352,15 +377,18 @@ TallerDeIntegracion_G10/
 
 | Archivo | Qué hace |
 |---|---|
-| `backend/app/main.py` | Crea la app FastAPI, configura CORS, registra rutas. En producción, sirve el frontend compilado como archivos estáticos (SPA catch-all) |
-| `backend/app/config.py` | Lee las variables de entorno del `.env` y las expone como un objeto tipado. Si falta una variable obligatoria, la app falla al arrancar con error claro |
-| `backend/app/api/routes/health.py` | Dos endpoints que Cloud Run usa para saber si el contenedor está vivo (`/health`) y listo para tráfico (`/ready`) |
-| `backend/requirements.txt` | Dependencias Python con versiones exactas. Incluye `./wukong-engine` para instalar Wukong como paquete local |
-| `backend/.env.example` | Plantilla con todas las variables de entorno necesarias. Cada dev la copia como `.env` y pone sus credenciales reales |
-| `backend/Dockerfile` | Imagen Docker multi-stage del backend. Instala dependencias, copia código y sirve en puerto 8080 |
-| `Dockerfile` (raíz) | Build completo: compila el frontend (Node 20) + backend (Python 3.13) en una sola imagen para Cloud Run |
-| `docker-compose.yml` | Levanta el backend en local con hot reload. Monta el código y el build del frontend |
-| `.github/workflows/ci.yml` | Pipeline CI que corre en cada push/PR a main: linter + tests del backend, linter + build del frontend |
+| `backend/app/main.py` | App FastAPI, CORS, inclusión de rutas, montaje estático `/assets` y SPA si `backend/static/` existe |
+| `backend/app/config.py` | Variables de entorno tipadas |
+| `backend/app/api/routes/collections.py` | Colecciones + **`POST /{id}/process`** (202, BackgroundTasks) |
+| `backend/app/api/routes/search.py` | **`POST /api/search`** (embeddings + Supabase) |
+| `backend/app/services/wukong_runner.py` | Pipeline extracción → Wukong → embeddings → estados de colección |
+| `backend/supabase/migrations/004_chunk_embeddings.sql` | Tabla vectorial + función `search_chunks` |
+| `backend/requirements.txt` | Dependencias Python (no incluye el submódulo Wukong; instalar aparte con `-e`) |
+| `backend/.env.example` | Plantilla de variables (Vision, Supabase service role, Auth0 M2M, etc.) |
+| `backend/Dockerfile` | Imagen del backend |
+| `Dockerfile` (raíz) | Build frontend + backend para Cloud Run |
+| `docker-compose.yml` | Dev local con hot reload |
+| `.github/workflows/ci.yml` | CI backend (ruff, pytest) + frontend (eslint, prettier, build) |
 
 ---
 
@@ -368,11 +396,12 @@ TallerDeIntegracion_G10/
 
 | Herramienta | Versión mínima | Para qué |
 |---|---|---|
-| **Python** | 3.13+ | Backend + Wukong (ambos requieren 3.13) |
-| **Node.js** | 20+ | Frontend (React + Vite) |
-| **npm** | 10+ | Gestor de paquetes del frontend |
-| **Git** | 2.x | Control de versiones |
-| **Docker** | 24+ | (Opcional) Desarrollo local con contenedores |
+| **Python** | 3.13+ | Backend + Wukong |
+| **Node.js** | 20+ | Frontend |
+| **npm** | 10+ | Frontend |
+| **Git** | 2.x | Submódulo `wukong-engine` |
+| **Docker** | 24+ | (Opcional) Desarrollo con contenedores |
+| **Cuenta / clave GCP** | — | Solo si pruebas el OCR con **Cloud Vision** |
 
 > **Tip**: Para manejar múltiples versiones de Python, se recomienda usar [pyenv](https://github.com/pyenv/pyenv).
 
@@ -387,7 +416,7 @@ git clone https://github.com/your-org/TallerDeIntegracion_G10.git
 cd TallerDeIntegracion_G10
 ```
 
-Wukong viene como submodule, así que hay que inicializarlo:
+Wukong viene como submodule:
 
 ```bash
 git submodule update --init --recursive
@@ -398,59 +427,60 @@ git submodule update --init --recursive
 ```bash
 cd backend
 
-# Crear y activar entorno virtual con Python 3.13
 python3.13 -m venv .venv
 source .venv/bin/activate        # En Windows: .venv\Scripts\activate
 
-# Instalar dependencias (incluye Wukong)
 pip install -r requirements.txt
+pip install -e ./wukong-engine
 
-# Configurar variables de entorno
 cp .env.example .env
-# Abrir .env y llenar con tus credenciales (ver sección Variables de Entorno)
+# Completar .env (ver Variables de Entorno)
 
-# Levantar el servidor de desarrollo
 uvicorn app.main:app --reload --port 8080
 ```
 
-El backend queda disponible en:
+Comprobar que exista `wukong-engine/config/default.toml` dentro del submódulo.
+
+El backend queda en:
 - API: `http://localhost:8080`
-- Docs interactivos (Swagger): `http://localhost:8080/docs`
-- Docs alternativo (ReDoc): `http://localhost:8080/redoc`
+- Swagger: `http://localhost:8080/docs`
+- ReDoc: `http://localhost:8080/redoc`
 
 ### 3. Supabase
 
-El proyecto Supabase **ya existe y es compartido del equipo** — no hay que crear uno nuevo.
+El proyecto Supabase **es compartido del equipo**.
 
-- **Credenciales**: pedir `SUPABASE_URL` y `SUPABASE_KEY` al equipo por un canal seguro (no compartir por GitHub ni chat público). Una vez obtenidas, pegarlas en el `.env` local.
-- **Migraciones**: ya fueron corridas sobre el proyecto compartido. No hay que volver a ejecutarlas.
+- Pedir credenciales por un canal seguro (`SUPABASE_URL`, keys, etc.).
+- Las **migraciones** en el repo son la referencia del esquema (incluye pgvector); en el proyecto compartido pueden ya estar aplicadas.
 
 ### 4. Frontend
 
 ```bash
 cd frontend
-
-# Instalar dependencias
 npm install
+```
 
-# Levantar el servidor de desarrollo
+Variables opcionales en `frontend/.env` (Vite):
+
+```env
+VITE_API_URL=http://localhost:8080
+VITE_AUTH0_DOMAIN=...
+VITE_AUTH0_CLIENT_ID=...
+VITE_AUTH0_AUDIENCE=...
+```
+
+```bash
 npm run dev
 ```
 
-El frontend queda disponible en `http://localhost:5173`.
+Suele quedar en `http://localhost:5173`.
 
 ### 5. Verificar que todo funciona
 
 ```bash
-# Desde la raíz del proyecto:
-
-# Backend — tests
 cd backend && source .venv/bin/activate && pytest tests/ -v
-
-# Backend — linter
 ruff check app/ tests/
 
-# Frontend — linter + build
 cd ../frontend && npm run lint && npm run format:check && npm run build
 ```
 
@@ -458,79 +488,62 @@ cd ../frontend && npm run lint && npm run format:check && npm run build
 
 ## Variables de Entorno
 
-El backend necesita un archivo `.env` dentro de `backend/`. Copia la plantilla y llena tus credenciales:
-
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-### Referencia completa
+### Referencia (alineada al código; revisar siempre `backend/.env.example`)
 
 ```env
-# ──────────────────────────────────────────────
-# OpenAI — REQUERIDO
-# Se usa para: OCR de PDFs escaneados.
-# Wukong también lo usa internamente para extraer entidades/relaciones.
-# Formato: pegar la key TAL CUAL, sin comillas.
-# ──────────────────────────────────────────────
-OPENAI_API_KEY=sk-proj-abc123...
+# OpenAI — Wukong (extracción con LLM). Sin comillas.
+OPENAI_API_KEY=
 
-# ──────────────────────────────────────────────
-# Supabase — Base de datos + Storage
-# ──────────────────────────────────────────────
+# Supabase
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_KEY=eyJhbGciOiJIUz...
+SUPABASE_KEY=your-anon-key
+SUPABASE_SERVICE_KEY=your-service-role-key
 
-# ──────────────────────────────────────────────
-# Auth0 — Autenticación
-# ──────────────────────────────────────────────
+# Auth0
 AUTH0_DOMAIN=your-tenant.auth0.com
 AUTH0_API_AUDIENCE=https://your-api-identifier
+AUTH0_M2M_CLIENT_ID=...
+AUTH0_M2M_CLIENT_SECRET=...
 
-# ──────────────────────────────────────────────
-# MillenniumDB — Servidores del IMFD
-# Host y puerto donde corre el servidor mdb
-# ──────────────────────────────────────────────
-MILLENNIUMDB_HOST=imfd-server.example.com
+# MillenniumDB (driver WebSocket)
+MILLENNIUMDB_HOST=localhost
 MILLENNIUMDB_PORT=1234
 
-# ──────────────────────────────────────────────
-# GCP Cloud Tasks — Pipeline asíncrono
-# ──────────────────────────────────────────────
-GCP_PROJECT_ID=your-gcp-project
-CLOUD_TASKS_QUEUE=your-queue-name
-CLOUD_TASKS_LOCATION=us-central1
+# Google Cloud Vision (PDF escaneados)
+GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json
+GCP_PROJECT_ID=your-gcp-project-id
 
-# ──────────────────────────────────────────────
-# App
-# ──────────────────────────────────────────────
+# Opcional: copia del workdir Wukong tras cada run (depuración)
+WUKONG_ARTIFACTS_DIR=
+
+# Cloud Tasks (reservado; pipeline actual = BackgroundTasks)
+CLOUD_TASKS_QUEUE=
+CLOUD_TASKS_LOCATION=
+
+# HU-13: reintentos de subida a Storage
+MAX_UPLOAD_RETRIES=3
+UPLOAD_RETRY_DELAY_SECONDS=1.0
+
 DEBUG=true
 ```
 
-> **Importante sobre `OPENAI_API_KEY`**: Pegar la key directamente, **sin comillas**. Ejemplo correcto:
-> ```
-> OPENAI_API_KEY=sk-proj-abc123xyz456...
-> ```
-> Ejemplo incorrecto:
-> ```
-> OPENAI_API_KEY="sk-proj-abc123xyz456..."   # ← NO usar comillas
-> ```
-
-> **Importante**: El archivo `.env` **nunca** se sube al repositorio (está en el `.gitignore`). Cada desarrollador tiene el suyo.
+> **Importante**: `OPENAI_API_KEY` sin comillas. El `.env` no se sube al repo.
 
 ---
 
 ## CI/CD
 
-El archivo `.github/workflows/ci.yml` define un pipeline que se ejecuta automáticamente en cada **push** y **pull request** a `main`.
+El archivo `.github/workflows/ci.yml` corre en **push** y **pull request** a `main`.
 
 | Job | Qué hace |
 |---|---|
-| **Backend** | Instala Python 3.13, instala dependencias, corre `ruff check` (linter) y `pytest` (tests) |
-| **Frontend** | Instala Node 20, instala dependencias, corre `eslint` (linter), `prettier --check` (formato) y `npm run build` (compilación TypeScript + Vite) |
-
-Ambos jobs corren **en paralelo**. Si alguno falla, el PR queda bloqueado hasta que se corrija.
+| **Backend** | Python 3.13, dependencias, `ruff check`, `pytest` |
+| **Frontend** | Node 20, `eslint`, `prettier --check`, `npm run build` |
 
 ---
 
@@ -544,164 +557,105 @@ source .venv/bin/activate
 pytest tests/ -v
 ```
 
-Tests actuales:
-- `test_health_check` — verifica que `GET /health` devuelve `{"status": "healthy"}`
-- `test_readiness_check` — verifica que `GET /ready` devuelve `{"status": "ready"}`
+Tests (módulos):
+
+- `test_health.py` — `/health`, `/ready`
+- `test_documentos.py` — rutas de documentos
+- `test_text_extraction.py` — extracción de texto
+- `test_wukong_runner.py` — orquestación del runner
 
 ### Frontend
 
 ```bash
 cd frontend
-npm run lint            # Errores de código
-npm run format:check    # Verifica formato (sin modificar archivos)
-npm run build           # Compila TypeScript + Vite (detecta errores de tipos/imports)
+npm run lint
+npm run format:check
+npm run build
 ```
 
 ---
 
 ## Integración con Wukong
 
-[Wukong](https://github.com/MillenniumDB/wukong-engine) es el motor que construye grafos de conocimiento a partir de documentos de texto. **Ya está incluido en el repositorio** como git submodule en `backend/wukong-engine/`.
-
-Al clonar el repo, se descarga automáticamente con:
+[Wukong](https://github.com/MillenniumDB/wukong-engine) construye el grafo a partir de textos + `data_model.json`. Está en **`backend/wukong-engine/`** (submódulo).
 
 ```bash
 git clone --recurse-submodules https://github.com/renaa-m/TallerDeIntegracion_G10.git
-```
-
-Si ya tienes el repo clonado y la carpeta `backend/wukong-engine/` está vacía:
-
-```bash
+# o, si ya clonaste:
 git submodule update --init --recursive
 ```
 
-`requirements.txt` ya incluye la línea `./wukong-engine` que le dice a pip que instale Wukong como paquete Python local.
-
-### Qué necesita Wukong para correr
-
-1. **`OPENAI_API_KEY`** — la misma variable de entorno que usa el backend.
-2. **Un directorio de datos** con esta estructura:
-
-```
-data-dir/
-├── docs/
-│   └── text/
-│       └── nombre-coleccion/
-│           ├── documento_1.txt
-│           ├── documento_2.txt
-│           └── ...
-└── data_model.json
-```
-
-3. **El `data_model.json`** — generado desde el formulario del frontend. Define:
-   - `parameters`: contexto, rol del LLM, idioma
-   - `entities`: tipos de entidades a extraer (con propiedades, primary key, descripción)
-   - `relations`: tipos de relaciones entre entidades
-
-### Cómo se ejecuta Wukong
+En `backend/`, tras `pip install -r requirements.txt`:
 
 ```bash
-# Desde el directorio de wukong-engine:
-python -m wukong_engine <path/to/data_dir>
-
-# Con configuración custom:
-python -m wukong_engine <path/to/data_dir> --config <path/to/config.toml>
+pip install -e ./wukong-engine
 ```
 
-### Qué produce Wukong
+(`requirements.txt` **no** declara el paquete local del submódulo en todas las ramas; el comando anterior es el esperado.)
 
-El output se guarda en `<data_dir>/exports/` y contiene:
-- **`knowledge_graph.qm`** — el archivo que se carga en MillenniumDB
-- Archivos JSON y CSV con las entidades y relaciones extraídas
+### Qué necesita Wukong
 
-El grafo incluye entidades especiales `Document` y `Chunk`, y relaciones `ChunkOf` y `ExtractedFrom` para trazabilidad.
+1. **`OPENAI_API_KEY`**
+2. **Workdir** con `docs/text/<conjunto>/` y `data_model.json` (el runner usa el conjunto `preview` acorde a `default_data_model.json`)
+3. **Config** TOML, p. ej. `wukong-engine/config/default.toml`
+
+### Ejecución manual
+
+```bash
+python -m wukong_engine <path/to/data_dir> --config backend/wukong-engine/config/default.toml
+```
+
+### Salida
+
+En `<data_dir>/exports/` aparecen el **`.qm`** y JSON/CSV de entidades y relaciones. El backend adicionalmente genera filas en **`chunk_embeddings`** para la búsqueda semántica.
 
 ---
 
 ## Integración con MillenniumDB
 
-[MillenniumDB](https://github.com/MillenniumDB/MillenniumDB) es la base de datos de grafos del IMFD. Corre en **servidores del IMFD** (fuera de GCP). El backend se comunica con ella vía HTTP.
+[MillenniumDB](https://github.com/MillenniumDB/MillenniumDB) corre en servidores del IMFD. **Las consultas desde el driver Python usan WebSocket** (`ws://host:puerto`), no HTTP REST directo en ese paso.
 
-### Comandos principales de MillenniumDB
+### CLI (operación típica en el servidor)
 
 ```bash
-# 1. Importar un archivo .qm para crear la base de datos
 mdb import knowledge_graph.qm /path/to/mi-db
-
-# 2. Levantar el servidor para recibir consultas HTTP
 mdb server /path/to/mi-db --port 1234 --timeout 3600
 ```
 
-### Cómo consultar MillenniumDB desde el backend
+El proceso `mdb server` es el que expone el endpoint que consume el driver vía WebSocket.
 
-Se usa el [driver oficial de Python](https://pypi.org/project/millenniumdb-driver/) que se conecta vía WebSocket:
+### Ejemplo de driver en Python
 
 ```python
 import millenniumdb_driver
 
 driver = millenniumdb_driver.driver("ws://localhost:1234")
 session = driver.session()
-
 result = session.run(
     "MATCH (?person :Persona)-[:VotaEn]->(?sent :Sentencia) RETURN *"
 )
-data = result.data()   # lista de dicts
+data = result.data()
 driver.close()
 ```
 
-El servicio `backend/app/services/millenniumdb.py` ya tiene esto encapsulado. Solo hay que llamar:
-
-```python
-from app.services.millenniumdb import query_graph
-
-resultados = query_graph(
-    "MATCH (?p :Persona) WHERE ?p.nombre = ?nombre RETURN *",
-    {"nombre": "Juan Pérez"},
-)
-```
-
-### Formato del archivo .qm (Quad Model)
-
-```
-# Nodos (entidades) — id :Label propiedad:"valor"
-a0 :Persona nombre:"Juan Pérez" edad:45
-s0 :Sentencia rol:"13500-2025" fecha:"T20250115"
-
-# Aristas (relaciones) — origen->destino :Label propiedad:"valor"
-a0->s0 :VotaEn decision:"A Favor"
-```
+Encapsulación en el repo: `backend/app/services/millenniumdb.py` (`query_graph`, etc.). La **búsqueda principal del producto actual** no depende de esta integración en cada petición del buscador.
 
 ---
 
 ## Docker
 
-### Desarrollo local (solo backend)
+### Desarrollo local
 
 ```bash
 docker compose up --build
 ```
 
-Esto levanta el backend en `http://localhost:8080` con hot reload. Si quieres probar el hosting del frontend integrado:
+Con frontend integrado en el mismo contenedor: compila antes `npm run build` en `frontend/` según `docker-compose.yml`.
+
+### Imagen de producción (raíz)
 
 ```bash
-# Primero compilar el frontend
-cd frontend && npm run build && cd ..
-
-# Luego levantar con Docker (monta frontend/dist como static/)
-docker compose up --build
-```
-
-### Build de producción (imagen completa para Cloud Run)
-
-```bash
-# Desde la raíz del proyecto
 docker build -t imfd-explorer:latest .
-```
-
-Esto crea una sola imagen que incluye el frontend compilado + el backend, lista para Cloud Run.
-
-```bash
-# Probar localmente
 docker run -p 8080:8080 --env-file backend/.env imfd-explorer:latest
 ```
 

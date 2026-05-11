@@ -25,7 +25,7 @@ class TestPurgeCompleteUser:
 
         result = purge_complete_user(MOCK_USER_ID)
 
-        assert result == {"status": "success"}
+        assert result == {"status": "success", "user_id": MOCK_USER_ID}
         mock_auth0.users.delete.assert_called_once_with(MOCK_USER_ID)
         mock_supabase.table.assert_called_once_with("collections")
 
