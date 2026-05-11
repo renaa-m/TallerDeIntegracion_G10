@@ -92,7 +92,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const createCollection = async (): Promise<CollectionResponse> => {
     const token = await getAccessTokenSilently()
     ////CAMBIAR POR LINK DEPLOY
-    const response = await fetch('http://localhost:8000/api/collections', {
+    const response = await fetch('http://localhost:8080/api/collections', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -124,7 +124,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     formData.append('file', file)
     ////CAMBIAR POR LINK DEPLOY
     const response = await fetch(
-      `http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
+      `http://localhost:8080/api/documentos/upload?coleccion_id=${collectionId}`,
       {
         method: 'POST',
         headers: {
