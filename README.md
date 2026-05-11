@@ -191,7 +191,7 @@ graph LR
 
     subgraph GCP ["Google Cloud Platform"]
         API[FastAPI\nCloud Run]
-        SUPA[(Supabase\nDB + Storage\n+ pgvector)]
+        SUPA[(Supabase\nDB + pgvector)]
         BT[BackgroundTasks\nHTTP 202]
 
         subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
@@ -215,7 +215,7 @@ graph LR
     U -->|"1. Sube PDF/TXT"| API
     API -->|"2. Guarda originales"| SUPA
     U -->|"3. Define data model (formulario)"| API
-    API -->|"4. data_model.json\n(en Supabase o default en API)"| SUPA
+    API -->|"4. data_model.json\n"| SUPA
     U -->|"5. Botón PROCESAR"| API
     API -->|"6. Encola pipeline"| BT
     BT -->|"7a. PDF digital"| PYMUPDF
@@ -244,10 +244,10 @@ graph RL
     end
 
     subgraph Data_platform ["Supabase"]
-        SUPA[(Postgres + Storage\n+ pgvector)]
+        SUPA[(Postgres + pgvector)]
     end
 
-    U -->|"1. Consulta de búsqueda (HTTPS)"| API
+    U -->|"1. Query de búsqueda (HTTPS)"| API
     API -->|"2. Embedding local +\nRPC search_chunks"| SUPA
     SUPA -->|"3. Chunks + similitud"| API
     API -->|"4. Resultados (JSON)"| U
