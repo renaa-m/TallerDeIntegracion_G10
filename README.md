@@ -39,7 +39,7 @@ Plataforma web tipo **buscador** (no un chat) que permite a investigadores del I
 |---|---|
 | **Carga de documentos** | El usuario sube PDFs y/o TXTs a una colección. Se guardan en Supabase **Storage** con registro en la base |
 | **Definición del data model** | Objetivo de producto: formulario en el frontend que produce el `data_model.json` que Wukong consume. Hoy el backend suele apoyarse en `app/services/default_data_model.json` mientras esa persistencia por colección evoluciona |
-| **Procesamiento (“Generar Grafo”)** | `POST /api/collections/{id}/process` devuelve **202 Accepted** y delega en **FastAPI BackgroundTasks** (`wukong_runner.process_collection`). El frontend debe **pollear** `GET /api/collections/{id}` y revisar `processing_status` / `processing_error_message`. Flujo: extracción (TXT / PyMuPDF / **Google Cloud Vision** en PDFs escaneados) → Wukong → escritura de **`chunk_embeddings`** en Supabase. La **carga automática del `.qm` en MillenniumDB** es **pendiente de integrar** en el código (p. ej. PDT10-121); en muchos entornos el import sigue siendo operación en el servidor IMFD |
+| **Procesamiento (“Generar Grafo”)** | `POST /api/collections/{id}/process` devuelve **202 Accepted** y delega en **FastAPI BackgroundTasks** (`wukong_runner.process_collection`). El frontend debe **consultar de forma periódica (polling)** `GET /api/collections/{id}` y revisar `processing_status` / `processing_error_message`. Flujo: extracción (TXT / PyMuPDF / **Google Cloud Vision** en PDFs escaneados) → Wukong → escritura de **`chunk_embeddings`** en Supabase. La **carga automática del `.qm` en MillenniumDB** es **pendiente de integrar** en el código (p. ej. PDT10-121); en muchos entornos el import sigue siendo operación en el servidor IMFD |
 | **Búsqueda** | **`POST /api/search`**: misma familia de modelos que en indexación (**sentence-transformers**, `paraphrase-multilingual-MiniLM-L12-v2`) + RPC SQL **`search_chunks`** sobre `chunk_embeddings`. La colección debe estar en `graph_ready` o `partial_error` |
 | **Visualización** | UI en React: landing, login Auth0, flujo de colección, **buscador por colección**, modales de carga y documentos (no hay Cytoscape en el frontend actual) |
 
@@ -105,7 +105,7 @@ POST /api/collections/{id}/process   →   202 Accepted
   │     └── ...
   └── data_model.json
 
-  Opcional en desarrollo: si definís WUKONG_ARTIFACTS_DIR, se conserva una copia del workdir.
+  Opcional en desarrollo: si defines `WUKONG_ARTIFACTS_DIR`, se conserva una copia del workdir.
 
         │
         ▼
@@ -247,7 +247,7 @@ graph RL
         SUPA[(Postgres + Storage\n+ pgvector)]
     end
 
-    U -->|"1. Query de búsqueda (HTTPS)"| API
+    U -->|"1. Consulta de búsqueda (HTTPS)"| API
     API -->|"2. Embedding local +\nRPC search_chunks"| SUPA
     SUPA -->|"3. Chunks + similitud"| API
     API -->|"4. Resultados (JSON)"| U
@@ -274,7 +274,7 @@ graph RL
 
 - **FastAPI sirve**: la API REST y, si existe el build, el frontend estático bajo `backend/static/` (catch-all SPA).
 - **Auth0** es externo. JWT validados en rutas protegidas.
-- **Búsqueda entregada al usuario** hoy es **vectorial sobre chunks en Supabase**, no una query obligatoria a MillenniumDB por cada búsqueda.
+- **Búsqueda entregada al usuario** hoy es **vectorial sobre chunks en Supabase**, no una consulta obligatoria a MillenniumDB por cada búsqueda.
 - **Wukong** es submódulo en `backend/wukong-engine/`; hay que instalarlo con pip **editable** (ver setup).
 - **Archivos .txt** subidos se procesan igual que otros: se normalizan a texto en Pipeline 1 (lectura directa), no se “saltan” el pipeline de extracción en el sentido de omitir el paso de registro de texto.
 
@@ -377,7 +377,7 @@ TallerDeIntegracion_G10/
 
 | Archivo | Qué hace |
 |---|---|
-| `backend/app/main.py` | App FastAPI, CORS, inclusion de routers, montaje estático `/assets` y SPA si `backend/static/` existe |
+| `backend/app/main.py` | App FastAPI, CORS, inclusión de rutas, montaje estático `/assets` y SPA si `backend/static/` existe |
 | `backend/app/config.py` | Variables de entorno tipadas |
 | `backend/app/api/routes/collections.py` | Colecciones + **`POST /{id}/process`** (202, BackgroundTasks) |
 | `backend/app/api/routes/search.py` | **`POST /api/search`** (embeddings + Supabase) |
@@ -401,7 +401,7 @@ TallerDeIntegracion_G10/
 | **npm** | 10+ | Frontend |
 | **Git** | 2.x | Submódulo `wukong-engine` |
 | **Docker** | 24+ | (Opcional) Desarrollo con contenedores |
-| **Cuenta / clave GCP** | — | Solo si probás OCR con **Cloud Vision** |
+| **Cuenta / clave GCP** | — | Solo si pruebas el OCR con **Cloud Vision** |
 
 > **Tip**: Para manejar múltiples versiones de Python, se recomienda usar [pyenv](https://github.com/pyenv/pyenv).
 
@@ -638,7 +638,7 @@ data = result.data()
 driver.close()
 ```
 
-Encapsulación en el repo: `backend/app/services/millenniumdb.py` (`query_graph`, etc.). La **búsqueda principal del producto actual** no depende de esta integración para cada query del buscador.
+Encapsulación en el repo: `backend/app/services/millenniumdb.py` (`query_graph`, etc.). La **búsqueda principal del producto actual** no depende de esta integración en cada petición del buscador.
 
 ---
 
@@ -650,7 +650,7 @@ Encapsulación en el repo: `backend/app/services/millenniumdb.py` (`query_graph`
 docker compose up --build
 ```
 
-Con frontend integrado en el mismo contenedor: compilá antes `npm run build` en `frontend/` según `docker-compose.yml`.
+Con frontend integrado en el mismo contenedor: compila antes `npm run build` en `frontend/` según `docker-compose.yml`.
 
 ### Imagen de producción (raíz)
 
