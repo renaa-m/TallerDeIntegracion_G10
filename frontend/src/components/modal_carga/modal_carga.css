@@ -361,3 +361,130 @@
   outline: none;
   border-color: #aba3f6;
 }
+
+/* ── PIPELINE ─────────────────────────────────────────────────────────────── */
+.mc-pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 8px 0;
+}
+
+.mc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 4px;
+}
+
+.mc-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border, rgba(171, 163, 246, 0.2));
+  background: var(--surface-2, rgba(255,255,255,0.4));
+  transition: all 0.3s ease;
+}
+
+.mc-step.active {
+  border-color: var(--accent, #aba3f6);
+  background: rgba(171, 163, 246, 0.08);
+}
+
+.mc-step.done {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.06);
+}
+
+.mc-step.pending {
+  opacity: 0.45;
+}
+
+.mc-step-icon {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mc-step.active .mc-step-icon { color: var(--accent, #aba3f6); }
+.mc-step.done .mc-step-icon   { color: #22c55e; }
+.mc-step.pending .mc-step-icon { color: var(--text-3, #6f7280); }
+
+.mc-step-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.4;
+}
+
+.mc-step-label {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1, #111111);
+}
+
+.mc-step.pending .mc-step-label { color: var(--text-3, #6f7280); }
+
+.mc-pipeline-status {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--text-2, #4f4f5c);
+  text-align: center;
+  margin: 0;
+  min-height: 20px;
+}
+
+.mc-pipeline-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+}
+
+.mc-processing-note {
+  font-size: 12px;
+  color: var(--text-3, #6f7280);
+  text-align: center;
+  margin: 0;
+  width: 100%;
+  font-style: italic;
+}
+
+/* ── SPINNER ─────────────────────────────────────────────────────────────── */
+.mc-spin {
+  animation: mc-spin 1s linear infinite;
+}
+
+@keyframes mc-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── DARK MODE AJUSTES ───────────────────────────────────────────────────── */
+.mc-panel.dark .mc-step {
+  border-color: var(--border, #1e2d50);
+  background: var(--surface-2, #0d1426);
+}
+.mc-panel.dark .mc-step.active {
+  border-color: var(--accent, #aba3f6);
+  background: rgba(171, 163, 246, 0.1);
+}
+.mc-panel.dark .mc-step.done {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.07);
+}
+.mc-panel.dark .mc-step-label { color: var(--text-1, #dce4f5); }
+.mc-panel.dark .mc-pipeline-status { color: var(--text-2, #8394b4); }
