@@ -1095,9 +1095,18 @@
   letter-spacing: 0.02em;
 }
 
-.bc-score-badge.high { background: rgba(34, 197, 94, 0.12); color: #22c55e; }
-.bc-score-badge.med { background: rgba(234, 179, 8, 0.12); color: #eab308; }
-.bc-score-badge.low { background: var(--surface-3); color: var(--text-3); }
+.bc-score-badge.high {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+}
+.bc-score-badge.med {
+  background: rgba(234, 179, 8, 0.12);
+  color: #eab308;
+}
+.bc-score-badge.low {
+  background: var(--surface-3);
+  color: var(--text-3);
+}
 
 .bc-score-dot {
   width: 5px;
@@ -1173,8 +1182,12 @@
 }
 
 @keyframes bc-spin-anim {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── BADGE DE COINCIDENCIA (VERSIÓN CLARA) ────────────────────────────────── */

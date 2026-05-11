@@ -67,7 +67,7 @@ const ModalCarga = ({
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>('idle')
   const [pipelineError, setPipelineError] = useState('')
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
-    localStorage.getItem(ACTIVE_COLLECTION_KEY)
+    localStorage.getItem(ACTIVE_COLLECTION_KEY),
   )
 
   const isLocked =
@@ -108,7 +108,7 @@ const ModalCarga = ({
   const handleClose = useCallback(async () => {
     if (isLocked) return
 
-    // CORRECCIÓN: Si el usuario cierra el modal manualmente, borramos la colección 
+    // CORRECCIÓN: Si el usuario cierra el modal manualmente, borramos la colección
     // SIEMPRE que exista un ID activo, sin importar si el grafo está listo o no.
     // Solo el botón de 'Finalizar' se salta esta lógica de borrado.
     if (activeCollectionId) {
@@ -132,7 +132,7 @@ const ModalCarga = ({
     setEtapa('subida')
     setPipelineStatus('idle')
     setActiveCollectionId(null)
-    
+
     navigate('/landing_page')
     onClose()
   }, [onClose, isLocked, activeCollectionId, getAccessTokenSilently, navigate])
@@ -193,7 +193,7 @@ const ModalCarga = ({
       })
       if (!res.ok) throw new Error('Error al crear colección')
       const collection = await res.json()
-      
+
       setActiveCollectionId(collection.id)
       localStorage.setItem(ACTIVE_COLLECTION_KEY, collection.id)
       localStorage.setItem(MODAL_ETAPA_KEY, 'subida')
@@ -202,7 +202,7 @@ const ModalCarga = ({
       for (const file of files) {
         const controller = new AbortController()
         abortControllersRef.current.push(controller)
-        
+
         const formData = new FormData()
         formData.append('file', file)
         const upRes = await fetch(
@@ -265,15 +265,26 @@ const ModalCarga = ({
 
   return (
     <div className="mc-overlay" onClick={isLocked ? undefined : handleClose}>
-      <div className={`mc-panel${darkMode ? ' dark' : ''}`} onClick={(e) => e.stopPropagation()}>
+      <div
+        className={`mc-panel${darkMode ? ' dark' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mc-header">
           <div>
-            <h2 className="mc-title">{etapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}</h2>
+            <h2 className="mc-title">
+              {etapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}
+            </h2>
             <p className="mc-subtitle">
-              {etapa === 'subida' ? 'Sube documentos para indexar' : 'Construye el grafo de conocimiento'}
+              {etapa === 'subida'
+                ? 'Sube documentos para indexar'
+                : 'Construye el grafo de conocimiento'}
             </p>
           </div>
-          <button className="mc-close" onClick={handleClose} disabled={isLocked}>
+          <button
+            className="mc-close"
+            onClick={handleClose}
+            disabled={isLocked}
+          >
             <X size={18} />
           </button>
         </div>
@@ -282,19 +293,37 @@ const ModalCarga = ({
           <>
             <div
               className={`mc-dropzone ${isDragging ? 'dragging' : ''} ${isLocked ? 'disabled' : ''}`}
-              onDragOver={(e) => { e.preventDefault(); if (!isLocked) setIsDragging(true) }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (!isLocked) setIsDragging(true)
+              }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={(e) => {
                 e.preventDefault()
                 setIsDragging(false)
                 if (!isLocked) setFiles(Array.from(e.dataTransfer.files))
               }}
-              onClick={() => { if (!isLocked) fileInputRef.current?.click() }}
+              onClick={() => {
+                if (!isLocked) fileInputRef.current?.click()
+              }}
             >
-              <input type="file" multiple hidden ref={fileInputRef} accept=".pdf,.txt"
-                onChange={(e) => setFiles(Array.from(e.target.files || []))} disabled={isLocked} />
-              <div className="mc-drop-icon"><CloudUpload size={26} /></div>
-              <p className="mc-drop-title">{isDragging ? 'Suelta los archivos' : 'Arrastra tus archivos aquí'}</p>
+              <input
+                type="file"
+                multiple
+                hidden
+                ref={fileInputRef}
+                accept=".pdf,.txt"
+                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                disabled={isLocked}
+              />
+              <div className="mc-drop-icon">
+                <CloudUpload size={26} />
+              </div>
+              <p className="mc-drop-title">
+                {isDragging
+                  ? 'Suelta los archivos'
+                  : 'Arrastra tus archivos aquí'}
+              </p>
               <p className="mc-drop-sub">PDF o TXT · Máx. 50 MB</p>
             </div>
 
@@ -304,8 +333,13 @@ const ModalCarga = ({
                   <div key={`${f.name}-${i}`} className="mc-file-item">
                     <FileText size={14} className="mc-file-icon" />
                     <span className="mc-file-name">{f.name}</span>
-                    <button className="mc-file-remove" disabled={isLocked}
-                      onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}>
+                    <button
+                      className="mc-file-remove"
+                      disabled={isLocked}
+                      onClick={() =>
+                        setFiles((prev) => prev.filter((_, idx) => idx !== i))
+                      }
+                    >
                       <Trash2 size={13} />
                     </button>
                   </div>
@@ -313,18 +347,43 @@ const ModalCarga = ({
               </div>
             )}
 
-            {error && <p className="mc-error-message"><AlertCircle size={14} /> {error}</p>}
-            {isUploading && <p className="mc-success-message">Subiendo {uploadedCount} de {files.length}...</p>}
+            {error && (
+              <p className="mc-error-message">
+                <AlertCircle size={14} /> {error}
+              </p>
+            )}
+            {isUploading && (
+              <p className="mc-success-message">
+                Subiendo {uploadedCount} de {files.length}...
+              </p>
+            )}
 
             <div className="mc-collection-name">
-              <input type="text" className="mc-input" placeholder="Nombre de colección"
-                value={nombreColeccion} onChange={(e) => setNombreColeccion(e.target.value)} disabled={isLocked} />
+              <input
+                type="text"
+                className="mc-input"
+                placeholder="Nombre de colección"
+                value={nombreColeccion}
+                onChange={(e) => setNombreColeccion(e.target.value)}
+                disabled={isLocked}
+              />
             </div>
 
             <div className="mc-footer">
-              <button className="mc-btn-cancel" onClick={handleClose} disabled={isLocked}>Cancelar</button>
-              <button className="mc-btn-upload" onClick={handleUpload}
-                disabled={files.length === 0 || isLocked || !nombreColeccion.trim()}>
+              <button
+                className="mc-btn-cancel"
+                onClick={handleClose}
+                disabled={isLocked}
+              >
+                Cancelar
+              </button>
+              <button
+                className="mc-btn-upload"
+                onClick={handleUpload}
+                disabled={
+                  files.length === 0 || isLocked || !nombreColeccion.trim()
+                }
+              >
                 {isUploading ? 'Subiendo...' : 'Añadir archivos'}
               </button>
             </div>
@@ -332,36 +391,70 @@ const ModalCarga = ({
         ) : (
           <div className="mc-pipeline">
             <div className="mc-steps">
-              {['processing_text', 'processing_graph', 'graph_ready'].map((s, idx) => {
-                const stepLabel = ['Extracción', 'Construcción', 'Listo'][idx]
-                const isDone = (s === 'processing_text' && (pipelineStatus === 'processing_graph' || pipelineStatus === 'graph_ready')) ||
-                               (s === 'processing_graph' && pipelineStatus === 'graph_ready') || s === pipelineStatus
-                const isActive = s === pipelineStatus && pipelineStatus !== 'graph_ready'
-                return (
-                  <div key={s} className={`mc-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}>
-                    <div className="mc-step-icon">
-                      {isActive ? <Loader2 size={16} className="mc-spin" /> : isDone ? <CheckCircle2 size={16} /> : <div className="mc-step-dot" />}
+              {['processing_text', 'processing_graph', 'graph_ready'].map(
+                (s, idx) => {
+                  const stepLabel = ['Extracción', 'Construcción', 'Listo'][idx]
+                  const isDone =
+                    (s === 'processing_text' &&
+                      (pipelineStatus === 'processing_graph' ||
+                        pipelineStatus === 'graph_ready')) ||
+                    (s === 'processing_graph' &&
+                      pipelineStatus === 'graph_ready') ||
+                    s === pipelineStatus
+                  const isActive =
+                    s === pipelineStatus && pipelineStatus !== 'graph_ready'
+                  return (
+                    <div
+                      key={s}
+                      className={`mc-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
+                    >
+                      <div className="mc-step-icon">
+                        {isActive ? (
+                          <Loader2 size={16} className="mc-spin" />
+                        ) : isDone ? (
+                          <CheckCircle2 size={16} />
+                        ) : (
+                          <div className="mc-step-dot" />
+                        )}
+                      </div>
+                      <span className="mc-step-label">{stepLabel}</span>
                     </div>
-                    <span className="mc-step-label">{stepLabel}</span>
-                  </div>
-                )
-              })}
+                  )
+                },
+              )}
             </div>
-            <p className="mc-pipeline-status">{PIPELINE_LABELS[pipelineStatus]}</p>
-            {pipelineError && <div className="mc-pipeline-error"><AlertCircle size={14} /> {pipelineError}</div>}
+            <p className="mc-pipeline-status">
+              {PIPELINE_LABELS[pipelineStatus]}
+            </p>
+            {pipelineError && (
+              <div className="mc-pipeline-error">
+                <AlertCircle size={14} /> {pipelineError}
+              </div>
+            )}
             <div className="mc-footer">
               {pipelineStatus === 'idle' && (
-                <button className="mc-btn-upload" onClick={handleIniciarPipeline}>
+                <button
+                  className="mc-btn-upload"
+                  onClick={handleIniciarPipeline}
+                >
                   <Network size={14} /> Generar grafo
                 </button>
               )}
               {pipelineStatus === 'graph_ready' && (
-                <button className="mc-btn-upload" onClick={handleFinalizarExito}>
+                <button
+                  className="mc-btn-upload"
+                  onClick={handleFinalizarExito}
+                >
                   <CheckCircle2 size={14} /> Finalizar
                 </button>
               )}
               {pipelineStatus === 'error' && (
-                <button className="mc-btn-upload" onClick={handleIniciarPipeline}>Reintentar</button>
+                <button
+                  className="mc-btn-upload"
+                  onClick={handleIniciarPipeline}
+                >
+                  Reintentar
+                </button>
               )}
             </div>
           </div>

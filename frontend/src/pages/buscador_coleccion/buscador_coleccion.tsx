@@ -93,14 +93,20 @@ const BuscadorColeccion = () => {
       const token = await getAccessTokenSilently()
       const headers = { Authorization: `Bearer ${token}` }
 
-      const resColl = await fetch(`${API_URL}/api/collections/${id_coleccion}`, { headers })
+      const resColl = await fetch(
+        `${API_URL}/api/collections/${id_coleccion}`,
+        { headers },
+      )
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
         setTempNombre(data.name)
       }
 
-      const resDocs = await fetch(`${API_URL}/api/documentos?coleccion_id=${id_coleccion}`, { headers })
+      const resDocs = await fetch(
+        `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
+        { headers },
+      )
       if (resDocs.ok) {
         setFuentes(await resDocs.json())
       }
@@ -119,26 +125,30 @@ const BuscadorColeccion = () => {
     setLoading(true)
     try {
       const token = await getAccessTokenSilently()
-      
+
       // Construcción del SearchRequest para FastAPI
       const searchRequest = {
         coleccion_id: id_coleccion,
         query: busquedaEnviada,
         limit: 10,
         min_score: 0.25,
-        filtros: (personas.length > 0 || fechaDesde || fechaHasta) ? {
-          tipo_entidad: personas.length > 0 ? personas[0] : null,
-          rango_años: (fechaDesde || fechaHasta) 
-            ? [parseInt(fechaDesde) || 0, parseInt(fechaHasta) || 2026] 
-            : null
-        } : null
+        filtros:
+          personas.length > 0 || fechaDesde || fechaHasta
+            ? {
+                tipo_entidad: personas.length > 0 ? personas[0] : null,
+                rango_años:
+                  fechaDesde || fechaHasta
+                    ? [parseInt(fechaDesde) || 0, parseInt(fechaHasta) || 2026]
+                    : null,
+              }
+            : null,
       }
 
       const res = await fetch(`${API_URL}/api/search`, {
         method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json' 
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(searchRequest),
       })
@@ -238,22 +248,38 @@ const BuscadorColeccion = () => {
                   autoFocus
                 />
               ) : (
-                <div className="bc-sidebar-title-group" onClick={() => setIsEditingName(true)}>
-                  <h2 className="bc-sidebar-collection-name">{nombreColeccion}</h2>
+                <div
+                  className="bc-sidebar-title-group"
+                  onClick={() => setIsEditingName(true)}
+                >
+                  <h2 className="bc-sidebar-collection-name">
+                    {nombreColeccion}
+                  </h2>
                   <Edit2 size={12} className="bc-edit-icon" />
                 </div>
               )}
-              <span className="bc-sidebar-collection-label">Colección actual</span>
+              <span className="bc-sidebar-collection-label">
+                Colección actual
+              </span>
             </div>
 
             <div className="bc-sidebar-divider" />
-            <button className="bc-add-btn" onClick={() => setModalGrafoOpen(true)}>
+            <button
+              className="bc-add-btn"
+              onClick={() => setModalGrafoOpen(true)}
+            >
               <Network size={15} /> <span>Ver Grafo</span>
             </button>
-            <button className="bc-add-btn" onClick={() => setIsModalFuentesOpen(true)}>
+            <button
+              className="bc-add-btn"
+              onClick={() => setIsModalFuentesOpen(true)}
+            >
               <Files size={15} /> <span>Ver Documentos</span>
             </button>
-            <button className="bc-delete-collection-btn" onClick={() => setIsEliminarModalOpen(true)}>
+            <button
+              className="bc-delete-collection-btn"
+              onClick={() => setIsEliminarModalOpen(true)}
+            >
               <Trash2 size={14} /> <span>Borrar colección</span>
             </button>
           </div>
@@ -285,16 +311,21 @@ const BuscadorColeccion = () => {
                     <SlidersHorizontal size={14} className="bc-alert-icon" />
                   </div>
                   <div className="bc-alert-text">
-                    <span className="bc-alert-title">Próximamente: Filtros Avanzados</span>
+                    <span className="bc-alert-title">
+                      Próximamente: Filtros Avanzados
+                    </span>
                   </div>
                 </div>
-                <button className="bc-alert-close" onClick={() => setFiltroOpen(false)}>
+                <button
+                  className="bc-alert-close"
+                  onClick={() => setFiltroOpen(false)}
+                >
                   <X size={14} />
                 </button>
               </div>
             )}
           </div>
-          
+
           <div className="bc-results-area">
             {loading ? (
               <div className="bc-empty">
@@ -311,16 +342,25 @@ const BuscadorColeccion = () => {
                           <FileText size={14} className="bc-doc-icon" />
                           <h3 className="bc-result-title">{r.titulo}</h3>
                         </div>
-                        
+
                         {/* Badge de Similitud Reforzado */}
-                        <div className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}>
+                        <div
+                          className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
+                        >
                           <CheckCircle2 size={12} className="bc-status-icon" />
-                          <span className="bc-score-value">{(r.score * 100).toFixed(0)}% de coincidencia</span>
+                          <span className="bc-score-value">
+                            {(r.score * 100).toFixed(0)}% de coincidencia
+                          </span>
                         </div>
                       </div>
-                      
+
                       {r.enlace && (
-                        <a href={r.enlace} target="_blank" rel="noreferrer" className="bc-external-btn">
+                        <a
+                          href={r.enlace}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="bc-external-btn"
+                        >
                           <ExternalLink size={13} />
                           <span>Documento</span>
                         </a>
@@ -349,12 +389,14 @@ const BuscadorColeccion = () => {
               </div>
             ) : (
               <div className="bc-empty">
-                <div className="bc-empty-icon"><Search size={30} /></div>
+                <div className="bc-empty-icon">
+                  <Search size={30} />
+                </div>
                 <h3 className="bc-empty-title">Sin resultados todavía</h3>
                 <p className="bc-empty-sub">
-                  {busquedaEnviada 
-                    ? "No hay fragmentos que coincidan con tu búsqueda semántica." 
-                    : "Haz una consulta para explorar los documentos de esta colección."}
+                  {busquedaEnviada
+                    ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
+                    : 'Haz una consulta para explorar los documentos de esta colección.'}
                 </p>
               </div>
             )}
