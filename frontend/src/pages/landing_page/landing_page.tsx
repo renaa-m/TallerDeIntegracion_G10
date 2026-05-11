@@ -13,6 +13,9 @@ interface Collection {
   created_at: string
 }
 
+const API_BASE =
+  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:8080'
+
 function LandingPage() {
   const { id_usuario } = useParams<{ id_usuario: string }>() // Captura el parámetro de la URL
   const { user, getAccessTokenSilently } = useAuth0() // Obtenemos la info del usuario logueado
@@ -48,7 +51,7 @@ function LandingPage() {
       const token = await getAccessTokenSilently()
 
       const response = await fetch(
-        `http://localhost:8000/api/collections/${idColeccion}`,
+        `${API_BASE}/api/collections/${idColeccion}`,
         {
           method: 'PATCH',
           headers: {
@@ -92,7 +95,7 @@ function LandingPage() {
       const token = await getAccessTokenSilently()
 
       const response = await fetch(
-        `http://localhost:8000/api/collections/${idColeccion}`,
+        `${API_BASE}/api/collections/${idColeccion}`,
         {
           method: 'DELETE',
           headers: {
@@ -122,7 +125,7 @@ function LandingPage() {
       try {
         const token = await getAccessTokenSilently()
 
-        const response = await fetch('http://localhost:8000/api/collections', {
+        const response = await fetch(`${API_BASE}/api/collections`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -133,8 +136,9 @@ function LandingPage() {
         if (!response.ok) {
           throw new Error(data?.detail || 'Error al cargar colecciones')
         }
-
-        setColecciones(data)
+        setColecciones(Array.isArray(data) ? data : [])
+        setEstado('idle')
+        setMensaje('')
       } catch (error) {
         console.error('Error cargando colecciones:', error)
         setEstado('error')
@@ -146,18 +150,6 @@ function LandingPage() {
 
     fetchColecciones()
   }, [getAccessTokenSilently])
-
-  const probarMensaje = () => {
-    const prob = Math.random()
-
-    if (prob > 0.5) {
-      setEstado('success')
-      setMensaje('Éxito: la operación se realizó correctamente.')
-    } else {
-      setEstado('error')
-      setMensaje('Error: no se pudo completar la operación.')
-    }
-  }
 
   const abrirColeccionExistente = (idColeccion: string) => {
     navigate(
@@ -202,9 +194,6 @@ function LandingPage() {
 
           <button className="primary-btn" onClick={handleIniciar}>
             Iniciar
-          </button>
-          <button className="message-test-btn" onClick={probarMensaje}>
-            Probar mensaje
           </button>
         </section>
 

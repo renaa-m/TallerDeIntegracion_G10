@@ -7,7 +7,7 @@ from supabase import Client, create_client
 from app.config import settings
 
 BUCKET = "documentos"
-
+UPLOAD_SEMAPHORE = asyncio.Semaphore(5)
 
 @lru_cache(maxsize=1)
 def get_supabase_client() -> Client:
@@ -44,7 +44,7 @@ def get_collections(user_id: str) -> list:
         .order("created_at", desc=True)
         .execute()
     )
-    return response.data
+    return response.data or []
 
 
 def get_collection(collection_id: str, user_id: str) -> dict | None:
@@ -63,14 +63,37 @@ def get_collection(collection_id: str, user_id: str) -> dict | None:
 
 def delete_collection(collection_id: str, user_id: str) -> bool:
     client = get_supabase_client()
-    response = (
+    collection_response = (
+        client.table("collections")
+        .select("id")
+        .eq("id", collection_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not collection_response.data:
+        return False
+    documents_response = (
+        client.table("documents")
+        .select("storage_path")
+        .eq("collection_id", collection_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    storage_paths = [
+        doc["storage_path"]
+        for doc in (documents_response.data or [])
+        if doc.get("storage_path")
+    ]
+    if storage_paths:
+        client.storage.from_(BUCKET).remove(storage_paths)
+    delete_response = (
         client.table("collections")
         .delete()
         .eq("id", collection_id)
         .eq("user_id", user_id)
         .execute()
     )
-    return len(response.data) > 0
+    return len(delete_response.data) > 0
 
 
 def update_collection_name(collection_id: str, user_id: str, new_name: str) -> dict | None:
@@ -285,7 +308,9 @@ def create_signed_url(storage_path: str, expires_in: int = 3600) -> str:
 
 
 def _upload_sync(path: str, content: bytes, content_type: str) -> None:
-    _get_service_client().storage.from_(BUCKET).upload(
+    client = create_client(settings.supabase_url, settings.supabase_service_key)
+
+    client.storage.from_(BUCKET).upload(
         path=path,
         file=content,
         file_options={"content-type": content_type},  # upsert omitido: causaba error
@@ -309,17 +334,24 @@ def classify_upload_error(exc: Exception) -> str:
 
 
 async def upload_file(path: str, content: bytes, content_type: str) -> None:
-    """Sube un archivo con reintentos automáticos y backoff exponencial (HU-13)."""
     last_exc: Exception = RuntimeError("Sin intentos disponibles")
-    for attempt in range(settings.max_upload_retries):
-        try:
-            await asyncio.to_thread(_upload_sync, path, content, content_type)
-            return
-        except Exception as exc:
-            last_exc = exc
-            if attempt < settings.max_upload_retries - 1:
-                delay = settings.upload_retry_delay_seconds * (2 ** attempt)
-                await asyncio.sleep(delay)
+
+    async with UPLOAD_SEMAPHORE:
+        for attempt in range(settings.max_upload_retries):
+            try:
+                await asyncio.wait_for(
+                    asyncio.to_thread(_upload_sync, path, content, content_type),
+                    timeout=300,
+                )
+                return
+
+            except Exception as exc:
+                last_exc = exc
+
+                if attempt < settings.max_upload_retries - 1:
+                    delay = settings.upload_retry_delay_seconds * (2 ** attempt)
+                    await asyncio.sleep(delay)
+
     raise last_exc
 
 

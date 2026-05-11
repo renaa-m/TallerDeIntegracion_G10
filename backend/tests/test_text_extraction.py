@@ -1,8 +1,11 @@
+import fitz
+import pytest
 from unittest.mock import MagicMock, patch
 
 from app.services.text_extraction import (
     detect_file_type,
     extract_text_pymupdf,
+    extract_text_vision,
     process_pdf_document,
 )
 
@@ -108,14 +111,18 @@ class TestProcessPdfDocument:
 
     @patch("app.services.text_extraction.os.unlink")
     @patch("app.services.text_extraction.tempfile.NamedTemporaryFile")
-    @patch("app.services.text_extraction.fitz")
+    @patch("app.services.text_extraction.detect_file_type", return_value="pdf_scanned")
+    @patch("app.services.text_extraction.extract_text_vision")
+    @patch("app.services.text_extraction.save_document_text")
     @patch("app.services.text_extraction.update_document_status")
     @patch("app.services.text_extraction.download_file_from_storage")
-    def test_pdf_escaneado_marca_estado_error(
+    def test_pdf_escaneado_happy_path_ocr(
         self,
         mock_download,
         mock_update_status,
-        mock_fitz,
+        mock_save_text,
+        mock_vision,
+        mock_detect,
         mock_ntf,
         mock_unlink,
     ):
@@ -123,18 +130,87 @@ class TestProcessPdfDocument:
         mock_tmp = MagicMock()
         mock_tmp.name = "/tmp/test_scanned.pdf"
         mock_ntf.return_value.__enter__.return_value = mock_tmp
-        mock_fitz.open.return_value = _make_fitz_doc(["AB"])
+        mock_vision.return_value = "Texto extraído por OCR"
 
         result = process_pdf_document(
             MOCK_DOC_ID, MOCK_USER_ID, MOCK_COL_ID, MOCK_STORAGE_PATH
         )
 
-        assert result["status"] == "error"
-        assert "OCR no implementado" in result["error"]
-        mock_update_status.assert_any_call(
-            MOCK_DOC_ID,
-            MOCK_USER_ID,
-            "error",
-            error_message="OCR no implementado — Sprint 2",
-        )
+        assert result == {"status": "ok", "document_id": MOCK_DOC_ID}
+        mock_update_status.assert_any_call(MOCK_DOC_ID, MOCK_USER_ID, "extracting_text")
+        mock_update_status.assert_any_call(MOCK_DOC_ID, MOCK_USER_ID, "text_extracted")
+        assert mock_save_text.call_args.kwargs["extraction_method"] == "ocr"
         mock_unlink.assert_called_once_with("/tmp/test_scanned.pdf")
+
+
+# --- Tests OCR (Google Cloud Vision) ---
+
+def test_extract_text_vision_success(tmp_path):
+    """Vision retorna texto correctamente para un PDF de una página."""
+    # Creamos un PDF mínimo con PyMuPDF para el test
+    pdf_path = tmp_path / "test.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((50, 100), "Texto de prueba")
+    doc.save(str(pdf_path))
+    doc.close()
+
+    mock_response = MagicMock()
+    mock_response.error.message = ""
+    mock_response.full_text_annotation.text = "Texto extraído por Vision"
+
+    with patch("app.services.text_extraction.vision.ImageAnnotatorClient") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.document_text_detection.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        result = extract_text_vision(str(pdf_path))
+
+    assert result == "Texto extraído por Vision"
+
+
+def test_extract_text_vision_api_error(tmp_path):
+    """Si Vision retorna un error en cualquier página, se lanza RuntimeError."""
+    pdf_path = tmp_path / "test.pdf"
+    doc = fitz.open()
+    doc.new_page()
+    doc.save(str(pdf_path))
+    doc.close()
+
+    mock_response = MagicMock()
+    mock_response.error.message = "API quota exceeded"
+
+    with patch("app.services.text_extraction.vision.ImageAnnotatorClient") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.document_text_detection.return_value = mock_response
+        mock_client_class.return_value = mock_client
+
+        with pytest.raises(RuntimeError, match="Cloud Vision error en página 1"):
+            extract_text_vision(str(pdf_path))
+
+
+def test_process_pdf_document_scanned_marks_error_on_vision_failure(tmp_path):
+    """Si Vision falla, el documento se marca como error y no afecta otros documentos."""
+    with (
+        patch("app.services.text_extraction.download_file_from_storage") as mock_download,
+        patch("app.services.text_extraction.update_document_status") as mock_status,
+        patch("app.services.text_extraction.save_document_text") as mock_save,
+        patch("app.services.text_extraction.extract_text_vision") as mock_vision,
+        patch("app.services.text_extraction.detect_file_type", return_value="pdf_scanned"),
+    ):
+        mock_download.return_value = b"%PDF-fake"
+        mock_vision.side_effect = RuntimeError("Cloud Vision error en página 1: quota exceeded")
+
+        result = process_pdf_document(
+            document_id="doc-123",
+            user_id="auth0|test",
+            collection_id="col-456",
+            storage_path="col-456/doc-123.pdf",
+        )
+
+    assert result["status"] == "error"
+    assert result["document_id"] == "doc-123"
+    mock_save.assert_not_called()
+    # Verifica que se intentó marcar como error
+    calls = [str(c) for c in mock_status.call_args_list]
+    assert any("error" in c for c in calls)
