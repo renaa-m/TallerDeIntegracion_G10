@@ -131,44 +131,36 @@ async def update_collection(
 # Estados que indican que una colección ya está siendo procesada
 # (no se permite re-disparar el botón "Generar Grafo" mientras esté en estos).
 _PROCESSING_STATUSES = {"processing_text", "processing_graph"}
-# Es un conjunto con los valores de processing_status que significan “ya hay un job en curso”:
-
-# processing_text — extracción de texto (TXT, PDF digital PyMuPDF, PDF escaneado OCR/Vision).
-# processing_graph — ya pasó la extracción (o parte) y Wukong está generando el grafo.
-
-# La ruta POST .../process usa esto para no permitir re-disparar el botón "Generar Grafo" mientras esté en estos.
 
 
 class ProcessCollectionResponse(BaseModel):
-    collection_id: UUID # id de la colección que se está procesando
-    processing_status: str # estado de procesamiento de la colección
-    detail: str # mensaje de detalle para el usuario: Un mensaje en texto plano para el usuario o el front; 
-    # por ejemplo que el trabajo quedó encolado y que puede hacer GET para ver el avance.
-# declarar la estructura de lo que el endpoint devuelve para que el framework y el front sepan qué esperar. 
-# En resumen: no es la lógica del negocio; es el contrato de la respuesta HTTP
+    collection_id: UUID
+    processing_status: str
+    detail: str
+
 
 @router.post(
-    "/{collection_id}/process", # ruta del endpoint, es un parámetro de path: FastAPI lo lee de la URL 
-    # y lo pasa a la función como collection_id: UUID
-    response_model=ProcessCollectionResponse, # el framework sabe qué estructura tiene que tener la respuesta HTTP
-    status_code=202, # 202 Accepted: el trabajo quedó encolado y se puede hacer GET para ver el avance.
+    "/{collection_id}/process",
+    response_model=ProcessCollectionResponse,
+    status_code=202,
 )
-async def process_collection( # función asíncrona que se ejecuta en background.
-    collection_id: UUID, # id de la colección que se está procesando, FastAPI lo saca del path /{collection_id}/process y lo convierte a UUID.
-    background_tasks: BackgroundTasks, # se usa para encolar la tarea en background, es un paquete de fastapi, lo importamos. FastAPI guarda “cuando termine de responder, llamo a process_collection con ese id”.
-    user_id: str = Depends(get_current_user), # se usa para validar que el usuario es el dueño de la colección.
+async def process_collection(
+    collection_id: UUID,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
 ):
     """
     Dispara el procesamiento de una colección (HU-04 — botón "Generar Grafo").
 
     Encadena en background (`wukong_runner.process_collection`):
-      1. Extracción de texto por documento: TXT (lectura directa), PDF digital (PyMuPDF),
-         PDF escaneado (OCR con Google Cloud Vision; requiere credenciales GCP).
+      1. Extracción de texto por documento: TXT, PDF digital (PyMuPDF), PDF escaneado
+         (OCR con Google Cloud Vision si hay credenciales GCP).
       2. Wukong genera el grafo en formato .qm.
-      3. Pendiente carga en MillenniumDB. (PDT10-121)
+      3. (PDT10-121) Carga del grafo en MillenniumDB.
 
-    El POST no espera a que termine el trabajo. Responde 202 y el avance se consulta con
-    GET /api/collections/{id} (`processing_status`, etc.).
+    El endpoint devuelve 202 Accepted inmediatamente. El frontend debe
+    pollear GET /api/collections/{id} para ver cómo evoluciona
+    `processing_status` y `processing_error_message`.
     """
     collection = supabase_client.get_collection(
         collection_id=str(collection_id),
@@ -177,8 +169,7 @@ async def process_collection( # función asíncrona que se ejecuta en background
     if collection is None:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
-    current_status = collection.get("processing_status", "idle") # estado actual de la colección, si no está procesada, 
-    # está idle (idle es un valor por defecto que significa: “la colección no está en medio de un procesamiento”.).
+    current_status = collection.get("processing_status", "idle")
     if current_status in _PROCESSING_STATUSES:
         raise HTTPException(
             status_code=409,
@@ -204,8 +195,6 @@ async def process_collection( # función asíncrona que se ejecuta en background
         str(collection_id), "processing_text"
     )
 
-    # Pipeline 1 en wukong_runner: incluye OCR (Vision) para PDFs detectados como escaneados;
-    # luego Wukong sobre los textos extraídos.
     background_tasks.add_task(wukong_runner.process_collection, str(collection_id))
 
     return ProcessCollectionResponse(

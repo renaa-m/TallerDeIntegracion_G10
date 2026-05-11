@@ -17,6 +17,9 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
 
+    # Opcional: carpeta bajo backend/ o ruta absoluta (ver wukong_runner).
+    wukong_artifacts_dir: str = ""
+
     millenniumdb_host: str = "localhost"
     millenniumdb_port: int = 1234
 
@@ -25,8 +28,9 @@ class Settings(BaseSettings):
     cloud_tasks_queue: str = ""
     cloud_tasks_location: str = ""
 
-    # Opcional: copiar el workdir de Wukong bajo backend/ para inspección local (.qm, txt).
-    wukong_artifacts_dir: str = ""
+    # HU-13: Upload resilience — configurable via .env, sensible defaults apply
+    max_upload_retries: int = 3
+    upload_retry_delay_seconds: float = 1.0
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
