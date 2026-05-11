@@ -78,25 +78,6 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, handleClose, isLocked])
 
-  if (!isOpen) return null
-
-  const addFiles = (list: FileList | null) => {
-    if (!list) return
-    const incoming = Array.from(list)
-    setFiles((prev) => {
-      const existing = new Set(prev.map((f) => f.name + f.size))
-      return [
-        ...prev,
-        ...incoming.filter((f) => !existing.has(f.name + f.size)),
-      ]
-    })
-  }
-
-  const removeFile = (i: number) => {
-    if (isLocked) return
-    setFiles((prev) => prev.filter((_, idx) => idx !== i))
-  }
-
   useEffect(() => {
     isUploadingRef.current = isUploading
   }, [isUploading])
@@ -147,6 +128,25 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     cleanupInterruptedUpload()
   }, [getAccessTokenSilently, navigate])
+
+  if (!isOpen) return null
+
+  const addFiles = (list: FileList | null) => {
+    if (!list) return
+    const incoming = Array.from(list)
+    setFiles((prev) => {
+      const existing = new Set(prev.map((f) => f.name + f.size))
+      return [
+        ...prev,
+        ...incoming.filter((f) => !existing.has(f.name + f.size)),
+      ]
+    })
+  }
+
+  const removeFile = (i: number) => {
+    if (isLocked) return
+    setFiles((prev) => prev.filter((_, idx) => idx !== i))
+  }
 
   const createCollection = async (): Promise<CollectionResponse> => {
     const token = await getAccessTokenSilently()
