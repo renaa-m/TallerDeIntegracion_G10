@@ -1,0 +1,204 @@
+from unittest.mock import patch
+from uuid import uuid4
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.middleware.auth import get_current_user
+
+MOCK_USER_ID = "auth0|testuser123"
+MOCK_COLLECTION_ID = uuid4()
+
+MOCK_COLLECTION = {
+    "id": str(MOCK_COLLECTION_ID),
+    "user_id": MOCK_USER_ID,
+    "name": "Mi Colección",
+    "description": "Descripción de prueba",
+    "status": "active",
+    "processing_status": "idle",
+    "processing_error_message": None,
+    "processed_at": None,
+    "created_at": "2024-01-01T00:00:00+00:00",
+}
+
+
+@pytest.fixture
+def client():
+    app.dependency_overrides[get_current_user] = lambda: MOCK_USER_ID
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_sin_auth():
+    with TestClient(app) as c:
+        yield c
+
+
+# ── Listar ─────────────────────────────────────────────────────────────────────
+
+
+class TestListarColecciones:
+    def test_listar_retorna_lista(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collections",
+            return_value=[MOCK_COLLECTION],
+        ):
+            response = client.get("/api/collections")
+
+        assert response.status_code == 200
+        assert len(response.json()) == 1
+
+    def test_listar_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.get("/api/collections")
+        assert response.status_code == 403
+
+
+# ── Crear ──────────────────────────────────────────────────────────────────────
+
+
+class TestCrearColeccion:
+    def test_crear_coleccion_exitoso(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.create_collection",
+            return_value=MOCK_COLLECTION,
+        ):
+            response = client.post(
+                "/api/collections",
+                json={"name": "Mi Colección", "description": "Descripción de prueba"},
+            )
+
+        assert response.status_code == 201
+        assert response.json()["name"] == "Mi Colección"
+
+    def test_crear_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.post(
+            "/api/collections",
+            json={"name": "Mi Colección"},
+        )
+        assert response.status_code == 403
+
+
+# ── Obtener ────────────────────────────────────────────────────────────────────
+
+
+class TestObtenerColeccion:
+    def test_obtener_coleccion_existente(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=MOCK_COLLECTION,
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}")
+
+        assert response.status_code == 200
+        assert response.json()["id"] == str(MOCK_COLLECTION_ID)
+
+    def test_obtener_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=None,
+        ):
+            response = client.get(f"/api/collections/{uuid4()}")
+
+        assert response.status_code == 404
+
+    def test_obtener_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.get(f"/api/collections/{MOCK_COLLECTION_ID}")
+        assert response.status_code == 403
+
+
+# ── Eliminar ───────────────────────────────────────────────────────────────────
+
+
+class TestEliminarColeccion:
+    def test_eliminar_coleccion_exitoso(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.delete_collection",
+            return_value=True,
+        ):
+            response = client.delete(f"/api/collections/{MOCK_COLLECTION_ID}")
+
+        assert response.status_code == 204
+
+    def test_eliminar_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.delete_collection",
+            return_value=False,
+        ):
+            response = client.delete(f"/api/collections/{uuid4()}")
+
+        assert response.status_code == 404
+
+    def test_eliminar_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.delete(f"/api/collections/{MOCK_COLLECTION_ID}")
+        assert response.status_code == 403
+
+
+# ── Actualizar ─────────────────────────────────────────────────────────────────
+
+
+class TestActualizarColeccion:
+    def test_actualizar_nombre_exitoso(self, client):
+        coleccion_actualizada = {**MOCK_COLLECTION, "name": "Nuevo Nombre"}
+        with patch(
+            "app.api.routes.collections.supabase_client.update_collection_name",
+            return_value=coleccion_actualizada,
+        ):
+            response = client.patch(
+                f"/api/collections/{MOCK_COLLECTION_ID}",
+                json={"name": "Nuevo Nombre"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["name"] == "Nuevo Nombre"
+
+    def test_actualizar_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.patch(
+            f"/api/collections/{MOCK_COLLECTION_ID}",
+            json={"name": "Nuevo Nombre"},
+        )
+        assert response.status_code == 403
+
+
+# ── Procesar ───────────────────────────────────────────────────────────────────
+
+
+class TestProcesarColeccion:
+    def test_procesar_coleccion_idle_retorna_202(self, client):
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.get_documents",
+                return_value=[{"id": str(uuid4())}],
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.update_collection_processing_status",
+            ),
+            patch(
+                "app.api.routes.collections.wukong_runner.process_collection",
+            ),
+        ):
+            response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["processing_status"] == "processing_text"
+
+    def test_procesar_coleccion_en_procesamiento_retorna_409(self, client):
+        coleccion_procesando = {**MOCK_COLLECTION, "processing_status": "processing_text"}
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=coleccion_procesando,
+        ):
+            response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
+
+        assert response.status_code == 409
+
+    def test_procesar_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
+        assert response.status_code == 403

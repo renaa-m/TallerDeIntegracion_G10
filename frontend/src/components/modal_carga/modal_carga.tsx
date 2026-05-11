@@ -60,7 +60,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const abortControllersRef = useRef<AbortController[]>([])
   const activeCollectionIdRef = useRef<string | null>(null)
   const isUploadingRef = useRef(false)
-  const totalFilesRef = useRef(0)
+  const [totalFiles, setTotalFiles] = useState(0)
   const UPLOAD_IN_PROGRESS_KEY = 'upload_in_progress_collection_id'
 
   const handleClose = useCallback(() => {
@@ -115,15 +115,12 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
       try {
         const token = await getAccessTokenSilently()
 
-        await fetch(
-          `${API_BASE}/api/collections/${interruptedCollectionId}`,
-          {
-            method: 'DELETE',
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+        await fetch(`${API_BASE}/api/collections/${interruptedCollectionId}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
           },
-        )
+        })
       } catch (err) {
         console.error('No se pudo limpiar la colección incompleta', err)
       }
@@ -250,7 +247,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     if (files.length === 0) return
 
     const batch = [...files]
-    totalFilesRef.current = batch.length
+    setTotalFiles(batch.length)
 
     setIsUploading(true)
     setIsFinalizing(false)
@@ -383,8 +380,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
         {error && <p className="mc-error-message">{error}</p>}
         {isUploading && (
           <p className="mc-success-message">
-            Subiendo {uploadedCount + failedCount} de {totalFilesRef.current}{' '}
-            archivos...
+            Subiendo {uploadedCount + failedCount} de {totalFiles} archivos...
           </p>
         )}
         <div className="mc-collection-name">
@@ -407,9 +403,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           </button>
           <button
             className="mc-btn-upload"
-            disabled={
-              files.length === 0 || isLocked || !nombreColeccion.trim()
-            }
+            disabled={files.length === 0 || isLocked || !nombreColeccion.trim()}
             onClick={handleUpload}
           >
             {isLocked
