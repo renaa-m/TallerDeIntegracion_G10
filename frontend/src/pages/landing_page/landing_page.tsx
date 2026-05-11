@@ -48,7 +48,7 @@ function LandingPage() {
       const token = await getAccessTokenSilently()
 
       const response = await fetch(
-        `http://localhost:8000/api/collections/${idColeccion}`,
+        `http://localhost:8080/api/collections/${idColeccion}`,
         {
           method: 'PATCH',
           headers: {
@@ -92,7 +92,7 @@ function LandingPage() {
       const token = await getAccessTokenSilently()
 
       const response = await fetch(
-        `http://localhost:8000/api/collections/${idColeccion}`,
+        `http://localhost:8080/api/collections/${idColeccion}`,
         {
           method: 'DELETE',
           headers: {
@@ -122,7 +122,7 @@ function LandingPage() {
       try {
         const token = await getAccessTokenSilently()
 
-        const response = await fetch('http://localhost:8000/api/collections', {
+        const response = await fetch('http://localhost:8080/api/collections', {
           headers: {
             Authorization: `Bearer ${token}`,
           },

@@ -6,7 +6,7 @@ from supabase import Client, create_client
 from app.config import settings
 
 BUCKET = "documentos"
-
+UPLOAD_SEMAPHORE = asyncio.Semaphore(5)
 
 @lru_cache(maxsize=1)
 def get_supabase_client() -> Client:
@@ -196,7 +196,9 @@ def get_collection_by_id(collection_id: str) -> dict | None:
 
 
 def _upload_sync(path: str, content: bytes, content_type: str) -> None:
-    _get_service_client().storage.from_(BUCKET).upload(
+    client = create_client(settings.supabase_url, settings.supabase_service_key)
+
+    client.storage.from_(BUCKET).upload(
         path=path,
         file=content,
         file_options={"content-type": content_type}, ##se retiró upsert: False (tiraba error)
@@ -204,7 +206,11 @@ def _upload_sync(path: str, content: bytes, content_type: str) -> None:
 
 
 async def upload_file(path: str, content: bytes, content_type: str) -> None:
-    await asyncio.to_thread(_upload_sync, path, content, content_type)
+    async with UPLOAD_SEMAPHORE:
+        await asyncio.wait_for(
+            asyncio.to_thread(_upload_sync, path, content, content_type),
+            timeout=300,
+        )
 
 
 async def insert_document(

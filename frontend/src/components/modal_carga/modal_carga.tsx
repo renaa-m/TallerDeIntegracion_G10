@@ -45,6 +45,8 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [uploadedCount, setUploadedCount] = useState(0)
+  const [failedCount, setFailedCount] = useState(0)
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -92,7 +94,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const createCollection = async (): Promise<CollectionResponse> => {
     const token = await getAccessTokenSilently()
     ////CAMBIAR POR LINK DEPLOY
-    const response = await fetch('http://localhost:8000/api/collections', {
+    const response = await fetch('http://localhost:8080/api/collections', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -124,7 +126,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     formData.append('file', file)
     ////CAMBIAR POR LINK DEPLOY
     const response = await fetch(
-      `http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
+      `http://localhost:8080/api/documentos/upload?coleccion_id=${collectionId}`,
       {
         method: 'POST',
         headers: {
@@ -133,7 +135,6 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
         body: formData,
       },
     )
-
     const text = await response.text()
     const data = text ? JSON.parse(text) : null
 
@@ -143,6 +144,45 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     return data
   }
+  
+  const uploadWithQueue = async (
+    files: File[],
+    collectionId: string,
+    concurrency = 5,
+    maxRetries = 3,
+  ) => {
+    let uploaded = 0
+    let failed = 0
+
+    const uploadWithRetry = async (file: File) => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          await uploadOneFile(file, collectionId)
+
+          uploaded += 1
+          setUploadedCount(uploaded)
+
+          return
+        } catch (err) {
+          if (attempt === maxRetries) {
+            failed += 1
+            setFailedCount(failed)
+            console.error(`Falló la subida de ${file.name}`, err)
+            return
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
+        }
+      }
+    }
+
+    for (let i = 0; i < files.length; i += concurrency) {
+      const batch = files.slice(i, i + concurrency)
+      await Promise.all(batch.map(uploadWithRetry))
+    }
+
+    return { uploaded, failed }
+  }
 
   const handleUpload = async () => {
     if (files.length === 0) return
@@ -150,19 +190,23 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     setIsUploading(true)
     setMensaje('')
     setError('')
+    setUploadedCount(0)
+    setFailedCount(0)
 
     try {
       const collection = await createCollection()
-      await Promise.all(files.map((file) => uploadOneFile(file, collection.id)))
+      const result = await uploadWithQueue(files, collection.id, 5, 3)
 
-      setMensaje('Colección creada y archivos subidos correctamente.')
+      setMensaje(
+        `Archivos exitosos: ${result.uploaded} · Archivos fallidos: ${result.failed}`,
+      )
       setFiles([])
 
       setTimeout(() => {
         handleClose()
         const userId = collection.user_id.split('|')[1] || collection.user_id
         navigate(`/${userId}/colecciones/${collection.id}/buscador`)
-      }, 1200)
+      }, 5000)
     } catch (err) {
       const message =
         err instanceof Error
@@ -233,7 +277,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
               ? 'Suelta los archivos aquí'
               : 'Arrastra tus archivos aquí'}
           </p>
-          <p className="mc-drop-sub">PDF, o TXT · Máx. 25 MB por archivo</p>
+          <p className="mc-drop-sub">PDF, o TXT · Máx. 50 MB por archivo</p>
           <button
             className="mc-drop-btn"
             disabled={isUploading}
@@ -267,6 +311,11 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
         {mensaje && <p className="mc-success-message">{mensaje}</p>}
         {error && <p className="mc-error-message">{error}</p>}
+        {isUploading && (
+          <p className="mc-success-message">
+            Subiendo {uploadedCount + failedCount} de {files.length} archivos...
+          </p>
+        )}
         <div className="mc-collection-name">
           <input
             type="text"
