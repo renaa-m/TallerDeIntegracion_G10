@@ -58,7 +58,6 @@ const ModalCarga = ({
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedCount, setUploadedCount] = useState(0)
-  const [failedCount, setFailedCount] = useState(0)
   const [nombreColeccion, setNombreColeccion] = useState('')
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -217,8 +216,6 @@ const ModalCarga = ({
         if (upRes.ok) {
           uploaded++
           setUploadedCount(uploaded)
-        } else {
-          setFailedCount((prev) => prev + 1)
         }
       }
 
@@ -227,8 +224,8 @@ const ModalCarga = ({
       setEtapa('pipeline')
       localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
       if (onUploadSuccess) onUploadSuccess()
-    } catch (err: any) {
-      setError(err.message || 'Error en la carga')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error en la carga')
     } finally {
       setIsUploading(false)
     }
@@ -248,8 +245,10 @@ const ModalCarga = ({
       )
       if (!res.ok) throw new Error('Error al iniciar Wukong')
       setPipelineStatus('processing_text')
-    } catch (e: any) {
-      setPipelineError(e.message)
+    } catch (e: unknown) {
+      setPipelineError(
+        e instanceof Error ? e.message : 'Error al iniciar el procesamiento',
+      )
     }
   }
 

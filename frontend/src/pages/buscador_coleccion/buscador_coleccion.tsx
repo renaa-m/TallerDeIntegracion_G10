@@ -26,6 +26,16 @@ import './buscador_coleccion.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
+/** Coincide con `SearchResult` del backend (campos extra opcionales si el API los agrega). */
+interface SearchResultItem {
+  titulo: string
+  fragmento: string
+  id_chunk: string
+  enlace: string
+  score: number
+  pagina?: number
+}
+
 // --- HELPER PARA HIGHLIGHT ---
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>
@@ -61,7 +71,7 @@ const BuscadorColeccion = () => {
   // --- ESTADOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
   const [fuentes, setFuentes] = useState([])
-  const [resultados, setResultados] = useState([])
+  const [resultados, setResultados] = useState<SearchResultItem[]>([])
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState('')
   const [loading, setLoading] = useState(false)
@@ -334,7 +344,7 @@ const BuscadorColeccion = () => {
               </div>
             ) : resultados.length > 0 ? (
               <div className="bc-results-list">
-                {resultados.map((r: any, idx) => (
+                {resultados.map((r, idx) => (
                   <article key={idx} className="bc-result-card">
                     <div className="bc-card-header">
                       <div className="bc-header-info">
