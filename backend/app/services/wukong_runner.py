@@ -44,6 +44,25 @@ logger = logging.getLogger(__name__) # para registrar errores
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent 
 # para manejar rutas de archivos del backend (identifica la raiz de la rita de éste archivo)la raíz)
 
+
+def _wukong_python_executable() -> str:
+    """Intérprete para ``python -m wukong_engine`` (wukong-engine exige Python >= 3.13).
+
+    Si el proceso FastAPI corre con 3.12 por error, Wukong seguía usando ese binario y fallaba
+    con ``No module named wukong_engine``. Preferimos ``.venv/bin/python3.13`` cuando exista.
+    """
+    if sys.version_info >= (3, 13):
+        return sys.executable
+    v313 = BACKEND_ROOT / ".venv" / "bin" / "python3.13"
+    if v313.is_file():
+        logger.info(
+            "Wukong: el servidor usa Python %s; ejecutando Wukong con %s",
+            sys.version.split()[0],
+            v313,
+        )
+        return str(v313)
+    return sys.executable
+
 # Debe coincidir con parameters.included_documents en default_data_model.json
 WUKONG_DOCUMENT_SET = "preview" # para manejar el conjunto de documentos de Wukong
 
@@ -302,7 +321,7 @@ def _run_wukong(workdir: Path, timeout_seconds: int = 3600) -> str | None:
             # Arma el comando equivalente a:
             # <tu python> -m wukong_engine <workdir> --config <ruta al default.toml>
             [
-                sys.executable, # el mismo Python que usa FastAPI (así encuentra wukong_engine instalado en ese venv)
+                _wukong_python_executable(),
                 "-m", # ejecuta el módulo wukong_engine
                 "wukong_engine", # el nombre del módulo que contiene la función main() de Wukong
                 str(workdir), # la ruta al workdir de Wukong
