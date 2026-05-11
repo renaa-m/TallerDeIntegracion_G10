@@ -45,30 +45,89 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isFinalizing, setIsFinalizing] = useState(false)
+  const isLocked = isUploading || isFinalizing
+  const [uploadedCount, setUploadedCount] = useState(0)
+  const [failedCount, setFailedCount] = useState(0)
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [nombreColeccion, setNombreColeccion] = useState('')
   const navigate = useNavigate()
+  const abortControllersRef = useRef<AbortController[]>([])
+  const activeCollectionIdRef = useRef<string | null>(null)
+  const isUploadingRef = useRef(false)
+  const UPLOAD_IN_PROGRESS_KEY = 'upload_in_progress_collection_id'
 
   const handleClose = useCallback(() => {
-    if (isUploading) return // No dejar cerrar si está subiendo
+    if (isLocked) return // No dejar cerrar si está subiendo
     setFiles([])
     setMensaje('')
     setError('')
     setIsUploading(false)
     onClose()
     navigate('/landing_page')
-  }, [onClose, isUploading])
+  }, [onClose, navigate, isLocked])
 
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isUploading) handleClose()
+      if (e.key === 'Escape' && !isLocked) handleClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, handleClose, isUploading])
+  }, [isOpen, handleClose, isLocked])
+
+  useEffect(() => {
+    isUploadingRef.current = isUploading
+  }, [isUploading])
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!isUploadingRef.current || !activeCollectionIdRef.current) return
+      sessionStorage.setItem(
+        UPLOAD_IN_PROGRESS_KEY,
+        activeCollectionIdRef.current,
+      )
+      abortControllersRef.current.forEach((controller) => controller.abort())
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [])
+
+  useEffect(() => {
+    const cleanupInterruptedUpload = async () => {
+      const interruptedCollectionId = sessionStorage.getItem(
+        UPLOAD_IN_PROGRESS_KEY,
+      )
+
+      if (!interruptedCollectionId) return
+
+      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
+
+      try {
+        const token = await getAccessTokenSilently()
+
+        await fetch(
+          `http://localhost:8080/api/collections/${interruptedCollectionId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        )
+      } catch (err) {
+        console.error('No se pudo limpiar la colección incompleta', err)
+      }
+
+      navigate('/landing_page')
+    }
+
+    cleanupInterruptedUpload()
+  }, [getAccessTokenSilently, navigate])
 
   if (!isOpen) return null
 
@@ -85,14 +144,14 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   }
 
   const removeFile = (i: number) => {
-    if (isUploading) return
+    if (isLocked) return
     setFiles((prev) => prev.filter((_, idx) => idx !== i))
   }
 
   const createCollection = async (): Promise<CollectionResponse> => {
     const token = await getAccessTokenSilently()
     ////CAMBIAR POR LINK DEPLOY
-    const response = await fetch('http://localhost:8000/api/collections', {
+    const response = await fetch('http://localhost:8080/api/collections', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,6 +176,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const uploadOneFile = async (
     file: File,
     collectionId: string,
+    signal?: AbortSignal,
   ): Promise<DocumentResponse> => {
     const token = await getAccessTokenSilently()
 
@@ -124,16 +184,16 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     formData.append('file', file)
     ////CAMBIAR POR LINK DEPLOY
     const response = await fetch(
-      `http://localhost:8000/api/documentos/upload?coleccion_id=${collectionId}`,
+      `http://localhost:8080/api/documentos/upload?coleccion_id=${collectionId}`,
       {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
         },
         body: formData,
+        signal,
       },
     )
-
     const text = await response.text()
     const data = text ? JSON.parse(text) : null
 
@@ -144,25 +204,72 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     return data
   }
 
+  const uploadWithQueue = async (
+    files: File[],
+    collectionId: string,
+    concurrency = 5,
+    maxRetries = 3,
+  ) => {
+    let uploaded = 0
+    let failed = 0
+
+    const uploadWithRetry = async (file: File) => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController()
+        abortControllersRef.current.push(controller)
+        try {
+          await uploadOneFile(file, collectionId, controller.signal)
+          uploaded += 1
+          setUploadedCount(uploaded)
+
+          return
+        } catch (err) {
+          if (attempt === maxRetries) {
+            failed += 1
+            setFailedCount(failed)
+            console.error(`Falló la subida de ${file.name}`, err)
+            return
+          }
+          await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
+        }
+      }
+    }
+
+    for (let i = 0; i < files.length; i += concurrency) {
+      const batch = files.slice(i, i + concurrency)
+      await Promise.all(batch.map(uploadWithRetry))
+    }
+
+    return { uploaded, failed }
+  }
+
   const handleUpload = async () => {
     if (files.length === 0) return
 
     setIsUploading(true)
     setMensaje('')
     setError('')
+    setUploadedCount(0)
+    setFailedCount(0)
 
     try {
       const collection = await createCollection()
-      await Promise.all(files.map((file) => uploadOneFile(file, collection.id)))
-
-      setMensaje('Colección creada y archivos subidos correctamente.')
+      activeCollectionIdRef.current = collection.id
+      sessionStorage.setItem(UPLOAD_IN_PROGRESS_KEY, collection.id)
+      const result = await uploadWithQueue(files, collection.id, 5, 3)
+      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
+      activeCollectionIdRef.current = null
+      abortControllersRef.current = []
+      setMensaje(
+        `Archivos exitosos: ${result.uploaded} · Archivos fallidos: ${result.failed}`,
+      )
       setFiles([])
-
+      setIsFinalizing(true)
       setTimeout(() => {
         handleClose()
         const userId = collection.user_id.split('|')[1] || collection.user_id
         navigate(`/${userId}/colecciones/${collection.id}/buscador`)
-      }, 1200)
+      }, 5000)
     } catch (err) {
       const message =
         err instanceof Error
@@ -170,12 +277,14 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           : 'Error inesperado al crear la colección o subir archivos'
       setError(message)
     } finally {
-      setIsUploading(false)
+      if (!isFinalizing) {
+        setIsUploading(false)
+      }
     }
   }
 
   return (
-    <div className="mc-overlay" onClick={isUploading ? undefined : handleClose}>
+    <div className="mc-overlay" onClick={isLocked ? undefined : handleClose}>
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -190,30 +299,30 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           <button
             className="mc-close"
             onClick={handleClose}
-            disabled={isUploading}
+            disabled={isLocked}
           >
             <X size={18} />
           </button>
         </div>
 
         <div
-          className={`mc-dropzone${isDragging ? ' dragging' : ''} ${isUploading ? ' disabled' : ''}`}
+          className={`mc-dropzone${isDragging ? ' dragging' : ''} ${isLocked ? ' disabled' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
-            if (!isUploading) setIsDragging(true)
+            if (!isLocked) setIsDragging(true)
           }}
           onDragEnter={(e) => {
             e.preventDefault()
-            if (!isUploading) setIsDragging(true)
+            if (!isLocked) setIsDragging(true)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
             e.preventDefault()
             setIsDragging(false)
-            if (!isUploading) addFiles(e.dataTransfer.files)
+            if (!isLocked) addFiles(e.dataTransfer.files)
           }}
           onClick={() => {
-            if (!isUploading) fileInputRef.current?.click()
+            if (!isLocked) fileInputRef.current?.click()
           }}
         >
           <input
@@ -223,7 +332,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             ref={fileInputRef}
             accept=".pdf,.txt"
             onChange={(e) => addFiles(e.target.files)}
-            disabled={isUploading}
+            disabled={isLocked}
           />
           <div className="mc-drop-icon">
             <CloudUpload size={26} />
@@ -233,10 +342,10 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
               ? 'Suelta los archivos aquí'
               : 'Arrastra tus archivos aquí'}
           </p>
-          <p className="mc-drop-sub">PDF, o TXT · Máx. 25 MB por archivo</p>
+          <p className="mc-drop-sub">PDF, o TXT · Máx. 50 MB por archivo</p>
           <button
             className="mc-drop-btn"
-            disabled={isUploading}
+            disabled={isLocked}
             onClick={(e) => {
               e.stopPropagation()
               fileInputRef.current?.click()
@@ -255,7 +364,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
                 <span className="mc-file-size">{formatSize(f.size)}</span>
                 <button
                   className="mc-file-remove"
-                  disabled={isUploading}
+                  disabled={isLocked}
                   onClick={() => removeFile(i)}
                 >
                   <Trash2 size={13} />
@@ -267,6 +376,11 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
         {mensaje && <p className="mc-success-message">{mensaje}</p>}
         {error && <p className="mc-error-message">{error}</p>}
+        {isLocked && (
+          <p className="mc-success-message">
+            Subiendo {uploadedCount + failedCount} de {files.length} archivos...
+          </p>
+        )}
         <div className="mc-collection-name">
           <input
             type="text"
@@ -274,25 +388,23 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             placeholder="Nombre de colección"
             value={nombreColeccion}
             onChange={(e) => setNombreColeccion(e.target.value)}
-            disabled={isUploading}
+            disabled={isLocked}
           />
         </div>
         <div className="mc-footer">
           <button
             className="mc-btn-cancel"
             onClick={handleClose}
-            disabled={isUploading}
+            disabled={isLocked}
           >
             Cancelar
           </button>
           <button
             className="mc-btn-upload"
-            disabled={
-              files.length === 0 || isUploading || !nombreColeccion.trim()
-            }
+            disabled={files.length === 0 || isLocked || !nombreColeccion.trim()}
             onClick={handleUpload}
           >
-            {isUploading
+            {isLocked
               ? 'Subiendo...'
               : files.length > 0
                 ? `Añadir ${files.length} archivo${files.length > 1 ? 's' : ''}`
