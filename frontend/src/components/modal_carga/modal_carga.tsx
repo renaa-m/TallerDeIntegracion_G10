@@ -85,9 +85,16 @@ const ModalCarga = ({
     activeCollectionIdRef.current = activeCollectionId
   }, [activeCollectionId])
 
-  // --- Lógica de Cierre ---
+  // --- Lógica de Cierre con Redirección al Main ---
   const handleClose = useCallback(() => {
     if (isLocked) return
+
+    // Si se cancela en etapa de subida, volvemos al main
+    if (etapa === 'subida') {
+      navigate('/landing_page')
+    }
+
+    // Reset de estados
     setFiles([])
     setNombreColeccion('')
     setError('')
@@ -97,17 +104,16 @@ const ModalCarga = ({
     setIsUploading(false)
     setActiveCollectionId(null)
     sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
+    
     onClose()
-  }, [onClose, isLocked])
+  }, [onClose, isLocked, etapa, navigate])
 
-  // --- RESTAURADO: Lógica de Limpieza al Recargar (Reload Logic) ---
+  // --- Lógica de Limpieza al Recargar ---
   useEffect(() => {
     const cleanupInterruptedUpload = async () => {
       const interruptedId = sessionStorage.getItem(UPLOAD_IN_PROGRESS_KEY)
       if (!interruptedId) return
 
-      // Si encontramos un ID en el storage al montar el componente,
-      // significa que la página se recargó durante una subida.
       sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
       try {
         const token = await getAccessTokenSilently()
@@ -115,11 +121,9 @@ const ModalCarga = ({
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         })
-        console.log('Colección interrumpida eliminada con éxito.')
       } catch (err) {
         console.error('Limpieza fallida tras recarga:', err)
       }
-      // Redirigimos para limpiar el estado visual
       navigate('/landing_page')
     }
 
@@ -139,7 +143,6 @@ const ModalCarga = ({
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!isUploadingRef.current || !activeCollectionIdRef.current) return
-      // Marcamos que hay una subida activa antes de que la página se cierre
       sessionStorage.setItem(
         UPLOAD_IN_PROGRESS_KEY,
         activeCollectionIdRef.current,
@@ -150,14 +153,12 @@ const ModalCarga = ({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  // --- Polling y API ---
+  // --- Polling de Pipeline ---
   useEffect(() => {
     if (
       etapa !== 'pipeline' ||
       !activeCollectionId ||
-      pipelineStatus === 'graph_ready' ||
-      pipelineStatus === 'error' ||
-      pipelineStatus === 'idle'
+      ['graph_ready', 'error', 'idle'].includes(pipelineStatus)
     )
       return
 
@@ -234,7 +235,6 @@ const ModalCarga = ({
     setFailedCount(0)
 
     try {
-      // Mantenemos tu lógica: si no hay coleccionId, creamos una nueva
       const collection = await createCollection()
       setActiveCollectionId(collection.id)
       sessionStorage.setItem(UPLOAD_IN_PROGRESS_KEY, collection.id)

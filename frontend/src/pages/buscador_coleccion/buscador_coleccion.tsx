@@ -11,6 +11,7 @@ import {
   Trash2,
   Files,
   Edit2,
+  AlertCircle,
 } from 'lucide-react'
 
 // Componentes
@@ -283,6 +284,23 @@ const BuscadorColeccion = () => {
             </div>
 
             {/* Panel de filtros (puedes mantener tu lógica de tags aquí) */}
+            {filtroOpen && (
+              <div className="bc-filter-panel-placeholder" style={{
+                marginTop: '8px',
+                padding: '12px',
+                backgroundColor: darkMode ? '#2a2a2a' : '#f5f5f5',
+                borderRadius: '8px',
+                border: `1px dashed ${darkMode ? '#444' : '#ccc'}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                fontSize: '0.85rem',
+                color: darkMode ? '#aaa' : '#666'
+              }}>
+                <AlertCircle size={14} />
+                <span>Los filtros avanzados estarán disponibles próximamente.</span>
+              </div>
+            )}
           </div>
 
           <div className="bc-results-area">
