@@ -54,6 +54,10 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [nombreColeccion, setNombreColeccion] = useState('')
   const navigate = useNavigate()
+  const abortControllersRef = useRef<AbortController[]>([])
+  const activeCollectionIdRef = useRef<string | null>(null)
+  const isUploadingRef = useRef(false)
+  const UPLOAD_IN_PROGRESS_KEY = 'upload_in_progress_collection_id'
 
   const handleClose = useCallback(() => {
     if (isLocked) return // No dejar cerrar si está subiendo
@@ -93,6 +97,57 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
     setFiles((prev) => prev.filter((_, idx) => idx !== i))
   }
 
+  useEffect(() => {
+    isUploadingRef.current = isUploading
+  }, [isUploading])
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!isUploadingRef.current || !activeCollectionIdRef.current) return
+      sessionStorage.setItem(
+        UPLOAD_IN_PROGRESS_KEY,
+        activeCollectionIdRef.current,
+      )
+      abortControllersRef.current.forEach((controller) => controller.abort())
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [])
+
+  useEffect(() => {
+    const cleanupInterruptedUpload = async () => {
+      const interruptedCollectionId = sessionStorage.getItem(
+        UPLOAD_IN_PROGRESS_KEY,
+      )
+
+      if (!interruptedCollectionId) return
+
+      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
+
+      try {
+        const token = await getAccessTokenSilently()
+
+        await fetch(
+          `http://localhost:8080/api/collections/${interruptedCollectionId}`,
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        )
+      } catch (err) {
+        console.error('No se pudo limpiar la colección incompleta', err)
+      }
+
+      navigate('/landing_page')
+    }
+
+    cleanupInterruptedUpload()
+  }, [getAccessTokenSilently, navigate])
+
   const createCollection = async (): Promise<CollectionResponse> => {
     const token = await getAccessTokenSilently()
     ////CAMBIAR POR LINK DEPLOY
@@ -121,6 +176,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const uploadOneFile = async (
     file: File,
     collectionId: string,
+    signal?: AbortSignal,
   ): Promise<DocumentResponse> => {
     const token = await getAccessTokenSilently()
 
@@ -135,6 +191,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           Authorization: `Bearer ${token}`,
         },
         body: formData,
+        signal,
       },
     )
     const text = await response.text()
@@ -158,9 +215,10 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     const uploadWithRetry = async (file: File) => {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const controller = new AbortController()
+        abortControllersRef.current.push(controller)
         try {
-          await uploadOneFile(file, collectionId)
-
+          await uploadOneFile(file, collectionId, controller.signal)
           uploaded += 1
           setUploadedCount(uploaded)
 
@@ -172,7 +230,6 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             console.error(`Falló la subida de ${file.name}`, err)
             return
           }
-
           await new Promise((resolve) => setTimeout(resolve, attempt * 1000))
         }
       }
@@ -197,8 +254,12 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
     try {
       const collection = await createCollection()
+      activeCollectionIdRef.current = collection.id
+      sessionStorage.setItem(UPLOAD_IN_PROGRESS_KEY, collection.id)
       const result = await uploadWithQueue(files, collection.id, 5, 3)
-
+      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
+      activeCollectionIdRef.current = null
+      abortControllersRef.current = []
       setMensaje(
         `Archivos exitosos: ${result.uploaded} · Archivos fallidos: ${result.failed}`,
       )
