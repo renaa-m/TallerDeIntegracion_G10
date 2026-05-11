@@ -104,12 +104,14 @@ const ModalCarga = ({
     syncStatus()
   }, [isOpen, getAccessTokenSilently])
 
-  // --- 2. Lógica de Cierre y Cancelación Real ---
+  // --- 2. Lógica de Cierre y Cancelación Real (CORREGIDO) ---
   const handleClose = useCallback(async () => {
     if (isLocked) return
 
-    // Si hay una colección creada pero no finalizada, la borramos en el Back
-    if (activeCollectionId && pipelineStatus !== 'graph_ready') {
+    // CORRECCIÓN: Si el usuario cierra el modal manualmente, borramos la colección 
+    // SIEMPRE que exista un ID activo, sin importar si el grafo está listo o no.
+    // Solo el botón de 'Finalizar' se salta esta lógica de borrado.
+    if (activeCollectionId) {
       try {
         const token = await getAccessTokenSilently()
         await fetch(`${API_BASE}/api/collections/${activeCollectionId}`, {
@@ -117,7 +119,7 @@ const ModalCarga = ({
           headers: { Authorization: `Bearer ${token}` },
         })
       } catch (err) {
-        console.error('Error borrando colección cancelada:', err)
+        console.error('Error borrando colección al cerrar modal:', err)
       }
     }
 
@@ -133,9 +135,9 @@ const ModalCarga = ({
     
     navigate('/landing_page')
     onClose()
-  }, [onClose, isLocked, activeCollectionId, pipelineStatus, getAccessTokenSilently, navigate])
+  }, [onClose, isLocked, activeCollectionId, getAccessTokenSilently, navigate])
 
-  // --- Polling de Pipeline ---
+  // --- 3. Polling de Pipeline (Sigue funcionando tras recarga) ---
   useEffect(() => {
     if (
       etapa !== 'pipeline' ||
@@ -177,7 +179,6 @@ const ModalCarga = ({
     setError('')
 
     try {
-      // Crear colección e iniciar persistencia
       const token = await getAccessTokenSilently()
       const res = await fetch(`${API_BASE}/api/collections`, {
         method: 'POST',
@@ -252,7 +253,7 @@ const ModalCarga = ({
     }
   }
 
-  // Finalización exitosa: Limpiamos storage y navegamos al buscador
+  // Finalización exitosa (CORREGIDO: No llama a handleClose para no borrar la colección)
   const handleFinalizarExito = () => {
     localStorage.removeItem(ACTIVE_COLLECTION_KEY)
     localStorage.removeItem(MODAL_ETAPA_KEY)
