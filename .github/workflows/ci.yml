@@ -69,8 +69,8 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Unit tests (Jest)
-        run: npm run test
+      - name: Unit tests (Jest + coverage)
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
