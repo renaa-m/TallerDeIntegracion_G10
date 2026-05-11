@@ -264,7 +264,6 @@ const BuscadorColeccion = () => {
       <ModalCarga 
         isOpen={modalCargaOpen} 
         onClose={() => setModalCargaOpen(false)} 
-        coleccionId={id_coleccion || ''} 
         onUploadSuccess={cargarDatos} 
         darkMode={darkMode}
       />

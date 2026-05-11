@@ -8,6 +8,7 @@ interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
   darkMode?: boolean
+  coleccionId?: string 
   onUploadSuccess?: () => void
 }
 
@@ -22,19 +23,19 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   error: 'Ocurrió un error durante el procesamiento.',
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
-
 const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:8080'
 
-const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: ModalCargaProps) => {
+const ModalCarga = ({ 
+    isOpen, 
+    onClose, 
+    darkMode = false, 
+    coleccionId,
+    onUploadSuccess 
+  }: ModalCargaProps) => {
   const { getAccessTokenSilently } = useAuth0()
   const navigate = useNavigate()
 
-  // --- Estados de archivos y subida ---
+  // --- Estados ---
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -44,7 +45,6 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // --- Estados de Pipeline ---
   const [etapa, setEtapa] = useState<Etapa>('subida')
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>('idle')
   const [pipelineError, setPipelineError] = useState('')
@@ -52,17 +52,16 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
 
   const isLocked = isUploading || pipelineStatus === 'processing_text' || pipelineStatus === 'processing_graph'
 
-  // --- Refs para persistencia y limpieza ---
+  // --- Refs y Constantes ---
   const abortControllersRef = useRef<AbortController[]>([])
   const activeCollectionIdRef = useRef<string | null>(null)
   const isUploadingRef = useRef(false)
   const UPLOAD_IN_PROGRESS_KEY = 'upload_in_progress_collection_id'
 
-  // Sincronizar refs con el estado para los listeners de window
   useEffect(() => { isUploadingRef.current = isUploading }, [isUploading])
   useEffect(() => { activeCollectionIdRef.current = activeCollectionId }, [activeCollectionId])
 
-  // --- Lógica de Cierre y Navegación ---
+  // --- Lógica de Cierre ---
   const handleClose = useCallback(() => {
     if (isLocked) return
     setFiles([])
@@ -75,10 +74,35 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
     setActiveCollectionId(null)
     sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
     onClose()
-    navigate('/landing_page')
-  }, [onClose, navigate, isLocked])
+  }, [onClose, isLocked])
 
-  // --- Manejo de Esc y Cleanup de página ---
+  // --- RESTAURADO: Lógica de Limpieza al Recargar (Reload Logic) ---
+  useEffect(() => {
+    const cleanupInterruptedUpload = async () => {
+      const interruptedId = sessionStorage.getItem(UPLOAD_IN_PROGRESS_KEY)
+      if (!interruptedId) return
+
+      // Si encontramos un ID en el storage al montar el componente, 
+      // significa que la página se recargó durante una subida.
+      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
+      try {
+        const token = await getAccessTokenSilently()
+        await fetch(`${API_BASE}/api/collections/${interruptedId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        console.log('Colección interrumpida eliminada con éxito.')
+      } catch (err) { 
+        console.error('Limpieza fallida tras recarga:', err) 
+      }
+      // Redirigimos para limpiar el estado visual
+      navigate('/landing_page')
+    }
+    
+    cleanupInterruptedUpload()
+  }, [getAccessTokenSilently, navigate])
+
+  // --- Manejo de Esc y BeforeUnload ---
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !isLocked) handleClose() }
@@ -89,6 +113,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!isUploadingRef.current || !activeCollectionIdRef.current) return
+      // Marcamos que hay una subida activa antes de que la página se cierre
       sessionStorage.setItem(UPLOAD_IN_PROGRESS_KEY, activeCollectionIdRef.current)
       abortControllersRef.current.forEach((c) => c.abort())
     }
@@ -96,25 +121,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [])
 
-  // Limpieza al detectar carga interrumpida previa
-  useEffect(() => {
-    const cleanup = async () => {
-      const interruptedId = sessionStorage.getItem(UPLOAD_IN_PROGRESS_KEY)
-      if (!interruptedId) return
-      sessionStorage.removeItem(UPLOAD_IN_PROGRESS_KEY)
-      try {
-        const token = await getAccessTokenSilently()
-        await fetch(`${API_BASE}/api/collections/${interruptedId}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-      } catch (err) { console.error('Limpieza fallida:', err) }
-      navigate('/landing_page')
-    }
-    cleanup()
-  }, [getAccessTokenSilently, navigate])
-
-  // --- Polling del Pipeline ---
+  // --- Polling y API ---
   useEffect(() => {
     if (etapa !== 'pipeline' || !activeCollectionId || pipelineStatus === 'graph_ready' || pipelineStatus === 'error' || pipelineStatus === 'idle') return
 
@@ -137,7 +144,6 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
     return () => clearInterval(interval)
   }, [etapa, activeCollectionId, pipelineStatus, getAccessTokenSilently])
 
-  // --- Funciones de API ---
   const createCollection = async () => {
     const token = await getAccessTokenSilently()
     const res = await fetch(`${API_BASE}/api/collections`, {
@@ -171,14 +177,12 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
     setFailedCount(0)
 
     try {
+      // Mantenemos tu lógica: si no hay coleccionId, creamos una nueva
       const collection = await createCollection()
       setActiveCollectionId(collection.id)
       sessionStorage.setItem(UPLOAD_IN_PROGRESS_KEY, collection.id)
 
       let uploaded = 0
-      let failed = 0
-      
-      // Subida secuencial robusta (puedes volver a usar uploadWithQueue si prefieres concurrencia)
       for (const file of files) {
         const controller = new AbortController()
         abortControllersRef.current.push(controller)
@@ -187,8 +191,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
           uploaded++
           setUploadedCount(uploaded)
         } catch (e) {
-          failed++
-          setFailedCount(failed)
+          setFailedCount(prev => prev + 1)
         }
       }
 
@@ -223,7 +226,6 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false, onUploadSuccess }: Moda
   return (
     <div className="mc-overlay" onClick={isLocked ? undefined : handleClose}>
       <div className={`mc-panel${darkMode ? ' dark' : ''}`} onClick={(e) => e.stopPropagation()}>
-        
         <div className="mc-header">
           <div>
             <h2 className="mc-title">{etapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}</h2>
