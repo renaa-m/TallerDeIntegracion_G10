@@ -340,9 +340,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           </button>
           <button
             className="mc-btn-upload"
-            disabled={
-              files.length === 0 || isLocked || !nombreColeccion.trim()
-            }
+            disabled={files.length === 0 || isLocked || !nombreColeccion.trim()}
             onClick={handleUpload}
           >
             {isLocked
