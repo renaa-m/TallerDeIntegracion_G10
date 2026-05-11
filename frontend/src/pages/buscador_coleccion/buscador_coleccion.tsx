@@ -265,7 +265,7 @@ const BuscadorColeccion = () => {
               <Search size={17} className="bc-searchbar-icon" />
               <input
                 className="bc-searchbar-input"
-                placeholder="Pregunta algo a tus documentos..."
+                placeholder="Consulta algo a tus documentos..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
@@ -279,14 +279,18 @@ const BuscadorColeccion = () => {
             </div>
 
             {filtroOpen && (
-              <div className="bc-filter-panel-placeholder" style={{
-                marginTop: '8px', padding: '12px', borderRadius: '8px',
-                backgroundColor: darkMode ? '#2a2a2a' : '#f5f5f5',
-                border: `1px dashed ${darkMode ? '#444' : '#ccc'}`,
-                display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem'
-              }}>
-                <AlertCircle size={14} />
-                <span>Búsqueda semántica activa. Filtros por entidad y año próximamente.</span>
+              <div className="bc-alert-banner">
+                <div className="bc-alert-content">
+                  <div className="bc-alert-icon-wrap">
+                    <SlidersHorizontal size={14} className="bc-alert-icon" />
+                  </div>
+                  <div className="bc-alert-text">
+                    <span className="bc-alert-title">Próximamente: Filtros Avanzados</span>
+                  </div>
+                </div>
+                <button className="bc-alert-close" onClick={() => setFiltroOpen(false)}>
+                  <X size={14} />
+                </button>
               </div>
             )}
           </div>
@@ -350,7 +354,7 @@ const BuscadorColeccion = () => {
                 <p className="bc-empty-sub">
                   {busquedaEnviada 
                     ? "No hay fragmentos que coincidan con tu búsqueda semántica." 
-                    : "Haz una pregunta para explorar los documentos de esta colección."}
+                    : "Haz una consulta para explorar los documentos de esta colección."}
                 </p>
               </div>
             )}
