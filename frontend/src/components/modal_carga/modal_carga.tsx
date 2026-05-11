@@ -45,6 +45,8 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const [files, setFiles] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [isFinalizing, setIsFinalizing] = useState(false)
+  const isLocked = isUploading || isFinalizing
   const [uploadedCount, setUploadedCount] = useState(0)
   const [failedCount, setFailedCount] = useState(0)
   const [mensaje, setMensaje] = useState('')
@@ -54,23 +56,23 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   const navigate = useNavigate()
 
   const handleClose = useCallback(() => {
-    if (isUploading) return // No dejar cerrar si está subiendo
+    if (isLocked) return // No dejar cerrar si está subiendo
     setFiles([])
     setMensaje('')
     setError('')
     setIsUploading(false)
     onClose()
     navigate('/landing_page')
-  }, [onClose, isUploading])
+  }, [onClose, navigate, isLocked])
 
   useEffect(() => {
     if (!isOpen) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isUploading) handleClose()
+      if (e.key === 'Escape' && !isLocked) handleClose()
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [isOpen, handleClose, isUploading])
+  }, [isOpen, handleClose, isLocked])
 
   if (!isOpen) return null
 
@@ -87,7 +89,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
   }
 
   const removeFile = (i: number) => {
-    if (isUploading) return
+    if (isLocked) return
     setFiles((prev) => prev.filter((_, idx) => idx !== i))
   }
 
@@ -201,7 +203,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
         `Archivos exitosos: ${result.uploaded} · Archivos fallidos: ${result.failed}`,
       )
       setFiles([])
-
+      setIsFinalizing(true)
       setTimeout(() => {
         handleClose()
         const userId = collection.user_id.split('|')[1] || collection.user_id
@@ -214,12 +216,14 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           : 'Error inesperado al crear la colección o subir archivos'
       setError(message)
     } finally {
-      setIsUploading(false)
+      if (!isFinalizing) {
+        setIsUploading(false)
+      }
     }
   }
 
   return (
-    <div className="mc-overlay" onClick={isUploading ? undefined : handleClose}>
+    <div className="mc-overlay" onClick={isLocked ? undefined : handleClose}>
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -234,30 +238,30 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           <button
             className="mc-close"
             onClick={handleClose}
-            disabled={isUploading}
+            disabled={isLocked}
           >
             <X size={18} />
           </button>
         </div>
 
         <div
-          className={`mc-dropzone${isDragging ? ' dragging' : ''} ${isUploading ? ' disabled' : ''}`}
+          className={`mc-dropzone${isDragging ? ' dragging' : ''} ${isLocked ? ' disabled' : ''}`}
           onDragOver={(e) => {
             e.preventDefault()
-            if (!isUploading) setIsDragging(true)
+            if (!isLocked) setIsDragging(true)
           }}
           onDragEnter={(e) => {
             e.preventDefault()
-            if (!isUploading) setIsDragging(true)
+            if (!isLocked) setIsDragging(true)
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={(e) => {
             e.preventDefault()
             setIsDragging(false)
-            if (!isUploading) addFiles(e.dataTransfer.files)
+            if (!isLocked) addFiles(e.dataTransfer.files)
           }}
           onClick={() => {
-            if (!isUploading) fileInputRef.current?.click()
+            if (!isLocked) fileInputRef.current?.click()
           }}
         >
           <input
@@ -267,7 +271,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             ref={fileInputRef}
             accept=".pdf,.txt"
             onChange={(e) => addFiles(e.target.files)}
-            disabled={isUploading}
+            disabled={isLocked}
           />
           <div className="mc-drop-icon">
             <CloudUpload size={26} />
@@ -280,7 +284,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
           <p className="mc-drop-sub">PDF, o TXT · Máx. 50 MB por archivo</p>
           <button
             className="mc-drop-btn"
-            disabled={isUploading}
+            disabled={isLocked}
             onClick={(e) => {
               e.stopPropagation()
               fileInputRef.current?.click()
@@ -299,7 +303,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
                 <span className="mc-file-size">{formatSize(f.size)}</span>
                 <button
                   className="mc-file-remove"
-                  disabled={isUploading}
+                  disabled={isLocked}
                   onClick={() => removeFile(i)}
                 >
                   <Trash2 size={13} />
@@ -311,7 +315,7 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
 
         {mensaje && <p className="mc-success-message">{mensaje}</p>}
         {error && <p className="mc-error-message">{error}</p>}
-        {isUploading && (
+        {isLocked && (
           <p className="mc-success-message">
             Subiendo {uploadedCount + failedCount} de {files.length} archivos...
           </p>
@@ -323,25 +327,25 @@ const ModalCarga = ({ isOpen, onClose, darkMode = false }: ModalCargaProps) => {
             placeholder="Nombre de colección"
             value={nombreColeccion}
             onChange={(e) => setNombreColeccion(e.target.value)}
-            disabled={isUploading}
+            disabled={isLocked}
           />
         </div>
         <div className="mc-footer">
           <button
             className="mc-btn-cancel"
             onClick={handleClose}
-            disabled={isUploading}
+            disabled={isLocked}
           >
             Cancelar
           </button>
           <button
             className="mc-btn-upload"
             disabled={
-              files.length === 0 || isUploading || !nombreColeccion.trim()
+              files.length === 0 || isLocked || !nombreColeccion.trim()
             }
             onClick={handleUpload}
           >
-            {isUploading
+            {isLocked
               ? 'Subiendo...'
               : files.length > 0
                 ? `Añadir ${files.length} archivo${files.length > 1 ? 's' : ''}`
