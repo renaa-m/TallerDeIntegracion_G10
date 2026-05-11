@@ -24,6 +24,9 @@ import ModalDocumentosDisponibles from '../../components/modal_documentos_dispon
 // Estilos
 import './buscador_coleccion.css'
 
+// --- CONFIGURACIÓN ---
+const API_BASE_URL = 'http://localhost:8080/api' // Unificado al puerto 8080
+
 // --- INTERFACES ---
 interface Fuente {
   id: string
@@ -50,7 +53,6 @@ const BuscadorColeccion = () => {
   const { id_usuario, id_coleccion } = useParams<{ id_usuario: string; id_coleccion: string }>()
   const { getAccessTokenSilently } = useAuth0()
   const navigate = useNavigate()
-
   const [searchParams, setSearchParams] = useSearchParams()
 
   // --- ESTADOS DE DATOS ---
@@ -71,14 +73,13 @@ const BuscadorColeccion = () => {
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
 
-  // --- ESTADOS DE FILTROS REALES (Los que afectan la búsqueda) ---
+  // --- ESTADOS DE FILTROS ---
   const [filtroOpen, setFiltroOpen] = useState(false)
   const [personas, setPersonas] = useState<string[]>([])
   const [eventos, setEventos] = useState<string[]>([])
   const [fechaDesde, setFechaDesde] = useState('')
   const [fechaHasta, setFechaHasta] = useState('')
 
-  // --- ESTADOS DE FILTROS TEMPORALES (Solo para la UI del panel) ---
   const [tempPersonas, setTempPersonas] = useState<string[]>([])
   const [inputPersona, setInputPersona] = useState('')
   const [tempEventos, setTempEventos] = useState<string[]>([])
@@ -88,74 +89,62 @@ const BuscadorColeccion = () => {
 
   const [darkMode] = useState(() => window.matchMedia('(prefers-color-scheme: dark)').matches)
 
-  // Sincronizar temporales al abrir el panel
   useEffect(() => {
     if (filtroOpen) {
-      setTempPersonas(personas)
-      setTempEventos(eventos)
-      setTempFechaDesde(fechaDesde)
-      setTempFechaHasta(fechaHasta)
+      setTempPersonas(personas); setTempEventos(eventos)
+      setTempFechaDesde(fechaDesde); setTempFechaHasta(fechaHasta)
     }
   }, [filtroOpen, personas, eventos, fechaDesde, fechaHasta])
 
-  // Nueva función para manejar el borrado real de la colección
-  const handleDelete = async () => {
-    if (!id_coleccion || id_coleccion === 'nueva') return
-
-    try {
-      const token = await getAccessTokenSilently()
-      const res = await fetch(`http://localhost:8000/api/collections/${id_coleccion}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
-      })
-
-      if (res.ok) {
-        setIsEliminarModalOpen(false)
-        // Redirigir al dashboard del usuario tras eliminar con éxito
-        navigate(`/${id_usuario}/dashboard`)
-      } else {
-        console.error("Error al eliminar la colección")
-      }
-    } catch (e) {
-      console.error("Error en la petición de borrado:", e)
-    }
-  }
-
-  // --- CARGA DE DATOS ---
+  // --- CARGA DE DATOS CORREGIDA ---
   const cargarDatos = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva') return
     try {
       const token = await getAccessTokenSilently()
       const headers = { Authorization: `Bearer ${token}` }
 
-      const resColl = await fetch(`http://localhost:8000/api/collections/${id_coleccion}`, { headers })
+      // Cargar Info de la Colección
+      const resColl = await fetch(`${API_BASE_URL}/collections/${id_coleccion}`, { headers })
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
         setTempNombre(data.name)
       }
 
-      const resDocs = await fetch(`http://localhost:8000/api/documentos?coleccion_id=${id_coleccion}`, { headers })
+      // Cargar Documentos asociados
+      const resDocs = await fetch(`${API_BASE_URL}/documentos?coleccion_id=${id_coleccion}`, { headers })
       if (resDocs.ok) {
-        setFuentes(await resDocs.json())
+        const docs = await resDocs.json()
+        setFuentes(docs)
       }
-    } catch (e) { console.error("Error cargando colección:", e) }
+    } catch (e) { 
+      console.error("Error cargando datos de la colección:", e) 
+    }
   }, [id_coleccion, getAccessTokenSilently])
 
   useEffect(() => { cargarDatos() }, [cargarDatos])
 
   // --- MANEJADORES ---
-  const handleBuscar = (valor: string) => {
-    const trimmed = valor.trim()
-    setSearchParams(trimmed ? { q: trimmed } : {})
-    setBusquedaEnviada(trimmed)
+  const handleDelete = async () => {
+    if (!id_coleccion || id_coleccion === 'nueva') return
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(`${API_BASE_URL}/collections/${id_coleccion}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (res.ok) {
+        setIsEliminarModalOpen(false)
+        navigate(`/${id_usuario}/dashboard`)
+      }
+    } catch (e) { console.error("Error al eliminar:", e) }
   }
 
   const saveNombre = async () => {
     if (tempNombre.trim() && id_coleccion !== 'nueva') {
       try {
         const token = await getAccessTokenSilently()
-        await fetch(`http://localhost:8000/api/collections/${id_coleccion}`, {
+        await fetch(`${API_BASE_URL}/collections/${id_coleccion}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ name: tempNombre })
@@ -166,18 +155,21 @@ const BuscadorColeccion = () => {
     setIsEditingName(false)
   }
 
+  const handleBuscar = (valor: string) => {
+    const trimmed = valor.trim()
+    setSearchParams(trimmed ? { q: trimmed } : {})
+    setBusquedaEnviada(trimmed)
+  }
+
   const handleClearAllFilters = () => {
     setPersonas([]); setEventos([]); setFechaDesde(''); setFechaHasta('')
     setTempPersonas([]); setTempEventos([]); setTempFechaDesde(''); setTempFechaHasta('')
   }
 
   const handleSaveFilters = () => {
-    setPersonas(tempPersonas)
-    setEventos(tempEventos)
-    setFechaDesde(tempFechaDesde)
-    setFechaHasta(tempFechaHasta)
+    setPersonas(tempPersonas); setEventos(tempEventos)
+    setFechaDesde(tempFechaDesde); setFechaHasta(tempFechaHasta)
     setFiltroOpen(false)
-    // Opcional: disparar búsqueda aquí
   }
 
   const agregarTag = (val: string, lista: string[], setLista: (v: string[]) => void, setInput: (v: string) => void) => {
@@ -341,12 +333,13 @@ const BuscadorColeccion = () => {
         isOpen={modalCargaOpen} 
         onClose={() => setModalCargaOpen(false)} 
         coleccionId={id_coleccion || ''} 
-        darkMode={darkMode} 
+        darkMode={darkMode}
+        onUploadSuccess={cargarDatos} // <--- Permite recargar tras subir archivos
       />
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
         onClose={() => setIsEliminarModalOpen(false)}
-        onConfirm={handleDelete} // <--- Ahora llama a handleDelete
+        onConfirm={handleDelete}
         nombreColeccion={nombreColeccion}
       />
       <ModalDocumentosDisponibles
