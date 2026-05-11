@@ -111,7 +111,10 @@
   cursor: pointer;
   width: 100%;
   margin-bottom: 10px;
-  transition: background 0.2s, border-color 0.2s, transform 0.1s; /* Transición rápida para el clic */
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    transform 0.1s; /* Transición rápida para el clic */
 }
 
 /* HOVER: Solo cambio de color, sin desplazamiento */
@@ -201,13 +204,28 @@
 }
 
 /* ── ANIMACIONES ───────────────────────────────────────────────────────── */
-@keyframes mdd-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mdd-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 @keyframes mdd-panel-in {
-  from { opacity: 0; transform: scale(0.95) translateY(10px); }
-  to { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
-.mdd-body::-webkit-scrollbar { width: 5px; }
+.mdd-body::-webkit-scrollbar {
+  width: 5px;
+}
 .mdd-body::-webkit-scrollbar-thumb {
   background: var(--mdd-border);
   border-radius: 10px;
@@ -226,9 +244,15 @@
 }
 
 @keyframes mdd-pulse-anim {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
 .mdd-error-container {
@@ -250,8 +274,12 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mdd-card-main-info {

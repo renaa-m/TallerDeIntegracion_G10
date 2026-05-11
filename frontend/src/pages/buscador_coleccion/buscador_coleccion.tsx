@@ -27,19 +27,31 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 // --- HELPER PARA HIGHLIGHT ---
 function Highlight({ text, query }: { text: string; query: string }) {
   if (!query.trim()) return <>{text}</>
-  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+  const regex = new RegExp(
+    `(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
+    'gi',
+  )
   const parts = text.split(regex)
   return (
     <>
       {parts.map((part, i) =>
-        regex.test(part) ? <mark key={i} className="bc-hl">{part}</mark> : part
+        regex.test(part) ? (
+          <mark key={i} className="bc-hl">
+            {part}
+          </mark>
+        ) : (
+          part
+        ),
       )}
     </>
   )
 }
 
 const BuscadorColeccion = () => {
-  const { id_usuario, id_coleccion } = useParams<{ id_usuario: string; id_coleccion: string }>()
+  const { id_usuario, id_coleccion } = useParams<{
+    id_usuario: string
+    id_coleccion: string
+  }>()
   const { getAccessTokenSilently } = useAuth0()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -47,10 +59,10 @@ const BuscadorColeccion = () => {
   // --- ESTADOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
   const [fuentes, setFuentes] = useState([])
-  const [resultados, setResultados] = useState([]) 
+  const [resultados, setResultados] = useState([])
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState('')
-  
+
   const queryFromUrl = searchParams.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(queryFromUrl)
   const [busquedaEnviada, setBusquedaEnviada] = useState(queryFromUrl)
@@ -73,13 +85,16 @@ const BuscadorColeccion = () => {
   // --- CARGA DE DATOS ---
   const cargarDatos = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva') return
-    
+
     try {
       const token = await getAccessTokenSilently()
       const headers = { Authorization: `Bearer ${token}` }
 
       // 1. Cargar Info Colección
-      const resColl = await fetch(`${API_URL}/api/collections/${id_coleccion}`, { headers })
+      const resColl = await fetch(
+        `${API_URL}/api/collections/${id_coleccion}`,
+        { headers },
+      )
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
@@ -87,12 +102,15 @@ const BuscadorColeccion = () => {
       }
 
       // 2. Cargar Documentos
-      const resDocs = await fetch(`${API_URL}/api/documentos?coleccion_id=${id_coleccion}`, { headers })
+      const resDocs = await fetch(
+        `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
+        { headers },
+      )
       if (resDocs.ok) {
         setFuentes(await resDocs.json())
       }
     } catch (e) {
-      console.error("Error cargando datos:", e)
+      console.error('Error cargando datos:', e)
     }
   }, [id_coleccion, getAccessTokenSilently])
 
@@ -116,16 +134,24 @@ const BuscadorColeccion = () => {
       })
 
       const res = await fetch(`${API_URL}/api/search?${params}`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) {
         const data = await res.json()
         setResultados(data)
       }
     } catch (e) {
-      console.error("Error en búsqueda:", e)
+      console.error('Error en búsqueda:', e)
     }
-  }, [id_coleccion, busquedaEnviada, personas, eventos, fechaDesde, fechaHasta, getAccessTokenSilently])
+  }, [
+    id_coleccion,
+    busquedaEnviada,
+    personas,
+    eventos,
+    fechaDesde,
+    fechaHasta,
+    getAccessTokenSilently,
+  ])
 
   // --- EFECTOS ---
   useEffect(() => {
@@ -153,11 +179,16 @@ const BuscadorColeccion = () => {
         const token = await getAccessTokenSilently()
         const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ name: tempNombre })
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ name: tempNombre }),
         })
         if (res.ok) setNombreColeccion(tempNombre)
-      } catch (e) { console.error(e) }
+      } catch (e) {
+        console.error(e)
+      }
     }
     setIsEditingName(false)
   }
@@ -168,13 +199,16 @@ const BuscadorColeccion = () => {
       const token = await getAccessTokenSilently()
       const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       })
       if (res.ok) navigate(`/${id_usuario}/dashboard`)
-    } catch (e) { console.error(e) }
+    } catch (e) {
+      console.error(e)
+    }
   }
 
-  const hayFiltrosActivos = personas.length > 0 || eventos.length > 0 || !!fechaDesde || !!fechaHasta
+  const hayFiltrosActivos =
+    personas.length > 0 || eventos.length > 0 || !!fechaDesde || !!fechaHasta
 
   return (
     <>
@@ -192,22 +226,38 @@ const BuscadorColeccion = () => {
                   autoFocus
                 />
               ) : (
-                <div className="bc-sidebar-title-group" onClick={() => setIsEditingName(true)}>
-                  <h2 className="bc-sidebar-collection-name">{nombreColeccion}</h2>
+                <div
+                  className="bc-sidebar-title-group"
+                  onClick={() => setIsEditingName(true)}
+                >
+                  <h2 className="bc-sidebar-collection-name">
+                    {nombreColeccion}
+                  </h2>
                   <Edit2 size={12} className="bc-edit-icon" />
                 </div>
               )}
-              <span className="bc-sidebar-collection-label">Colección actual</span>
+              <span className="bc-sidebar-collection-label">
+                Colección actual
+              </span>
             </div>
 
             <div className="bc-sidebar-divider" />
-            <button className="bc-add-btn" onClick={() => setModalGrafoOpen(true)}>
+            <button
+              className="bc-add-btn"
+              onClick={() => setModalGrafoOpen(true)}
+            >
               <Network size={15} /> <span>Ver Grafo</span>
             </button>
-            <button className="bc-add-btn" onClick={() => setIsModalFuentesOpen(true)}>
+            <button
+              className="bc-add-btn"
+              onClick={() => setIsModalFuentesOpen(true)}
+            >
               <Files size={15} /> <span>Ver Documentos</span>
             </button>
-            <button className="bc-delete-collection-btn" onClick={() => setIsEliminarModalOpen(true)}>
+            <button
+              className="bc-delete-collection-btn"
+              onClick={() => setIsEliminarModalOpen(true)}
+            >
               <Trash2 size={14} /> <span>Borrar colección</span>
             </button>
           </div>
@@ -231,7 +281,7 @@ const BuscadorColeccion = () => {
                 <SlidersHorizontal size={14} /> <span>Filtrar</span>
               </button>
             </div>
-            
+
             {/* Panel de filtros (puedes mantener tu lógica de tags aquí) */}
           </div>
 
@@ -241,7 +291,9 @@ const BuscadorColeccion = () => {
                 {resultados.map((r: any, idx) => (
                   <article key={idx} className="bc-result-card">
                     <div className="bc-result-source">
-                      <span className="bc-result-source-name">{r.fuente_nombre}</span>
+                      <span className="bc-result-source-name">
+                        {r.fuente_nombre}
+                      </span>
                       <span className="bc-result-badge">{r.tipo}</span>
                     </div>
                     <p className="bc-result-excerpt">
@@ -253,7 +305,11 @@ const BuscadorColeccion = () => {
             ) : (
               <div className="bc-empty">
                 <Search size={30} />
-                <p>{busquedaEnviada ? 'Sin resultados para esta búsqueda' : 'Escribe algo y presiona Enter para buscar'}</p>
+                <p>
+                  {busquedaEnviada
+                    ? 'Sin resultados para esta búsqueda'
+                    : 'Escribe algo y presiona Enter para buscar'}
+                </p>
               </div>
             )}
           </div>
@@ -261,13 +317,13 @@ const BuscadorColeccion = () => {
       </div>
 
       {/* Modales */}
-      <ModalCarga 
-        isOpen={modalCargaOpen} 
-        onClose={() => setModalCargaOpen(false)} 
-        onUploadSuccess={cargarDatos} 
+      <ModalCarga
+        isOpen={modalCargaOpen}
+        onClose={() => setModalCargaOpen(false)}
+        onUploadSuccess={cargarDatos}
         darkMode={darkMode}
       />
-      
+
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
         onClose={() => setIsEliminarModalOpen(false)}
@@ -281,8 +337,11 @@ const BuscadorColeccion = () => {
         onClose={() => setIsModalFuentesOpen(false)}
         darkMode={darkMode}
       />
-      
-      <ModalNoDisponible isOpen={modalGrafoOpen} onClose={() => setModalGrafoOpen(false)} />
+
+      <ModalNoDisponible
+        isOpen={modalGrafoOpen}
+        onClose={() => setModalGrafoOpen(false)}
+      />
     </>
   )
 }
