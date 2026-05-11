@@ -235,3 +235,88 @@ class TestObtenerDocumento:
     def test_obtener_sin_autenticacion_retorna_403(self, client_sin_auth):
         response = client_sin_auth.get(f"/api/documentos/{MOCK_DOC_ID}")
         assert response.status_code == 403
+
+
+# ── Batch Upload ────────────────────────────────────────────────────────────────
+
+
+class TestBatchUploadDocumentos:
+    @pytest.fixture(autouse=True)
+    def mock_coleccion(self):
+        with patch(
+            "app.api.routes.documentos.supabase_client.get_collection_by_id"
+        ) as mock:
+            mock.return_value = {"user_id": MOCK_USER_ID}
+            yield mock
+
+    @pytest.fixture(autouse=True)
+    def mock_find_hash(self):
+        with patch(
+            "app.api.routes.documentos.supabase_client.find_document_by_hash",
+            new_callable=AsyncMock,
+            return_value=None,
+        ) as mock:
+            yield mock
+
+    def test_todos_los_archivos_suben_exitosamente(self, client):
+        with (
+            patch(
+                "app.api.routes.documentos.supabase_client.upload_file",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.routes.documentos.supabase_client.insert_document",
+                new_callable=AsyncMock,
+                return_value=MOCK_DOC,
+            ),
+        ):
+            response = client.post(
+                f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+                files=[("files", ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf"))],
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["exitos"]) == 1
+        assert data["exitos"][0]["filename"] == "doc.pdf"
+        assert data["duplicados"] == []
+        assert data["fallidos"] == []
+
+    def test_archivo_duplicado_se_reporta_como_duplicado(self, client):
+        with patch(
+            "app.api.routes.documentos.supabase_client.find_document_by_hash",
+            new_callable=AsyncMock,
+            return_value=MOCK_DOC,
+        ):
+            response = client.post(
+                f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+                files=[("files", ("test.pdf", b"%PDF-1.4 contenido", "application/pdf"))],
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["duplicados"]) == 1
+        assert data["duplicados"][0]["filename"] == "test.pdf"
+        assert data["exitos"] == []
+        assert data["fallidos"] == []
+
+    def test_archivo_formato_invalido_se_reporta_como_fallido(self, client):
+        response = client.post(
+            f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+            files=[("files", ("imagen.png", b"\x89PNG...", "image/png"))],
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["fallidos"]) == 1
+        assert data["fallidos"][0]["filename"] == "imagen.png"
+        assert data["exitos"] == []
+        assert data["duplicados"] == []
+
+    def test_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.post(
+            f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+            files=[("files", ("doc.pdf", b"contenido", "application/pdf"))],
+        )
+
+        assert response.status_code == 403
