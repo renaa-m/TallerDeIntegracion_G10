@@ -63,6 +63,29 @@ def get_collection(collection_id: str, user_id: str) -> dict | None:
 
 def delete_collection(collection_id: str, user_id: str) -> bool:
     client = get_supabase_client()
+    collection_response = (
+        client.table("collections")
+        .select("id")
+        .eq("id", collection_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    if not collection_response.data:
+        return False
+    documents_response = (
+        client.table("documents")
+        .select("storage_path")
+        .eq("collection_id", collection_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    storage_paths = [
+        doc["storage_path"]
+        for doc in (documents_response.data or [])
+        if doc.get("storage_path")
+    ]
+    if storage_paths:
+        client.storage.from_(BUCKET).remove(storage_paths)
     response = (
         client.table("collections")
         .delete()
@@ -70,7 +93,14 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
         .eq("user_id", user_id)
         .execute()
     )
-    return len(response.data) > 0
+    delete_response = (
+        client.table("collections")
+        .delete()
+        .eq("id", collection_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return len(delete_response.data) > 0
 
 
 def update_collection_name(collection_id: str, user_id: str, new_name: str) -> dict | None:
