@@ -50,6 +50,7 @@ const BuscadorColeccion = () => {
   const { id_usuario, id_coleccion } = useParams<{ id_usuario: string; id_coleccion: string }>()
   const { getAccessTokenSilently } = useAuth0()
   const navigate = useNavigate()
+
   const [searchParams, setSearchParams] = useSearchParams()
 
   // --- ESTADOS DE DATOS ---
@@ -96,6 +97,29 @@ const BuscadorColeccion = () => {
       setTempFechaHasta(fechaHasta)
     }
   }, [filtroOpen, personas, eventos, fechaDesde, fechaHasta])
+
+  // Nueva función para manejar el borrado real de la colección
+  const handleDelete = async () => {
+    if (!id_coleccion || id_coleccion === 'nueva') return
+
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(`http://localhost:8000/api/collections/${id_coleccion}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+
+      if (res.ok) {
+        setIsEliminarModalOpen(false)
+        // Redirigir al dashboard del usuario tras eliminar con éxito
+        navigate(`/${id_usuario}/dashboard`)
+      } else {
+        console.error("Error al eliminar la colección")
+      }
+    } catch (e) {
+      console.error("Error en la petición de borrado:", e)
+    }
+  }
 
   // --- CARGA DE DATOS ---
   const cargarDatos = useCallback(async () => {
@@ -322,7 +346,7 @@ const BuscadorColeccion = () => {
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
         onClose={() => setIsEliminarModalOpen(false)}
-        onConfirm={() => {/* implementar borrado */}}
+        onConfirm={handleDelete} // <--- Ahora llama a handleDelete
         nombreColeccion={nombreColeccion}
       />
       <ModalDocumentosDisponibles
