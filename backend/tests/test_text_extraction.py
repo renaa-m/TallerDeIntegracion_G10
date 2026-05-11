@@ -7,6 +7,7 @@ from app.services.text_extraction import (
     extract_text_pymupdf,
     extract_text_vision,
     process_pdf_document,
+    process_txt_document,
 )
 
 MOCK_DOC_ID = "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb"
@@ -214,3 +215,82 @@ def test_process_pdf_document_scanned_marks_error_on_vision_failure(tmp_path):
     # Verifica que se intentó marcar como error
     calls = [str(c) for c in mock_status.call_args_list]
     assert any("error" in c for c in calls)
+
+
+class TestProcessTxtDocument:
+    @patch("app.services.text_extraction.save_document_text")
+    @patch("app.services.text_extraction.update_document_status")
+    @patch("app.services.text_extraction.download_file_from_storage")
+    def test_happy_path(
+        self,
+        mock_download,
+        mock_update_status,
+        mock_save_text,
+    ):
+        mock_download.return_value = b"Texto de prueba en TXT"
+
+        result = process_txt_document(
+            MOCK_DOC_ID, MOCK_USER_ID, MOCK_COL_ID, MOCK_STORAGE_PATH
+        )
+
+        assert result == {"status": "ok", "document_id": MOCK_DOC_ID}
+        mock_update_status.assert_any_call(MOCK_DOC_ID, MOCK_USER_ID, "extracting_text")
+        mock_update_status.assert_any_call(MOCK_DOC_ID, MOCK_USER_ID, "text_extracted")
+        assert mock_save_text.call_args.kwargs["extraction_method"] == "direct_read"
+        assert mock_save_text.call_args.kwargs["document_id"] == MOCK_DOC_ID
+
+    @patch("app.services.text_extraction.save_document_text")
+    @patch("app.services.text_extraction.update_document_status")
+    @patch("app.services.text_extraction.download_file_from_storage")
+    def test_error_en_descarga_marca_estado_error(
+        self,
+        mock_download,
+        mock_update_status,
+        mock_save_text,
+    ):
+        mock_download.side_effect = RuntimeError("conexión fallida")
+
+        result = process_txt_document(
+            MOCK_DOC_ID, MOCK_USER_ID, MOCK_COL_ID, MOCK_STORAGE_PATH
+        )
+
+        assert result == {
+            "status": "error",
+            "document_id": MOCK_DOC_ID,
+            "error": "conexión fallida",
+        }
+        mock_update_status.assert_any_call(
+            MOCK_DOC_ID,
+            MOCK_USER_ID,
+            "error",
+            error_message="conexión fallida",
+        )
+        mock_save_text.assert_not_called()
+
+    @patch("app.services.text_extraction.save_document_text")
+    @patch("app.services.text_extraction.update_document_status")
+    @patch("app.services.text_extraction.download_file_from_storage")
+    def test_error_al_guardar_texto_marca_estado_error(
+        self,
+        mock_download,
+        mock_update_status,
+        mock_save_text,
+    ):
+        mock_download.return_value = b"Texto de prueba en TXT"
+        mock_save_text.side_effect = RuntimeError("db error")
+
+        result = process_txt_document(
+            MOCK_DOC_ID, MOCK_USER_ID, MOCK_COL_ID, MOCK_STORAGE_PATH
+        )
+
+        assert result == {
+            "status": "error",
+            "document_id": MOCK_DOC_ID,
+            "error": "db error",
+        }
+        mock_update_status.assert_any_call(
+            MOCK_DOC_ID,
+            MOCK_USER_ID,
+            "error",
+            error_message="db error",
+        )

@@ -1,10 +1,14 @@
+import json
 import subprocess
 from unittest.mock import patch
+
+import pytest
 
 from app.services import wukong_runner
 
 MOCK_COL_ID = "11111111-2222-3333-4444-555555555555"
 MOCK_USER_ID = "auth0|testuser123"
+MOCK_DOC_UUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 
 
 def _make_collection() -> dict:
@@ -215,6 +219,30 @@ class TestProcessCollection:
         ]
         assert statuses[-1] == "error"
 
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_coleccion_no_encontrada_retorna_sin_procesar(self, mock_sb):
+        mock_sb.get_collection_by_id.return_value = None
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        mock_sb.get_documents_by_collection.assert_not_called()
+        mock_sb.update_collection_processing_status.assert_not_called()
+
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_coleccion_sin_documentos_marca_error(self, mock_sb):
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = []
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        statuses = [
+            call.args[1]
+            for call in mock_sb.update_collection_processing_status.call_args_list
+        ]
+        assert statuses[-1] == "error"
+        err_kwargs = mock_sb.update_collection_processing_status.call_args_list[-1].kwargs
+        assert "documentos" in (err_kwargs.get("error_message") or "")
+
 
 def _stub_wukong_config_path(tmp_path):
     """default.toml del submódulo no está en CI (repo privado / no clonable); los tests solo necesitan un archivo existente."""
@@ -250,3 +278,89 @@ class TestRunWukong:
             result = wukong_runner._run_wukong(tmp_path)
         assert result is not None
         assert "wukong_engine" in result.lower()
+
+
+# ── Helpers para TestGenerateAndStoreEmbeddings ────────────────────────────────
+
+
+def _write_json(path, data) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def _setup_wukong_results(workdir) -> None:
+    """Crea la estructura mínima de artefactos JSON que produce Wukong."""
+    results = workdir / "results"
+    _write_json(
+        results / "entities" / "Document.json",
+        [{"_ObjectId": "Document_1", "name": MOCK_DOC_UUID}],
+    )
+    _write_json(
+        results / "entities" / "Chunk.json",
+        [{"_ObjectId": "Chunk_1_1", "text": "Texto del chunk de prueba"}],
+    )
+    _write_json(
+        results / "relations" / "ChunkOf.json",
+        [{"_OriginId": "Chunk_1_1", "_TargetId": "Document_1", "chunk_number": 0}],
+    )
+
+
+class TestGenerateAndStoreEmbeddings:
+    @patch("app.services.wukong_runner.supabase_client.save_chunk_embeddings")
+    @patch("app.services.embeddings_service.generate_embeddings_batch")
+    @patch("app.services.wukong_runner.supabase_client.get_documents_by_collection")
+    def test_happy_path_genera_y_guarda_embeddings(
+        self,
+        mock_get_docs,
+        mock_generate_batch,
+        mock_save_chunks,
+        tmp_path,
+    ):
+        _setup_wukong_results(tmp_path)
+        mock_get_docs.return_value = [{"id": MOCK_DOC_UUID, "filename": "informe.pdf"}]
+        mock_generate_batch.return_value = [[0.1] * 384]
+
+        result = wukong_runner._generate_and_store_embeddings(tmp_path, MOCK_COL_ID)
+
+        assert result == 1
+        mock_generate_batch.assert_called_once()
+        mock_save_chunks.assert_called_once()
+        saved_records = mock_save_chunks.call_args[0][0]
+        assert len(saved_records) == 1
+        assert saved_records[0]["chunk_id"] == "Chunk_1_1"
+        assert saved_records[0]["document_name"] == "informe.pdf"
+
+    @patch("app.services.wukong_runner.supabase_client.save_chunk_embeddings")
+    @patch("app.services.embeddings_service.generate_embeddings_batch")
+    def test_sin_archivos_json_no_genera_embeddings(
+        self,
+        mock_generate_batch,
+        mock_save_chunks,
+        tmp_path,
+    ):
+        # tmp_path no tiene results/entities/Document.json → la función retorna 0
+        result = wukong_runner._generate_and_store_embeddings(tmp_path, MOCK_COL_ID)
+
+        assert result == 0
+        mock_generate_batch.assert_not_called()
+        mock_save_chunks.assert_not_called()
+
+    @patch("app.services.wukong_runner.supabase_client.save_chunk_embeddings")
+    @patch("app.services.embeddings_service.generate_embeddings_batch")
+    @patch("app.services.wukong_runner.supabase_client.get_documents_by_collection")
+    def test_error_al_guardar_embeddings_propaga_excepcion(
+        self,
+        mock_get_docs,
+        mock_generate_batch,
+        mock_save_chunks,
+        tmp_path,
+    ):
+        # _generate_and_store_embeddings propaga la excepción al llamador
+        # (process_collection la captura con falla silenciosa — líneas 145-152)
+        _setup_wukong_results(tmp_path)
+        mock_get_docs.return_value = [{"id": MOCK_DOC_UUID, "filename": "informe.pdf"}]
+        mock_generate_batch.return_value = [[0.1] * 384]
+        mock_save_chunks.side_effect = RuntimeError("Supabase no disponible")
+
+        with pytest.raises(RuntimeError, match="Supabase no disponible"):
+            wukong_runner._generate_and_store_embeddings(tmp_path, MOCK_COL_ID)
