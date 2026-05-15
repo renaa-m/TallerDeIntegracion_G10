@@ -31,6 +31,7 @@ type PipelineStatus =
   | 'processing_text'
   | 'processing_graph'
   | 'graph_ready'
+  | 'partial_error'
   | 'error'
 
 const PIPELINE_LABELS: Record<PipelineStatus, string> = {
@@ -38,6 +39,8 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   processing_text: 'Extrayendo texto de los documentos...',
   processing_graph: 'Construyendo grafo con Wukong...',
   graph_ready: '¡Grafo generado correctamente!',
+  partial_error:
+    'Procesamiento con advertencias: parte del grafo se generó; revisa el mensaje debajo.',
   error: 'Ocurrió un error durante el procesamiento.',
 }
 
@@ -72,7 +75,8 @@ const ModalCarga = ({
   const isLocked =
     isUploading ||
     pipelineStatus === 'processing_text' ||
-    pipelineStatus === 'processing_graph'
+    pipelineStatus === 'processing_graph' ||
+    pipelineStatus === 'partial_error'
 
   const abortControllersRef = useRef<AbortController[]>([])
 
@@ -93,7 +97,11 @@ const ModalCarga = ({
           })
           if (res.ok) {
             const data = await res.json()
-            setPipelineStatus(data.processing_status ?? 'idle')
+            const st = (data.processing_status ?? 'idle') as PipelineStatus
+            setPipelineStatus(st)
+            if (st === 'partial_error' || st === 'error') {
+              setPipelineError(data.processing_error_message ?? '')
+            }
           }
         } catch (e) {
           console.error('Error al recuperar estado tras recarga:', e)
@@ -141,7 +149,7 @@ const ModalCarga = ({
     if (
       etapa !== 'pipeline' ||
       !activeCollectionId ||
-      ['graph_ready', 'error', 'idle'].includes(pipelineStatus)
+      ['graph_ready', 'partial_error', 'error', 'idle'].includes(pipelineStatus)
     )
       return
 
@@ -158,11 +166,19 @@ const ModalCarga = ({
         const data = await res.json()
         const status: PipelineStatus = data.processing_status ?? 'idle'
         setPipelineStatus(status)
-        if (status === 'graph_ready' || status === 'error') {
-          if (status === 'error')
+        if (
+          status === 'graph_ready' ||
+          status === 'partial_error' ||
+          status === 'error'
+        ) {
+          if (status === 'error' || status === 'partial_error') {
             setPipelineError(
-              data.processing_error_message ?? 'Error desconocido',
+              data.processing_error_message ??
+                (status === 'error'
+                  ? 'Error desconocido'
+                  : 'Procesamiento incompleto'),
             )
+          }
           clearInterval(interval)
         }
       } catch (e) {
@@ -396,9 +412,14 @@ const ModalCarga = ({
                   const isDone =
                     (s === 'processing_text' &&
                       (pipelineStatus === 'processing_graph' ||
-                        pipelineStatus === 'graph_ready')) ||
+                        pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
                     (s === 'processing_graph' &&
-                      pipelineStatus === 'graph_ready') ||
+                      (pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
+                    (s === 'graph_ready' &&
+                      (pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
                     s === pipelineStatus
                   const isActive =
                     s === pipelineStatus && pipelineStatus !== 'graph_ready'
@@ -423,7 +444,7 @@ const ModalCarga = ({
               )}
             </div>
             <p className="mc-pipeline-status">
-              {PIPELINE_LABELS[pipelineStatus]}
+              {PIPELINE_LABELS[pipelineStatus] ?? pipelineStatus}
             </p>
             {pipelineError && (
               <div className="mc-pipeline-error">
@@ -439,7 +460,8 @@ const ModalCarga = ({
                   <Network size={14} /> Generar grafo
                 </button>
               )}
-              {pipelineStatus === 'graph_ready' && (
+              {(pipelineStatus === 'graph_ready' ||
+                pipelineStatus === 'partial_error') && (
                 <button
                   className="mc-btn-upload"
                   onClick={handleFinalizarExito}
