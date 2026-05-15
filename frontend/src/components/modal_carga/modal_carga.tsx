@@ -21,7 +21,6 @@ interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
   darkMode?: boolean
-  coleccionId?: string
   onUploadSuccess?: () => void
 }
 
@@ -72,11 +71,16 @@ const ModalCarga = ({
     localStorage.getItem(ACTIVE_COLLECTION_KEY),
   )
 
+  const isTerminalPipeline =
+    pipelineStatus === 'graph_ready' ||
+    pipelineStatus === 'partial_error' ||
+    pipelineStatus === 'error'
+
   const isLocked =
     isUploading ||
     pipelineStatus === 'processing_text' ||
     pipelineStatus === 'processing_graph' ||
-    pipelineStatus === 'partial_error'
+    isTerminalPipeline
 
   const abortControllersRef = useRef<AbortController[]>([])
 
@@ -115,9 +119,9 @@ const ModalCarga = ({
   const handleClose = useCallback(async () => {
     if (isLocked) return
 
-    // CORRECCIÓN: Si el usuario cierra el modal manualmente, borramos la colección
-    // SIEMPRE que exista un ID activo, sin importar si el grafo está listo o no.
-    // Solo el botón de 'Finalizar' se salta esta lógica de borrado.
+    // Cancelación antes de estados finales del pipeline: si ya hay colección, se borra.
+    // Estados graph_ready / partial_error / error están bloqueados (isLocked): usar
+    // Finalizar o "Cerrar sin borrar" para no llamar aquí.
     if (activeCollectionId) {
       try {
         const token = await getAccessTokenSilently()
@@ -268,13 +272,27 @@ const ModalCarga = ({
     }
   }
 
-  // Finalización exitosa (CORREGIDO: No llama a handleClose para no borrar la colección)
+  // Finalización exitosa o con advertencias: no borra la colección en servidor.
   const handleFinalizarExito = () => {
     localStorage.removeItem(ACTIVE_COLLECTION_KEY)
     localStorage.removeItem(MODAL_ETAPA_KEY)
     onClose()
     navigate(`/user/colecciones/${activeCollectionId}/buscador`)
   }
+
+  const handleDismissWithoutDelete = useCallback(() => {
+    localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+    localStorage.removeItem(MODAL_ETAPA_KEY)
+    setFiles([])
+    setNombreColeccion('')
+    setError('')
+    setEtapa('subida')
+    setPipelineStatus('idle')
+    setPipelineError('')
+    setActiveCollectionId(null)
+    onClose()
+    navigate('/landing_page')
+  }, [onClose, navigate])
 
   if (!isOpen) return null
 
@@ -470,12 +488,22 @@ const ModalCarga = ({
                 </button>
               )}
               {pipelineStatus === 'error' && (
-                <button
-                  className="mc-btn-upload"
-                  onClick={handleIniciarPipeline}
-                >
-                  Reintentar
-                </button>
+                <>
+                  <button
+                    className="mc-btn-cancel"
+                    type="button"
+                    onClick={handleDismissWithoutDelete}
+                  >
+                    Cerrar sin borrar
+                  </button>
+                  <button
+                    className="mc-btn-upload"
+                    type="button"
+                    onClick={handleIniciarPipeline}
+                  >
+                    Reintentar
+                  </button>
+                </>
               )}
             </div>
           </div>
