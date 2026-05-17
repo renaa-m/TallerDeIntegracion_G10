@@ -318,7 +318,10 @@ const ModalCarga = ({
   if (!isOpen) return null
 
   return (
-    <div className="mc-overlay" onClick={isUploadingLocked ? undefined : handleClose}>
+    <div
+      className="mc-overlay"
+      onClick={isUploadingLocked ? undefined : handleClose}
+    >
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -355,7 +358,8 @@ const ModalCarga = ({
               onDrop={(e) => {
                 e.preventDefault()
                 setIsDragging(false)
-                if (!isUploadingLocked) setFiles(Array.from(e.dataTransfer.files))
+                if (!isUploadingLocked)
+                  setFiles(Array.from(e.dataTransfer.files))
               }}
               onClick={() => {
                 if (!isUploadingLocked) fileInputRef.current?.click()
@@ -435,7 +439,9 @@ const ModalCarga = ({
                 className="mc-btn-upload"
                 onClick={handleUpload}
                 disabled={
-                  files.length === 0 || isUploadingLocked || !nombreColeccion.trim()
+                  files.length === 0 ||
+                  isUploadingLocked ||
+                  !nombreColeccion.trim()
                 }
               >
                 {isUploading ? 'Subiendo...' : 'Añadir archivos'}
