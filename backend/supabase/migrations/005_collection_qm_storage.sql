@@ -4,4 +4,4 @@ ALTER TABLE collections
     ADD COLUMN IF NOT EXISTS qm_storage_path TEXT;
 
 COMMENT ON COLUMN collections.qm_storage_path IS
-    'Ruta en bucket documentos del .qm; primer segmento = user_id (RLS Storage), segundo = collection_id.';
+    'Ruta en bucket documentos del .qm: {user_folder}/{collection_id}/{collection_id}.qm donde user_folder es user_id con |→_ (como documentos). Legacy: .../knowledge_graph.qm.';

@@ -14,7 +14,7 @@ Encadena todo el procesamiento:
         - Opcional: con WUKONG_ARTIFACTS_DIR copia el workdir a disco (pruebas locales)
 
     Pipeline 3:
-        - Sube el .qm a Supabase Storage (``{user_id}/{collection_id}/knowledge_graph.qm``).
+        - Sube el .qm a Supabase Storage (mismo primer path segment que documentos: ``|``→``_``).
         - Embeddings de chunks en pgvector.
         - TODO PDT10-121: carga opcional en MillenniumDB.
 
@@ -144,11 +144,12 @@ def process_collection(collection_id: str) -> None:
                 return
 
             try:
-                qm_storage = export_qm_to_supabase(
-                    workdir,
-                    str(collection["user_id"]),
+                logger.info(
+                    "Wukong OK: iniciando export .qm a Supabase (colección %s, workdir=%s)",
                     collection_id,
+                    workdir,
                 )
+                qm_storage = export_qm_to_supabase(workdir, collection_id)
                 if qm_storage:
                     logger.info(
                         "Archivo .qm almacenado en Supabase: %s",

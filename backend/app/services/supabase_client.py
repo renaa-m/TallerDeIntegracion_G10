@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from functools import lru_cache
 from uuid import uuid4
 
@@ -6,10 +7,30 @@ from supabase import Client, create_client
 
 from app.config import settings
 
+logger = logging.getLogger(__name__)
+
 BUCKET = "documentos"
-# Mismo aislamiento que documentos: primer segmento = user_id (políticas Storage), segundo = collection_id.
-QM_FILENAME = "knowledge_graph.qm"
+# Primer segmento del path: igual que en upload de documentos (Storage rechaza '|' en la clave).
+# objeto = `{collection_id}.qm`. Ruta legacy (borrado): .../knowledge_graph.qm
+LEGACY_QM_BASENAME = "knowledge_graph.qm"
 UPLOAD_SEMAPHORE = asyncio.Semaphore(5)
+
+
+def storage_path_user_folder(user_id: str) -> str:
+    """Primer segmento de rutas en el bucket ``documentos`` (claves válidas en Storage).
+
+    Auth0 / Google usan ``provider|numeric_id``; el pipe no es válido como object key
+    (``InvalidKey``). Misma regla que ``documentos.py``: ``|`` → ``_``.
+    """
+    return str(user_id).strip().replace("|", "_")
+
+
+def _norm_storage_user_id(user_id: str) -> str:
+    return str(user_id).strip()
+
+
+def _norm_collection_id(collection_id: str) -> str:
+    return str(collection_id).strip()
 
 @lru_cache(maxsize=1)
 def get_supabase_client() -> Client:
@@ -64,8 +85,17 @@ def get_collection(collection_id: str, user_id: str) -> dict | None:
 
 
 def collection_qm_storage_path(user_id: str, collection_id: str) -> str:
-    """Ruta canónica del .qm en el bucket `documentos` (aislada por usuario y colección)."""
-    return f"{user_id}/{collection_id}/{QM_FILENAME}"
+    """Ruta canónica del .qm: ``{storage_user_folder}/{collection_id}/{collection_id}.qm``."""
+    folder = storage_path_user_folder(user_id)
+    cid = _norm_collection_id(collection_id)
+    return f"{folder}/{cid}/{cid}.qm"
+
+
+def legacy_collection_qm_storage_path(user_id: str, collection_id: str) -> str:
+    """Ruta antigua del .qm (solo para limpiar al borrar colección)."""
+    folder = storage_path_user_folder(user_id)
+    cid = _norm_collection_id(collection_id)
+    return f"{folder}/{cid}/{LEGACY_QM_BASENAME}"
 
 
 def delete_collection(collection_id: str, user_id: str) -> bool:
@@ -92,8 +122,18 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
         for doc in (documents_response.data or [])
         if doc.get("storage_path")
     ]
-    qm_path = row.get("qm_storage_path") or collection_qm_storage_path(user_id, collection_id)
-    paths_to_remove = list(dict.fromkeys([*storage_paths, qm_path]))
+    uid = _norm_storage_user_id(user_id)
+    cid = _norm_collection_id(collection_id)
+    qm_candidates = [
+        row.get("qm_storage_path"),
+        collection_qm_storage_path(uid, cid),
+        legacy_collection_qm_storage_path(uid, cid),
+        # Intento histórico con '|' en el primer segmento (fallaba en Storage; por si quedó en DB).
+        f"{uid}/{cid}/{cid}.qm",
+        f"{uid}/{cid}/{LEGACY_QM_BASENAME}",
+    ]
+    qm_paths = [p for p in qm_candidates if p]
+    paths_to_remove = list(dict.fromkeys([*storage_paths, *qm_paths]))
     if paths_to_remove:
         try:
             client.storage.from_(BUCKET).remove(paths_to_remove)
@@ -157,18 +197,65 @@ def update_collection_processing_status(
 
 def update_collection_qm_storage_path(collection_id: str, qm_storage_path: str | None) -> None:
     """Persiste la ruta del .qm en Storage (service role)."""
-    _get_service_client().table("collections").update(
-        {"qm_storage_path": qm_storage_path}
-    ).eq("id", collection_id).execute()
+    client = _get_service_client()
+    response = (
+        client.table("collections")
+        .update({"qm_storage_path": qm_storage_path})
+        .eq("id", collection_id)
+        .execute()
+    )
+    if response.data:
+        logger.info(
+            "qm_storage_path: update OK collection_id=%s path=%s (filas en respuesta: %d)",
+            collection_id,
+            qm_storage_path,
+            len(response.data),
+        )
+        return
+    verify = (
+        client.table("collections")
+        .select("id", "qm_storage_path")
+        .eq("id", collection_id)
+        .execute()
+    )
+    row = verify.data[0] if verify.data else None
+    logger.warning(
+        "qm_storage_path: respuesta vacía al UPDATE para collection_id=%s; "
+        "verificación SELECT: %s",
+        collection_id,
+        row,
+    )
+    if row and row.get("qm_storage_path"):
+        logger.info(
+            "qm_storage_path: la columna sí tiene valor tras UPDATE (posible prefer minimal): %s",
+            row.get("qm_storage_path"),
+        )
+    elif row:
+        logger.warning(
+            "qm_storage_path: sigue nulo/vacío en DB para id=%s — revisar migración 005 o que el UUID coincida con collections.id",
+            collection_id,
+        )
 
 
 def upload_collection_qm(user_id: str, collection_id: str, content: bytes) -> str:
     """
-    Sube el contenido binario del .qm bajo ``{user_id}/{collection_id}/knowledge_graph.qm``.
+    Sube el .qm bajo ``{storage_user_folder}/{collection_id}/{collection_id}.qm``
+    (ver ``storage_path_user_folder``; coincide con rutas de documentos).
     Usa upsert para sobrescribir si se reprocesa la colección.
     """
     path = collection_qm_storage_path(user_id, collection_id)
-    _upload_sync(path, content, "application/octet-stream", upsert=True)
+    logger.info(
+        "upload_collection_qm: subiendo a bucket=%s path=%s (%d bytes)",
+        BUCKET,
+        path,
+        len(content),
+    )
+    try:
+        _upload_sync(path, content, "application/octet-stream", upsert=True)
+    except Exception:
+        logger.exception("upload_collection_qm: falló el upload path=%s", path)
+        raise
+    logger.info("upload_collection_qm: upload terminado path=%s", path)
     return path
 
 
@@ -309,7 +396,14 @@ def get_collection_by_id(collection_id: str) -> dict | None:
     """Busca una colección por su ID para verificar su propietario."""
     client = get_supabase_client()
     response = client.table("collections").select("*").eq("id", collection_id).execute()
-    return response.data[0] if response.data else None
+    found = response.data[0] if response.data else None
+    if not found:
+        logger.debug(
+            "get_collection_by_id: 0 filas para id=%r (tipo=%s)",
+            collection_id,
+            type(collection_id).__name__,
+        )
+    return found
 
 
 def _find_document_by_hash_sync(
