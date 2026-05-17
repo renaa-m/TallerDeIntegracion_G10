@@ -7,6 +7,8 @@ from supabase import Client, create_client
 from app.config import settings
 
 BUCKET = "documentos"
+# Mismo aislamiento que documentos: primer segmento = user_id (políticas Storage), segundo = collection_id.
+QM_FILENAME = "knowledge_graph.qm"
 UPLOAD_SEMAPHORE = asyncio.Semaphore(5)
 
 @lru_cache(maxsize=1)
@@ -61,17 +63,23 @@ def get_collection(collection_id: str, user_id: str) -> dict | None:
     return response.data[0]
 
 
+def collection_qm_storage_path(user_id: str, collection_id: str) -> str:
+    """Ruta canónica del .qm en el bucket `documentos` (aislada por usuario y colección)."""
+    return f"{user_id}/{collection_id}/{QM_FILENAME}"
+
+
 def delete_collection(collection_id: str, user_id: str) -> bool:
     client = get_supabase_client()
     collection_response = (
         client.table("collections")
-        .select("id")
+        .select("id, qm_storage_path")
         .eq("id", collection_id)
         .eq("user_id", user_id)
         .execute()
     )
     if not collection_response.data:
         return False
+    row = collection_response.data[0]
     documents_response = (
         client.table("documents")
         .select("storage_path")
@@ -84,8 +92,14 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
         for doc in (documents_response.data or [])
         if doc.get("storage_path")
     ]
-    if storage_paths:
-        client.storage.from_(BUCKET).remove(storage_paths)
+    qm_path = row.get("qm_storage_path") or collection_qm_storage_path(user_id, collection_id)
+    paths_to_remove = list(dict.fromkeys([*storage_paths, qm_path]))
+    if paths_to_remove:
+        try:
+            client.storage.from_(BUCKET).remove(paths_to_remove)
+        except Exception:
+            # Algunos objetos pueden no existir (p. ej. grafo nunca exportado).
+            pass
     delete_response = (
         client.table("collections")
         .delete()
@@ -139,6 +153,23 @@ def update_collection_processing_status(
         .execute()
     )
     return response.data[0] if response.data else None
+
+
+def update_collection_qm_storage_path(collection_id: str, qm_storage_path: str | None) -> None:
+    """Persiste la ruta del .qm en Storage (service role)."""
+    _get_service_client().table("collections").update(
+        {"qm_storage_path": qm_storage_path}
+    ).eq("id", collection_id).execute()
+
+
+def upload_collection_qm(user_id: str, collection_id: str, content: bytes) -> str:
+    """
+    Sube el contenido binario del .qm bajo ``{user_id}/{collection_id}/knowledge_graph.qm``.
+    Usa upsert para sobrescribir si se reprocesa la colección.
+    """
+    path = collection_qm_storage_path(user_id, collection_id)
+    _upload_sync(path, content, "application/octet-stream", upsert=True)
+    return path
 
 
 # ── Documents — sync ───────────────────────────────────────────────────────────
@@ -307,13 +338,17 @@ def create_signed_url(storage_path: str, expires_in: int = 3600) -> str:
     return response["signedURL"]
 
 
-def _upload_sync(path: str, content: bytes, content_type: str) -> None:
+def _upload_sync(
+    path: str, content: bytes, content_type: str, *, upsert: bool = False
+) -> None:
     client = create_client(settings.supabase_url, settings.supabase_service_key)
-
+    opts: dict[str, str] = {"content-type": content_type}
+    if upsert:
+        opts["upsert"] = "true"
     client.storage.from_(BUCKET).upload(
         path=path,
         file=content,
-        file_options={"content-type": content_type},  # upsert omitido: causaba error
+        file_options=opts,
     )
 
 
