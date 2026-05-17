@@ -120,9 +120,9 @@ def update_collection_processing_status(
     Actualiza el estado de procesamiento de una colección.
 
     Estados válidos: idle, processing_text, processing_graph,
-    graph_ready, partial_error, error.
+    graph_ready, partial_error, error, cancelled.
 
-    Cuando se llega a un estado terminal (graph_ready, partial_error, error)
+    Cuando se llega a un estado terminal (graph_ready, partial_error, error, cancelled)
     conviene pasar también processed_at con el timestamp ISO.
     """
     client = _get_service_client()

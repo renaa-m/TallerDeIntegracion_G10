@@ -202,3 +202,55 @@ class TestProcesarColeccion:
     def test_procesar_sin_autenticacion_retorna_403(self, client_sin_auth):
         response = client_sin_auth.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
         assert response.status_code == 403
+
+
+# ── Cancelar procesamiento ─────────────────────────────────────────────────────
+
+
+class TestCancelarProcesamiento:
+    def test_cancelar_en_pipeline_ok(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "processing_text"}
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=col,
+        ), patch(
+            "app.api.routes.collections.supabase_client.update_collection_processing_status",
+        ) as mock_upd:
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/process/cancel",
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["processing_status"] == "cancelled"
+        mock_upd.assert_called_once()
+        assert mock_upd.call_args[0][1] == "cancelled"
+
+    def test_cancelar_idempotente_si_ya_cancelada(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "cancelled"}
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=col,
+        ), patch(
+            "app.api.routes.collections.supabase_client.update_collection_processing_status",
+        ) as mock_upd:
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/process/cancel",
+            )
+        assert response.status_code == 200
+        mock_upd.assert_not_called()
+
+    def test_cancelar_sin_pipeline_retorna_409(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=MOCK_COLLECTION,
+        ):
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/process/cancel",
+            )
+        assert response.status_code == 409
+
+    def test_cancelar_sin_auth_403(self, client_sin_auth):
+        response = client_sin_auth.post(
+            f"/api/collections/{MOCK_COLLECTION_ID}/process/cancel",
+        )
+        assert response.status_code == 403
