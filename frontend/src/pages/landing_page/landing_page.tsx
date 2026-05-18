@@ -207,11 +207,17 @@ function LandingPage() {
               <p>No tienes colecciones todavía.</p>
             ) : (
               colecciones.map((coleccion) => (
-                <button
+                <div
                   key={coleccion.id}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   className="card"
                   onClick={() => abrirColeccionExistente(coleccion.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      abrirColeccionExistente(coleccion.id)
+                    }
+                  }}
                 >
                   <div className="card-actions">
                     <button
@@ -240,7 +246,7 @@ function LandingPage() {
                   </div>
 
                   <h3>{coleccion.name}</h3>
-                </button>
+                </div>
               ))
             )}
           </div>
