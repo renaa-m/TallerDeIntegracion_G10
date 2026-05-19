@@ -21,7 +21,6 @@ interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
   darkMode?: boolean
-  coleccionId?: string
   onUploadSuccess?: () => void
 }
 
@@ -31,6 +30,7 @@ type PipelineStatus =
   | 'processing_text'
   | 'processing_graph'
   | 'graph_ready'
+  | 'partial_error'
   | 'error'
 
 const PIPELINE_LABELS: Record<PipelineStatus, string> = {
@@ -38,6 +38,8 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   processing_text: 'Extrayendo texto de los documentos...',
   processing_graph: 'Construyendo grafo con Wukong...',
   graph_ready: '¡Grafo generado correctamente!',
+  partial_error:
+    'Procesamiento con advertencias: parte del grafo se generó; revisa el mensaje debajo.',
   error: 'Ocurrió un error durante el procesamiento.',
 }
 
@@ -69,10 +71,16 @@ const ModalCarga = ({
     localStorage.getItem(ACTIVE_COLLECTION_KEY),
   )
 
+  const isTerminalPipeline =
+    pipelineStatus === 'graph_ready' ||
+    pipelineStatus === 'partial_error' ||
+    pipelineStatus === 'error'
+
   const isLocked =
     isUploading ||
     pipelineStatus === 'processing_text' ||
-    pipelineStatus === 'processing_graph'
+    pipelineStatus === 'processing_graph' ||
+    isTerminalPipeline
 
   const abortControllersRef = useRef<AbortController[]>([])
 
@@ -93,7 +101,11 @@ const ModalCarga = ({
           })
           if (res.ok) {
             const data = await res.json()
-            setPipelineStatus(data.processing_status ?? 'idle')
+            const st = (data.processing_status ?? 'idle') as PipelineStatus
+            setPipelineStatus(st)
+            if (st === 'partial_error' || st === 'error') {
+              setPipelineError(data.processing_error_message ?? '')
+            }
           }
         } catch (e) {
           console.error('Error al recuperar estado tras recarga:', e)
@@ -107,9 +119,9 @@ const ModalCarga = ({
   const handleClose = useCallback(async () => {
     if (isLocked) return
 
-    // CORRECCIÓN: Si el usuario cierra el modal manualmente, borramos la colección
-    // SIEMPRE que exista un ID activo, sin importar si el grafo está listo o no.
-    // Solo el botón de 'Finalizar' se salta esta lógica de borrado.
+    // Cancelación antes de estados finales del pipeline: si ya hay colección, se borra.
+    // Estados graph_ready / partial_error / error están bloqueados (isLocked): usar
+    // Finalizar o "Cerrar sin borrar" para no llamar aquí.
     if (activeCollectionId) {
       try {
         const token = await getAccessTokenSilently()
@@ -141,7 +153,7 @@ const ModalCarga = ({
     if (
       etapa !== 'pipeline' ||
       !activeCollectionId ||
-      ['graph_ready', 'error', 'idle'].includes(pipelineStatus)
+      ['graph_ready', 'partial_error', 'error', 'idle'].includes(pipelineStatus)
     )
       return
 
@@ -158,11 +170,19 @@ const ModalCarga = ({
         const data = await res.json()
         const status: PipelineStatus = data.processing_status ?? 'idle'
         setPipelineStatus(status)
-        if (status === 'graph_ready' || status === 'error') {
-          if (status === 'error')
+        if (
+          status === 'graph_ready' ||
+          status === 'partial_error' ||
+          status === 'error'
+        ) {
+          if (status === 'error' || status === 'partial_error') {
             setPipelineError(
-              data.processing_error_message ?? 'Error desconocido',
+              data.processing_error_message ??
+                (status === 'error'
+                  ? 'Error desconocido'
+                  : 'Procesamiento incompleto'),
             )
+          }
           clearInterval(interval)
         }
       } catch (e) {
@@ -252,13 +272,27 @@ const ModalCarga = ({
     }
   }
 
-  // Finalización exitosa (CORREGIDO: No llama a handleClose para no borrar la colección)
+  // Finalización exitosa o con advertencias: no borra la colección en servidor.
   const handleFinalizarExito = () => {
     localStorage.removeItem(ACTIVE_COLLECTION_KEY)
     localStorage.removeItem(MODAL_ETAPA_KEY)
     onClose()
     navigate(`/user/colecciones/${activeCollectionId}/buscador`)
   }
+
+  const handleDismissWithoutDelete = useCallback(() => {
+    localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+    localStorage.removeItem(MODAL_ETAPA_KEY)
+    setFiles([])
+    setNombreColeccion('')
+    setError('')
+    setEtapa('subida')
+    setPipelineStatus('idle')
+    setPipelineError('')
+    setActiveCollectionId(null)
+    onClose()
+    navigate('/landing_page')
+  }, [onClose, navigate])
 
   if (!isOpen) return null
 
@@ -396,9 +430,14 @@ const ModalCarga = ({
                   const isDone =
                     (s === 'processing_text' &&
                       (pipelineStatus === 'processing_graph' ||
-                        pipelineStatus === 'graph_ready')) ||
+                        pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
                     (s === 'processing_graph' &&
-                      pipelineStatus === 'graph_ready') ||
+                      (pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
+                    (s === 'graph_ready' &&
+                      (pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
                     s === pipelineStatus
                   const isActive =
                     s === pipelineStatus && pipelineStatus !== 'graph_ready'
@@ -423,7 +462,7 @@ const ModalCarga = ({
               )}
             </div>
             <p className="mc-pipeline-status">
-              {PIPELINE_LABELS[pipelineStatus]}
+              {PIPELINE_LABELS[pipelineStatus] ?? pipelineStatus}
             </p>
             {pipelineError && (
               <div className="mc-pipeline-error">
@@ -439,7 +478,8 @@ const ModalCarga = ({
                   <Network size={14} /> Generar grafo
                 </button>
               )}
-              {pipelineStatus === 'graph_ready' && (
+              {(pipelineStatus === 'graph_ready' ||
+                pipelineStatus === 'partial_error') && (
                 <button
                   className="mc-btn-upload"
                   onClick={handleFinalizarExito}
@@ -448,12 +488,22 @@ const ModalCarga = ({
                 </button>
               )}
               {pipelineStatus === 'error' && (
-                <button
-                  className="mc-btn-upload"
-                  onClick={handleIniciarPipeline}
-                >
-                  Reintentar
-                </button>
+                <>
+                  <button
+                    className="mc-btn-cancel"
+                    type="button"
+                    onClick={handleDismissWithoutDelete}
+                  >
+                    Cerrar sin borrar
+                  </button>
+                  <button
+                    className="mc-btn-upload"
+                    type="button"
+                    onClick={handleIniciarPipeline}
+                  >
+                    Reintentar
+                  </button>
+                </>
               )}
             </div>
           </div>
