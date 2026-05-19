@@ -13,8 +13,10 @@ Encadena todo el procesamiento:
         - Corre Wukong como subprocess → genera .qm
         - Opcional: con WUKONG_ARTIFACTS_DIR copia el workdir a disco (pruebas locales)
 
-    Pipeline 3 (PDT10-121, pendiente):
-        - Carga el .qm en MillenniumDB
+    Pipeline 3:
+        - Sube el .qm a Supabase Storage (mismo primer path segment que documentos: ``|``→``_``).
+        - Embeddings de chunks en pgvector.
+        - TODO PDT10-121: carga opcional en MillenniumDB.
 
 Toda la función está pensada para correr en background (FastAPI
 BackgroundTasks o Cloud Tasks). NO debe propagar excepciones — cualquier
@@ -34,6 +36,7 @@ from pathlib import Path # para manejar rutas de archivos
 from app.config import settings
 # importamos el cliente de Supabase para interactuar con la base de datos
 from app.services import supabase_client
+from app.services.qm_storage import export_qm_to_supabase
 from app.services.text_extraction import (
     process_pdf_document,
     process_txt_document,
@@ -139,6 +142,29 @@ def process_collection(collection_id: str) -> None:
             if wukong_error is not None:
                 _mark_collection_error(collection_id, wukong_error)
                 return
+
+            try:
+                logger.info(
+                    "Wukong OK: iniciando export .qm a Supabase (colección %s, workdir=%s)",
+                    collection_id,
+                    workdir,
+                )
+                qm_storage = export_qm_to_supabase(workdir, collection_id)
+                if qm_storage:
+                    logger.info(
+                        "Archivo .qm almacenado en Supabase: %s",
+                        qm_storage,
+                    )
+                else:
+                    logger.warning(
+                        "No se encontró .qm bajo exports/ para colección %s.",
+                        collection_id,
+                    )
+            except Exception:
+                logger.exception(
+                    "Error exportando .qm a Supabase para colección %s — continúa pipeline.",
+                    collection_id,
+                )
 
             # Pipeline 3a: Generar y guardar embeddings de chunks en Supabase pgvector.
             # Falla silenciosa: un error aquí no bloquea el grafo ya generado.

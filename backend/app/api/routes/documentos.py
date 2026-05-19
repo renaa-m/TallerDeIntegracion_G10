@@ -85,7 +85,7 @@ async def upload_documento(
             ),
         )
 
-    safe_user_id = user_id.replace("|", "_")
+    safe_user_id = supabase_client.storage_path_user_folder(user_id)
     doc_id = uuid4()
     ruta = f"{safe_user_id}/{coleccion_id}/{doc_id}"
 
@@ -170,7 +170,7 @@ async def batch_upload_documentos(
                 )
                 continue
 
-            safe_user_id = user_id.replace("|", "_")
+            safe_user_id = supabase_client.storage_path_user_folder(user_id)
             doc_id = uuid4()
             ruta = f"{safe_user_id}/{coleccion_id}/{doc_id}"
 

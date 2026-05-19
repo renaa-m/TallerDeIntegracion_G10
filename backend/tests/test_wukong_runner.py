@@ -104,12 +104,13 @@ class TestExtractTexts:
 
 
 class TestProcessCollection:
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner._run_wukong", return_value=None)
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=2)
     @patch("app.services.wukong_runner.process_txt_document")
     def test_happy_path_marca_graph_ready(
-        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb
+        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb, _mock_qm
     ):
         mock_sb.get_collection_by_id.return_value = _make_collection()
         mock_sb.get_documents_by_collection.return_value = [
@@ -129,6 +130,7 @@ class TestProcessCollection:
         assert "processing_graph" in statuses
         assert statuses[-1] == "graph_ready"
 
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner._run_wukong", return_value=None)
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=1)
@@ -141,6 +143,7 @@ class TestProcessCollection:
         _mock_build,
         _mock_run_wukong,
         mock_sb,
+        _mock_qm,
     ):
         mock_sb.get_collection_by_id.return_value = _make_collection()
         mock_sb.get_documents_by_collection.return_value = [
@@ -197,11 +200,12 @@ class TestProcessCollection:
         msg = err_kwargs.get("error_message") or ""
         assert "doc1.pdf" in msg and "doc2.pdf" in msg
 
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=1)
     @patch("app.services.wukong_runner.process_txt_document")
     def test_falla_de_wukong_marca_coleccion_error(
-        self, mock_process_txt, _mock_build, mock_sb
+        self, mock_process_txt, _mock_build, mock_sb, _mock_qm
     ):
         mock_sb.get_collection_by_id.return_value = _make_collection()
         mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]
