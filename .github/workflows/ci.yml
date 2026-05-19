@@ -43,7 +43,7 @@ jobs:
         run: pytest tests/ -v
 
   frontend:
-    name: Frontend (lint + build)
+    name: Frontend (lint + test + build)
     runs-on: ubuntu-latest
 
     defaults:
@@ -68,6 +68,9 @@ jobs:
 
       - name: Check formatting
         run: npm run format:check
+
+      - name: Unit tests (Jest + coverage)
+        run: npm run test:coverage
 
       - name: Build
         run: npm run build
