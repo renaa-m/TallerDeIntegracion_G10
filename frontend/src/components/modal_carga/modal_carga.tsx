@@ -31,6 +31,7 @@ type PipelineStatus =
   | 'processing_graph'
   | 'graph_ready'
   | 'partial_error'
+  | 'cancelled'
   | 'error'
 
 const PIPELINE_LABELS: Record<PipelineStatus, string> = {
@@ -40,7 +41,23 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   graph_ready: '¡Grafo generado correctamente!',
   partial_error:
     'Procesamiento con advertencias: parte del grafo se generó; revisa el mensaje debajo.',
+  cancelled: 'Procesamiento cancelado.',
   error: 'Ocurrió un error durante el procesamiento.',
+}
+
+/** El backend usa ``cancelled``; en la UI equivalen a “listo para generar de nuevo”. */
+function pipelineStatusFromApi(raw: string | undefined): PipelineStatus {
+  if (raw === 'cancelled') return 'idle'
+  if (
+    raw === 'idle' ||
+    raw === 'processing_text' ||
+    raw === 'processing_graph' ||
+    raw === 'graph_ready' ||
+    raw === 'error'
+  ) {
+    return raw
+  }
+  return 'idle'
 }
 
 const API_BASE =
@@ -71,16 +88,10 @@ const ModalCarga = ({
     localStorage.getItem(ACTIVE_COLLECTION_KEY),
   )
 
-  const isTerminalPipeline =
-    pipelineStatus === 'graph_ready' ||
-    pipelineStatus === 'partial_error' ||
-    pipelineStatus === 'error'
-
-  const isLocked =
-    isUploading ||
+  const isUploadingLocked = isUploading
+  const isPipelineRunning =
     pipelineStatus === 'processing_text' ||
-    pipelineStatus === 'processing_graph' ||
-    isTerminalPipeline
+    pipelineStatus === 'processing_graph'
 
   const abortControllersRef = useRef<AbortController[]>([])
 
@@ -101,9 +112,11 @@ const ModalCarga = ({
           })
           if (res.ok) {
             const data = await res.json()
-            const st = (data.processing_status ?? 'idle') as PipelineStatus
-            setPipelineStatus(st)
-            if (st === 'partial_error' || st === 'error') {
+            setPipelineStatus(pipelineStatusFromApi(data.processing_status))
+            if (
+              data.processing_status === 'partial_error' ||
+              data.processing_status === 'error'
+            ) {
               setPipelineError(data.processing_error_message ?? '')
             }
           }
@@ -117,7 +130,30 @@ const ModalCarga = ({
 
   // --- 2. Lógica de Cierre y Cancelación Real (CORREGIDO) ---
   const handleClose = useCallback(async () => {
-    if (isLocked) return
+    if (isUploadingLocked) return
+
+    // Cancelar pipeline en curso: la colección y los documentos se conservan;
+    // seguimos en esta ventana con "Generar grafo" otra vez.
+    if (etapa === 'pipeline' && isPipelineRunning && activeCollectionId) {
+      try {
+        const token = await getAccessTokenSilently()
+        await fetch(
+          `${API_BASE}/api/collections/${activeCollectionId}/process/cancel`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        )
+      } catch (err) {
+        console.error('Error al cancelar procesamiento:', err)
+      }
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+      setEtapa('pipeline')
+      setPipelineStatus('idle')
+      setPipelineError('')
+      return
+    }
 
     // Cancelación antes de estados finales del pipeline: si ya hay colección, se borra.
     // Estados graph_ready / partial_error / error están bloqueados (isLocked): usar
@@ -146,7 +182,15 @@ const ModalCarga = ({
 
     navigate('/landing_page')
     onClose()
-  }, [onClose, isLocked, activeCollectionId, getAccessTokenSilently, navigate])
+  }, [
+    onClose,
+    activeCollectionId,
+    getAccessTokenSilently,
+    navigate,
+    etapa,
+    isPipelineRunning,
+    isUploadingLocked,
+  ])
 
   // --- 3. Polling de Pipeline (Sigue funcionando tras recarga) ---
   useEffect(() => {
@@ -168,12 +212,13 @@ const ModalCarga = ({
         )
         if (!res.ok) return
         const data = await res.json()
-        const status: PipelineStatus = data.processing_status ?? 'idle'
+        const status = pipelineStatusFromApi(data.processing_status)
         setPipelineStatus(status)
         if (
           status === 'graph_ready' ||
           status === 'partial_error' ||
-          status === 'error'
+          status === 'error' ||
+          data.processing_status === 'cancelled'
         ) {
           if (status === 'error' || status === 'partial_error') {
             setPipelineError(
@@ -182,6 +227,9 @@ const ModalCarga = ({
                   ? 'Error desconocido'
                   : 'Procesamiento incompleto'),
             )
+          }
+          if (data.processing_status === 'cancelled') {
+            setPipelineError('')
           }
           clearInterval(interval)
         }
@@ -297,7 +345,10 @@ const ModalCarga = ({
   if (!isOpen) return null
 
   return (
-    <div className="mc-overlay" onClick={isLocked ? undefined : handleClose}>
+    <div
+      className="mc-overlay"
+      onClick={isUploadingLocked ? undefined : handleClose}
+    >
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -316,7 +367,7 @@ const ModalCarga = ({
           <button
             className="mc-close"
             onClick={handleClose}
-            disabled={isLocked}
+            disabled={isUploadingLocked}
           >
             <X size={18} />
           </button>
@@ -325,19 +376,20 @@ const ModalCarga = ({
         {etapa === 'subida' ? (
           <>
             <div
-              className={`mc-dropzone ${isDragging ? 'dragging' : ''} ${isLocked ? 'disabled' : ''}`}
+              className={`mc-dropzone ${isDragging ? 'dragging' : ''} ${isUploadingLocked ? 'disabled' : ''}`}
               onDragOver={(e) => {
                 e.preventDefault()
-                if (!isLocked) setIsDragging(true)
+                if (!isUploadingLocked) setIsDragging(true)
               }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={(e) => {
                 e.preventDefault()
                 setIsDragging(false)
-                if (!isLocked) setFiles(Array.from(e.dataTransfer.files))
+                if (!isUploadingLocked)
+                  setFiles(Array.from(e.dataTransfer.files))
               }}
               onClick={() => {
-                if (!isLocked) fileInputRef.current?.click()
+                if (!isUploadingLocked) fileInputRef.current?.click()
               }}
             >
               <input
@@ -347,7 +399,7 @@ const ModalCarga = ({
                 ref={fileInputRef}
                 accept=".pdf,.txt"
                 onChange={(e) => setFiles(Array.from(e.target.files || []))}
-                disabled={isLocked}
+                disabled={isUploadingLocked}
               />
               <div className="mc-drop-icon">
                 <CloudUpload size={26} />
@@ -368,7 +420,7 @@ const ModalCarga = ({
                     <span className="mc-file-name">{f.name}</span>
                     <button
                       className="mc-file-remove"
-                      disabled={isLocked}
+                      disabled={isUploadingLocked}
                       onClick={() =>
                         setFiles((prev) => prev.filter((_, idx) => idx !== i))
                       }
@@ -398,7 +450,7 @@ const ModalCarga = ({
                 placeholder="Nombre de colección"
                 value={nombreColeccion}
                 onChange={(e) => setNombreColeccion(e.target.value)}
-                disabled={isLocked}
+                disabled={isUploadingLocked}
               />
             </div>
 
@@ -406,7 +458,7 @@ const ModalCarga = ({
               <button
                 className="mc-btn-cancel"
                 onClick={handleClose}
-                disabled={isLocked}
+                disabled={isUploadingLocked}
               >
                 Cancelar
               </button>
@@ -414,7 +466,9 @@ const ModalCarga = ({
                 className="mc-btn-upload"
                 onClick={handleUpload}
                 disabled={
-                  files.length === 0 || isLocked || !nombreColeccion.trim()
+                  files.length === 0 ||
+                  isUploadingLocked ||
+                  !nombreColeccion.trim()
                 }
               >
                 {isUploading ? 'Subiendo...' : 'Añadir archivos'}
