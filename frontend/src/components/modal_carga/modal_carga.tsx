@@ -93,11 +93,6 @@ const ModalCarga = ({
     pipelineStatus === 'processing_text' ||
     pipelineStatus === 'processing_graph'
 
-  const isTerminalPipeline =
-    pipelineStatus === 'graph_ready' ||
-    pipelineStatus === 'partial_error' ||
-    pipelineStatus === 'error'
-
   const abortControllersRef = useRef<AbortController[]>([])
 
   // --- 1. Sincronización al Recargar ---
