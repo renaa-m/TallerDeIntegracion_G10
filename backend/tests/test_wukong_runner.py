@@ -16,7 +16,7 @@ def _make_collection() -> dict:
         "id": MOCK_COL_ID,
         "user_id": MOCK_USER_ID,
         "name": "Mi colección",
-        "processing_status": "idle",
+        "processing_status": "processing_text",
     }
 
 
@@ -103,13 +103,28 @@ class TestExtractTexts:
         assert "RuntimeError" in mock_update_status.call_args.kwargs["error_message"]
 
 
+class TestProcessCollectionCancelled:
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_coleccion_ya_cancelada_no_procesa(self, mock_sb):
+        mock_sb.get_collection_by_id.return_value = {
+            "id": MOCK_COL_ID,
+            "user_id": MOCK_USER_ID,
+            "name": "c",
+            "processing_status": "cancelled",
+        }
+        wukong_runner.process_collection(MOCK_COL_ID)
+        mock_sb.get_documents_by_collection.assert_not_called()
+        mock_sb.update_collection_processing_status.assert_not_called()
+
+
 class TestProcessCollection:
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner._run_wukong", return_value=None)
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=2)
     @patch("app.services.wukong_runner.process_txt_document")
     def test_happy_path_marca_graph_ready(
-        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb
+        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb, _mock_qm
     ):
         mock_sb.get_collection_by_id.return_value = _make_collection()
         mock_sb.get_documents_by_collection.return_value = [
@@ -120,15 +135,15 @@ class TestProcessCollection:
 
         wukong_runner.process_collection(MOCK_COL_ID)
 
-        # Debe haber pasado por: processing_text → processing_graph → graph_ready
+        # Debe haber pasado por: processing_graph → graph_ready (processing_text lo pone POST /process antes del worker)
         statuses = [
             call.args[1]
             for call in mock_sb.update_collection_processing_status.call_args_list
         ]
-        assert "processing_text" in statuses
         assert "processing_graph" in statuses
         assert statuses[-1] == "graph_ready"
 
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner._run_wukong", return_value=None)
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=1)
@@ -141,6 +156,7 @@ class TestProcessCollection:
         _mock_build,
         _mock_run_wukong,
         mock_sb,
+        _mock_qm,
     ):
         mock_sb.get_collection_by_id.return_value = _make_collection()
         mock_sb.get_documents_by_collection.return_value = [
@@ -197,11 +213,12 @@ class TestProcessCollection:
         msg = err_kwargs.get("error_message") or ""
         assert "doc1.pdf" in msg and "doc2.pdf" in msg
 
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=1)
     @patch("app.services.wukong_runner.process_txt_document")
     def test_falla_de_wukong_marca_coleccion_error(
-        self, mock_process_txt, _mock_build, mock_sb
+        self, mock_process_txt, _mock_build, mock_sb, _mock_qm
     ):
         mock_sb.get_collection_by_id.return_value = _make_collection()
         mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]

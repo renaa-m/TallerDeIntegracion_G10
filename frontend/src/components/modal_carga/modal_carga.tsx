@@ -21,7 +21,6 @@ interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
   darkMode?: boolean
-  coleccionId?: string
   onUploadSuccess?: () => void
 }
 
@@ -31,6 +30,8 @@ type PipelineStatus =
   | 'processing_text'
   | 'processing_graph'
   | 'graph_ready'
+  | 'partial_error'
+  | 'cancelled'
   | 'error'
 
 const PIPELINE_LABELS: Record<PipelineStatus, string> = {
@@ -38,7 +39,25 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   processing_text: 'Extrayendo texto de los documentos...',
   processing_graph: 'Construyendo grafo con Wukong...',
   graph_ready: '¡Grafo generado correctamente!',
+  partial_error:
+    'Procesamiento con advertencias: parte del grafo se generó; revisa el mensaje debajo.',
+  cancelled: 'Procesamiento cancelado.',
   error: 'Ocurrió un error durante el procesamiento.',
+}
+
+/** El backend usa ``cancelled``; en la UI equivalen a “listo para generar de nuevo”. */
+function pipelineStatusFromApi(raw: string | undefined): PipelineStatus {
+  if (raw === 'cancelled') return 'idle'
+  if (
+    raw === 'idle' ||
+    raw === 'processing_text' ||
+    raw === 'processing_graph' ||
+    raw === 'graph_ready' ||
+    raw === 'error'
+  ) {
+    return raw
+  }
+  return 'idle'
 }
 
 const API_BASE =
@@ -69,8 +88,8 @@ const ModalCarga = ({
     localStorage.getItem(ACTIVE_COLLECTION_KEY),
   )
 
-  const isLocked =
-    isUploading ||
+  const isUploadingLocked = isUploading
+  const isPipelineRunning =
     pipelineStatus === 'processing_text' ||
     pipelineStatus === 'processing_graph'
 
@@ -93,7 +112,13 @@ const ModalCarga = ({
           })
           if (res.ok) {
             const data = await res.json()
-            setPipelineStatus(data.processing_status ?? 'idle')
+            setPipelineStatus(pipelineStatusFromApi(data.processing_status))
+            if (
+              data.processing_status === 'partial_error' ||
+              data.processing_status === 'error'
+            ) {
+              setPipelineError(data.processing_error_message ?? '')
+            }
           }
         } catch (e) {
           console.error('Error al recuperar estado tras recarga:', e)
@@ -105,11 +130,34 @@ const ModalCarga = ({
 
   // --- 2. Lógica de Cierre y Cancelación Real (CORREGIDO) ---
   const handleClose = useCallback(async () => {
-    if (isLocked) return
+    if (isUploadingLocked) return
 
-    // CORRECCIÓN: Si el usuario cierra el modal manualmente, borramos la colección
-    // SIEMPRE que exista un ID activo, sin importar si el grafo está listo o no.
-    // Solo el botón de 'Finalizar' se salta esta lógica de borrado.
+    // Cancelar pipeline en curso: la colección y los documentos se conservan;
+    // seguimos en esta ventana con "Generar grafo" otra vez.
+    if (etapa === 'pipeline' && isPipelineRunning && activeCollectionId) {
+      try {
+        const token = await getAccessTokenSilently()
+        await fetch(
+          `${API_BASE}/api/collections/${activeCollectionId}/process/cancel`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        )
+      } catch (err) {
+        console.error('Error al cancelar procesamiento:', err)
+      }
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+      setEtapa('pipeline')
+      setPipelineStatus('idle')
+      setPipelineError('')
+      return
+    }
+
+    // Cancelación antes de estados finales del pipeline: si ya hay colección, se borra.
+    // Estados graph_ready / partial_error / error están bloqueados (isLocked): usar
+    // Finalizar o "Cerrar sin borrar" para no llamar aquí.
     if (activeCollectionId) {
       try {
         const token = await getAccessTokenSilently()
@@ -134,14 +182,22 @@ const ModalCarga = ({
 
     navigate('/landing_page')
     onClose()
-  }, [onClose, isLocked, activeCollectionId, getAccessTokenSilently, navigate])
+  }, [
+    onClose,
+    activeCollectionId,
+    getAccessTokenSilently,
+    navigate,
+    etapa,
+    isPipelineRunning,
+    isUploadingLocked,
+  ])
 
   // --- 3. Polling de Pipeline (Sigue funcionando tras recarga) ---
   useEffect(() => {
     if (
       etapa !== 'pipeline' ||
       !activeCollectionId ||
-      ['graph_ready', 'error', 'idle'].includes(pipelineStatus)
+      ['graph_ready', 'partial_error', 'error', 'idle'].includes(pipelineStatus)
     )
       return
 
@@ -156,13 +212,25 @@ const ModalCarga = ({
         )
         if (!res.ok) return
         const data = await res.json()
-        const status: PipelineStatus = data.processing_status ?? 'idle'
+        const status = pipelineStatusFromApi(data.processing_status)
         setPipelineStatus(status)
-        if (status === 'graph_ready' || status === 'error') {
-          if (status === 'error')
+        if (
+          status === 'graph_ready' ||
+          status === 'partial_error' ||
+          status === 'error' ||
+          data.processing_status === 'cancelled'
+        ) {
+          if (status === 'error' || status === 'partial_error') {
             setPipelineError(
-              data.processing_error_message ?? 'Error desconocido',
+              data.processing_error_message ??
+                (status === 'error'
+                  ? 'Error desconocido'
+                  : 'Procesamiento incompleto'),
             )
+          }
+          if (data.processing_status === 'cancelled') {
+            setPipelineError('')
+          }
           clearInterval(interval)
         }
       } catch (e) {
@@ -252,7 +320,7 @@ const ModalCarga = ({
     }
   }
 
-  // Finalización exitosa (CORREGIDO: No llama a handleClose para no borrar la colección)
+  // Finalización exitosa o con advertencias: no borra la colección en servidor.
   const handleFinalizarExito = () => {
     localStorage.removeItem(ACTIVE_COLLECTION_KEY)
     localStorage.removeItem(MODAL_ETAPA_KEY)
@@ -260,10 +328,27 @@ const ModalCarga = ({
     navigate(`/user/colecciones/${activeCollectionId}/buscador`)
   }
 
+  const handleDismissWithoutDelete = useCallback(() => {
+    localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+    localStorage.removeItem(MODAL_ETAPA_KEY)
+    setFiles([])
+    setNombreColeccion('')
+    setError('')
+    setEtapa('subida')
+    setPipelineStatus('idle')
+    setPipelineError('')
+    setActiveCollectionId(null)
+    onClose()
+    navigate('/landing_page')
+  }, [onClose, navigate])
+
   if (!isOpen) return null
 
   return (
-    <div className="mc-overlay" onClick={isLocked ? undefined : handleClose}>
+    <div
+      className="mc-overlay"
+      onClick={isUploadingLocked ? undefined : handleClose}
+    >
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -282,7 +367,7 @@ const ModalCarga = ({
           <button
             className="mc-close"
             onClick={handleClose}
-            disabled={isLocked}
+            disabled={isUploadingLocked}
           >
             <X size={18} />
           </button>
@@ -291,19 +376,20 @@ const ModalCarga = ({
         {etapa === 'subida' ? (
           <>
             <div
-              className={`mc-dropzone ${isDragging ? 'dragging' : ''} ${isLocked ? 'disabled' : ''}`}
+              className={`mc-dropzone ${isDragging ? 'dragging' : ''} ${isUploadingLocked ? 'disabled' : ''}`}
               onDragOver={(e) => {
                 e.preventDefault()
-                if (!isLocked) setIsDragging(true)
+                if (!isUploadingLocked) setIsDragging(true)
               }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={(e) => {
                 e.preventDefault()
                 setIsDragging(false)
-                if (!isLocked) setFiles(Array.from(e.dataTransfer.files))
+                if (!isUploadingLocked)
+                  setFiles(Array.from(e.dataTransfer.files))
               }}
               onClick={() => {
-                if (!isLocked) fileInputRef.current?.click()
+                if (!isUploadingLocked) fileInputRef.current?.click()
               }}
             >
               <input
@@ -313,7 +399,7 @@ const ModalCarga = ({
                 ref={fileInputRef}
                 accept=".pdf,.txt"
                 onChange={(e) => setFiles(Array.from(e.target.files || []))}
-                disabled={isLocked}
+                disabled={isUploadingLocked}
               />
               <div className="mc-drop-icon">
                 <CloudUpload size={26} />
@@ -334,7 +420,7 @@ const ModalCarga = ({
                     <span className="mc-file-name">{f.name}</span>
                     <button
                       className="mc-file-remove"
-                      disabled={isLocked}
+                      disabled={isUploadingLocked}
                       onClick={() =>
                         setFiles((prev) => prev.filter((_, idx) => idx !== i))
                       }
@@ -364,7 +450,7 @@ const ModalCarga = ({
                 placeholder="Nombre de colección"
                 value={nombreColeccion}
                 onChange={(e) => setNombreColeccion(e.target.value)}
-                disabled={isLocked}
+                disabled={isUploadingLocked}
               />
             </div>
 
@@ -372,7 +458,7 @@ const ModalCarga = ({
               <button
                 className="mc-btn-cancel"
                 onClick={handleClose}
-                disabled={isLocked}
+                disabled={isUploadingLocked}
               >
                 Cancelar
               </button>
@@ -380,7 +466,9 @@ const ModalCarga = ({
                 className="mc-btn-upload"
                 onClick={handleUpload}
                 disabled={
-                  files.length === 0 || isLocked || !nombreColeccion.trim()
+                  files.length === 0 ||
+                  isUploadingLocked ||
+                  !nombreColeccion.trim()
                 }
               >
                 {isUploading ? 'Subiendo...' : 'Añadir archivos'}
@@ -396,9 +484,14 @@ const ModalCarga = ({
                   const isDone =
                     (s === 'processing_text' &&
                       (pipelineStatus === 'processing_graph' ||
-                        pipelineStatus === 'graph_ready')) ||
+                        pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
                     (s === 'processing_graph' &&
-                      pipelineStatus === 'graph_ready') ||
+                      (pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
+                    (s === 'graph_ready' &&
+                      (pipelineStatus === 'graph_ready' ||
+                        pipelineStatus === 'partial_error')) ||
                     s === pipelineStatus
                   const isActive =
                     s === pipelineStatus && pipelineStatus !== 'graph_ready'
@@ -423,7 +516,7 @@ const ModalCarga = ({
               )}
             </div>
             <p className="mc-pipeline-status">
-              {PIPELINE_LABELS[pipelineStatus]}
+              {PIPELINE_LABELS[pipelineStatus] ?? pipelineStatus}
             </p>
             {pipelineError && (
               <div className="mc-pipeline-error">
@@ -439,7 +532,8 @@ const ModalCarga = ({
                   <Network size={14} /> Generar grafo
                 </button>
               )}
-              {pipelineStatus === 'graph_ready' && (
+              {(pipelineStatus === 'graph_ready' ||
+                pipelineStatus === 'partial_error') && (
                 <button
                   className="mc-btn-upload"
                   onClick={handleFinalizarExito}
@@ -448,12 +542,22 @@ const ModalCarga = ({
                 </button>
               )}
               {pipelineStatus === 'error' && (
-                <button
-                  className="mc-btn-upload"
-                  onClick={handleIniciarPipeline}
-                >
-                  Reintentar
-                </button>
+                <>
+                  <button
+                    className="mc-btn-cancel"
+                    type="button"
+                    onClick={handleDismissWithoutDelete}
+                  >
+                    Cerrar sin borrar
+                  </button>
+                  <button
+                    className="mc-btn-upload"
+                    type="button"
+                    onClick={handleIniciarPipeline}
+                  >
+                    Reintentar
+                  </button>
+                </>
               )}
             </div>
           </div>

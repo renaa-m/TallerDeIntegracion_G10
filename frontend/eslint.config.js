@@ -21,5 +21,11 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    files: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.jest },
+    },
+  },
   eslintConfigPrettier,
 ])

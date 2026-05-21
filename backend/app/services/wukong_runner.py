@@ -13,8 +13,10 @@ Encadena todo el procesamiento:
         - Corre Wukong como subprocess → genera .qm
         - Opcional: con WUKONG_ARTIFACTS_DIR copia el workdir a disco (pruebas locales)
 
-    Pipeline 3 (PDT10-121, pendiente):
-        - Carga el .qm en MillenniumDB
+    Pipeline 3:
+        - Sube el .qm a Supabase Storage (mismo primer path segment que documentos: ``|``→``_``).
+        - Embeddings de chunks en pgvector.
+        - TODO PDT10-121: carga opcional en MillenniumDB.
 
 Toda la función está pensada para correr en background (FastAPI
 BackgroundTasks o Cloud Tasks). NO debe propagar excepciones — cualquier
@@ -34,12 +36,35 @@ from pathlib import Path # para manejar rutas de archivos
 from app.config import settings
 # importamos el cliente de Supabase para interactuar con la base de datos
 from app.services import supabase_client
+from app.services.qm_storage import export_qm_to_supabase
 from app.services.text_extraction import (
     process_pdf_document,
     process_txt_document,
 )
 
 logger = logging.getLogger(__name__) # para registrar errores
+
+
+class ProcessingCancelled(Exception):
+    """El cliente pidió cancelar; el estado en DB ya es ``cancelled``."""
+
+
+def _check_cancelled(collection_id: str) -> None:
+    row = supabase_client.get_collection_by_id(collection_id)
+    if row and row.get("processing_status") == "cancelled":
+        raise ProcessingCancelled()
+
+
+def _skip_if_user_cancelled(collection_id: str, where: str) -> bool:
+    """Si ya está ``cancelled``, no sobrescribir con error ni éxito. Devuelve True si hay que salir."""
+    row = supabase_client.get_collection_by_id(collection_id)
+    if row and row.get("processing_status") == "cancelled":
+        logger.info(
+            "Omitiendo %s: colección %s cancelada por la usuaria.", where, collection_id
+        )
+        return True
+    return False
+
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent 
 # para manejar rutas de archivos del backend (identifica la raiz de la rita de éste archivo)la raíz)
@@ -88,9 +113,10 @@ def process_collection(collection_id: str) -> None:
     actualiza el estado de la colección y de cada documento.
 
     Estados de colección que pueden quedar al terminar:
-        - graph_ready    → todos los docs OK, grafo cargado
+        - graph_ready    → todos los docs OK, grafo listo
         - partial_error  → algunos docs fallaron, grafo se generó igual
         - error          → falla total: ningún doc o Wukong se cayó
+        - cancelled      → la usuaria solicitó detener (cooperativo; ver POST /process/cancel)
     """
     try:
         collection = supabase_client.get_collection_by_id(collection_id)
@@ -98,20 +124,35 @@ def process_collection(collection_id: str) -> None:
             logger.error("Colección %s no encontrada", collection_id)
             return
 
+        if collection.get("processing_status") == "cancelled":
+            logger.info(
+                "process_collection: colección %s ya en estado cancelled; tarea obsoleta o duplicada.",
+                collection_id,
+            )
+            return
+
         documents = supabase_client.get_documents_by_collection(collection_id)
         if not documents:
+            if _skip_if_user_cancelled(collection_id, "marcar error sin documentos"):
+                return
             _mark_collection_error(
                 collection_id,
                 "La colección no tiene documentos para procesar.",
             )
             return
 
-        supabase_client.update_collection_processing_status(
-            collection_id, "processing_text"
-        )
-        n_extracted, n_errored, failed_doc_labels = _extract_texts(documents)
+        try:
+            _check_cancelled(collection_id)
+            n_extracted, n_errored, failed_doc_labels = _extract_texts(
+                documents, collection_id
+            )
+        except ProcessingCancelled:
+            logger.info("Extracción interrumpida por cancelación: %s", collection_id)
+            return
 
         if n_extracted == 0:
+            if _skip_if_user_cancelled(collection_id, "marcar error sin extracción"):
+                return
             failed_part = (
                 f" Archivos: {', '.join(failed_doc_labels)}."
                 if failed_doc_labels
@@ -124,6 +165,12 @@ def process_collection(collection_id: str) -> None:
             )
             return
 
+        try:
+            _check_cancelled(collection_id)
+        except ProcessingCancelled:
+            logger.info("Cancelación antes de Wukong: %s", collection_id)
+            return
+
         supabase_client.update_collection_processing_status(
             collection_id, "processing_graph"
         )
@@ -132,13 +179,53 @@ def process_collection(collection_id: str) -> None:
             workdir = Path(tmp)
             _build_wukong_workdir(workdir, collection_id)
 
+            try:
+                _check_cancelled(collection_id)
+            except ProcessingCancelled:
+                logger.info("Cancelación antes de lanzar Wukong: %s", collection_id)
+                return
+
             wukong_error = _run_wukong(workdir) #con al carpeta temporal lista, corro wukong como subprocess.
             _persist_wukong_artifacts(workdir, collection_id, wukong_ok=wukong_error is None) #si wukong terminó OK, copiamos el workdir a disco para inspección local (.qm, textos, etc.).
             
             
             if wukong_error is not None:
+                if _skip_if_user_cancelled(collection_id, "error de Wukong tras cancelación"):
+                    return
                 _mark_collection_error(collection_id, wukong_error)
                 return
+
+            try:
+                _check_cancelled(collection_id)
+            except ProcessingCancelled:
+                logger.info(
+                    "Cancelación tras Wukong OK (omitimos embeddings/final): %s",
+                    collection_id,
+                )
+                return
+
+            try:
+                logger.info(
+                    "Wukong OK: iniciando export .qm a Supabase (colección %s, workdir=%s)",
+                    collection_id,
+                    workdir,
+                )
+                qm_storage = export_qm_to_supabase(workdir, collection_id)
+                if qm_storage:
+                    logger.info(
+                        "Archivo .qm almacenado en Supabase: %s",
+                        qm_storage,
+                    )
+                else:
+                    logger.warning(
+                        "No se encontró .qm bajo exports/ para colección %s.",
+                        collection_id,
+                    )
+            except Exception:
+                logger.exception(
+                    "Error exportando .qm a Supabase para colección %s — continúa pipeline.",
+                    collection_id,
+                )
 
             # Pipeline 3a: Generar y guardar embeddings de chunks en Supabase pgvector.
             # Falla silenciosa: un error aquí no bloquea el grafo ya generado.
@@ -154,6 +241,9 @@ def process_collection(collection_id: str) -> None:
             # TODO PDT10-121: cargar el .qm de workdir/exports/ en MillenniumDB.
             # Bloqueado hasta confirmar el método con Alejandro
             # (mdb import vs queries vía driver vs endpoint del IMFD).
+
+        if _skip_if_user_cancelled(collection_id, "marcar graph_ready"):
+            return
 
         final_status = "partial_error" if n_errored > 0 else "graph_ready"
         final_message = (
@@ -172,12 +262,16 @@ def process_collection(collection_id: str) -> None:
             processed_at=_now_iso(),
         )
 
+    except ProcessingCancelled:
+        logger.info("Procesamiento cancelado (colección %s)", collection_id)
+        return
     except Exception as exc:
         logger.exception("Error inesperado procesando colección %s", collection_id)
-        _mark_collection_error(
-            collection_id,
-            f"Error inesperado: {type(exc).__name__}: {exc}",
-        )
+        if not _skip_if_user_cancelled(collection_id, "error inesperado"):
+            _mark_collection_error(
+                collection_id,
+                f"Error inesperado: {type(exc).__name__}: {exc}",
+            )
 
 
 def _doc_display_name(doc: dict) -> str:
@@ -188,7 +282,9 @@ def _doc_display_name(doc: dict) -> str:
     return str(doc.get("id", "desconocido"))
 
 
-def _extract_texts(documents: list[dict]) -> tuple[int, int, list[str]]:
+def _extract_texts(
+    documents: list[dict], collection_id: str | None = None
+) -> tuple[int, int, list[str]]:
     """
     Pipeline 1. Itera los documentos y extrae el texto de cada uno
     según su tipo. Devuelve (n_extracted_ok, n_errored, failed_display_names).
@@ -196,12 +292,16 @@ def _extract_texts(documents: list[dict]) -> tuple[int, int, list[str]]:
     Un fallo en un documento NO interrumpe el resto: queda con
     status='error' y se sigue con el siguiente. PDFs escaneados quedan
     como error hasta que se implemente OCR (PDT10-116).
+
+    Si ``collection_id`` está definido, se consulta cancelación entre documentos.
     """
     n_extracted = 0
     n_errored = 0
     failed_doc_labels: list[str] = []
 
     for doc in documents:
+        if collection_id is not None:
+            _check_cancelled(collection_id)
         try:
             if doc["file_type"] == "txt":
                 result = process_txt_document(

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from uuid import UUID
 from pydantic import BaseModel
@@ -137,6 +138,65 @@ class ProcessCollectionResponse(BaseModel):
     collection_id: UUID
     processing_status: str
     detail: str
+
+
+class CancelProcessResponse(BaseModel):
+    collection_id: UUID
+    processing_status: str
+    detail: str
+
+
+@router.post(
+    "/{collection_id}/process/cancel",
+    response_model=CancelProcessResponse,
+    status_code=200,
+)
+async def cancel_process_collection(
+    collection_id: UUID,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Detiene el pipeline de forma cooperativa (marca ``cancelled`` en DB).
+
+    El worker revisa el estado entre documentos y antes de Wukong.
+    Mientras corre el subproceso Wukong no se puede interrumpir hasta que termine.
+    """
+    collection = supabase_client.get_collection(
+        collection_id=str(collection_id),
+        user_id=user_id,
+    )
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Colección no encontrada.")
+
+    st = collection.get("processing_status", "idle")
+    if st == "cancelled":
+        return CancelProcessResponse(
+            collection_id=collection_id,
+            processing_status="cancelled",
+            detail="La colección ya estaba cancelada.",
+        )
+    if st not in _PROCESSING_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No hay procesamiento en curso para cancelar "
+                f"(estado actual: {st})."
+            ),
+        )
+
+    supabase_client.update_collection_processing_status(
+        str(collection_id),
+        "cancelled",
+        error_message="Procesamiento cancelado por la usuaria.",
+        processed_at=datetime.now(timezone.utc).isoformat(),
+    )
+    return CancelProcessResponse(
+        collection_id=collection_id,
+        processing_status="cancelled",
+        detail=(
+            "Cancelación registrada. El worker se detiene en el próximo punto seguro."
+        ),
+    )
 
 
 @router.post(
