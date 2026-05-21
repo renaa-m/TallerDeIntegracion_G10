@@ -69,7 +69,7 @@ const BuscadorColeccion = () => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   // --- ESTADOS ---
-// --- ESTADOS ---
+  // --- ESTADOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
   const [fuentes, setFuentes] = useState([])
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
@@ -168,7 +168,9 @@ const BuscadorColeccion = () => {
       })
 
       const endTime = performance.now() // <-- CAPTURAR TIEMPO FINAL
-      const durationSeconds = parseFloat(((endTime - startTime) / 1000).toFixed(2))
+      const durationSeconds = parseFloat(
+        ((endTime - startTime) / 1000).toFixed(2),
+      )
 
       if (res.ok) {
         const data = await res.json()
@@ -304,7 +306,7 @@ const BuscadorColeccion = () => {
           </div>
         </aside>
 
-<main className="bc-main">
+        <main className="bc-main">
           <div className="bc-searchbar-wrap">
             <div className="bc-searchbar">
               <Search size={17} className="bc-searchbar-icon" />
@@ -319,7 +321,8 @@ const BuscadorColeccion = () => {
                 className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
                 onClick={() => setFiltroOpen(!filtroOpen)}
               >
-                <SlidersHorizontal size={14} /> <span>Criterios de Búsqueda</span>
+                <SlidersHorizontal size={14} />{' '}
+                <span>Criterios de Búsqueda</span>
               </button>
             </div>
 
@@ -349,7 +352,9 @@ const BuscadorColeccion = () => {
           {busquedaEnviada.trim() && !loading && (
             <div className="bc-search-stats">
               <br />
-              {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'} en {searchTime} segundos
+              {resultados.length}{' '}
+              {resultados.length === 1 ? 'resultado' : 'resultados'} en{' '}
+              {searchTime} segundos
             </div>
           )}
 
