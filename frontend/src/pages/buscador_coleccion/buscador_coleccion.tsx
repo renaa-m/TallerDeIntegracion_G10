@@ -310,7 +310,7 @@ const BuscadorColeccion = () => {
                 className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
                 onClick={() => setFiltroOpen(!filtroOpen)}
               >
-                <SlidersHorizontal size={14} /> <span>Filtrar</span>
+                <SlidersHorizontal size={14} /> <span>Criterios de Búsqueda</span>
               </button>
             </div>
 
