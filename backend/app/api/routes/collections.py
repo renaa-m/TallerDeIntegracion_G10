@@ -4,6 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel
 from app.middleware.auth import get_current_user
 from app.models.document import CollectionCreate, CollectionResponse
+from app.schemas.graph import DataModelUpdate
 from app.services import supabase_client, wukong_runner
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
@@ -262,6 +263,79 @@ async def process_collection(
         processing_status="processing_text",
         detail=(
             "Procesamiento encolado. "
+            "Hacé GET /api/collections/{id} para seguir el avance."
+        ),
+    )
+
+
+class GenerateGraphResponse(BaseModel):
+    collection_id: UUID
+    processing_status: str
+    detail: str
+
+
+@router.post(
+    "/{collection_id}/generate-graph",
+    response_model=GenerateGraphResponse,
+    status_code=202,
+)
+async def generate_graph(
+    collection_id: UUID,
+    body: DataModelUpdate,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
+    """
+    Dispara la generación del grafo con un Data Model personalizado (HU Sprint 3).
+
+    El body debe seguir la estructura de default_data_model.json:
+    ``{ parameters, entities, relations }``.
+
+    Devuelve 202 Accepted inmediatamente. El frontend debe pollear
+    GET /api/collections/{id} para seguir el avance en ``processing_status``.
+    """
+    collection = supabase_client.get_collection(
+        collection_id=str(collection_id),
+        user_id=user_id,
+    )
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Colección no encontrada.")
+
+    current_status = collection.get("processing_status", "idle")
+    if current_status in _PROCESSING_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"La colección ya está siendo procesada "
+                f"(estado actual: {current_status})."
+            ),
+        )
+
+    documents = supabase_client.get_documents(
+        user_id=user_id,
+        collection_id=str(collection_id),
+    )
+    if not documents:
+        raise HTTPException(
+            status_code=422,
+            detail="La colección no tiene documentos para procesar.",
+        )
+
+    supabase_client.update_collection_processing_status(
+        str(collection_id), "processing_text"
+    )
+
+    background_tasks.add_task(
+        wukong_runner.process_collection,
+        str(collection_id),
+        body.model_dump(exclude_none=True),
+    )
+
+    return GenerateGraphResponse(
+        collection_id=collection_id,
+        processing_status="processing_text",
+        detail=(
+            "Procesamiento con modelo personalizado encolado. "
             "Hacé GET /api/collections/{id} para seguir el avance."
         ),
     )
