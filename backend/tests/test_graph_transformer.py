@@ -1,5 +1,3 @@
-import pytest
-
 from app.services.graph_transformer import qm_to_cytoscape
 
 # ── Fixture: fragmento real del .qm generado por Wukong ────────────────────────
