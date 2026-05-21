@@ -237,6 +237,17 @@ def update_collection_qm_storage_path(collection_id: str, qm_storage_path: str |
         )
 
 
+def download_collection_qm(user_id: str, collection_id: str) -> bytes:
+    """Descarga el archivo .qm de Supabase Storage y devuelve sus bytes."""
+    path = collection_qm_storage_path(user_id, collection_id)
+    logger.info(
+        "download_collection_qm: descargando bucket=%s path=%s",
+        BUCKET,
+        path,
+    )
+    return _get_service_client().storage.from_(BUCKET).download(path)
+
+
 def upload_collection_qm(user_id: str, collection_id: str, content: bytes) -> str:
     """
     Sube el .qm bajo ``{storage_user_folder}/{collection_id}/{collection_id}.qm``

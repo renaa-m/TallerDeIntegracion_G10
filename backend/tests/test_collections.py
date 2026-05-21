@@ -254,3 +254,102 @@ class TestCancelarProcesamiento:
             f"/api/collections/{MOCK_COLLECTION_ID}/process/cancel",
         )
         assert response.status_code == 403
+
+
+# ── Grafo Cytoscape ────────────────────────────────────────────────────────────
+
+_QM_MINIMAL = (
+    'Nodo_1 :TipoA nombre:"Entidad A"\n'
+    'Nodo_2 :TipoB nombre:"Entidad B"\n'
+    "Nodo_1->Nodo_2 :Relacion\n"
+)
+
+_CYTOSCAPE_MINIMAL = {
+    "elements": {
+        "nodes": [
+            {"data": {"id": "Nodo_1", "label": "Entidad A", "type": "TipoA", "nombre": "Entidad A"}},
+            {"data": {"id": "Nodo_2", "label": "Entidad B", "type": "TipoB", "nombre": "Entidad B"}},
+        ],
+        "edges": [
+            {"data": {"id": "Nodo_1->Nodo_2:Relacion", "source": "Nodo_1", "target": "Nodo_2", "label": "Relacion"}},
+        ],
+    }
+}
+
+
+class TestObtenerGrafo:
+    def test_grafo_listo_retorna_200_con_elements(self, client):
+        coleccion_lista = {**MOCK_COLLECTION, "processing_status": "graph_ready"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_lista,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.download_collection_qm",
+                return_value=_QM_MINIMAL.encode("utf-8"),
+            ),
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "elements" in data
+        assert "nodes" in data["elements"]
+        assert "edges" in data["elements"]
+
+    def test_grafo_retorna_nodos_y_aristas_correctos(self, client):
+        coleccion_lista = {**MOCK_COLLECTION, "processing_status": "graph_ready"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_lista,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.download_collection_qm",
+                return_value=_QM_MINIMAL.encode("utf-8"),
+            ),
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        data = response.json()
+        assert len(data["elements"]["nodes"]) == 2
+        assert len(data["elements"]["edges"]) == 1
+
+    def test_grafo_no_listo_retorna_409(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=MOCK_COLLECTION,  # processing_status: "idle"
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 409
+
+    def test_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=None,
+        ):
+            response = client.get(f"/api/collections/{uuid4()}/graph")
+
+        assert response.status_code == 404
+
+    def test_error_descarga_retorna_502(self, client):
+        coleccion_lista = {**MOCK_COLLECTION, "processing_status": "graph_ready"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_lista,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.download_collection_qm",
+                side_effect=RuntimeError("Storage error"),
+            ),
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 502
+
+    def test_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+        assert response.status_code == 403
