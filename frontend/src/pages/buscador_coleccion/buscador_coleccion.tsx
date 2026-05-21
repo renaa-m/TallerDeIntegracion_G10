@@ -69,12 +69,14 @@ const BuscadorColeccion = () => {
   const [searchParams, setSearchParams] = useSearchParams()
 
   // --- ESTADOS ---
+// --- ESTADOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
   const [fuentes, setFuentes] = useState([])
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState('')
   const [loading, setLoading] = useState(false)
+  const [searchTime, setSearchTime] = useState<number>(0) // <-- NUEVO ESTADO
 
   const queryFromUrl = searchParams.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(queryFromUrl)
@@ -128,6 +130,7 @@ const BuscadorColeccion = () => {
   const ejecutarBusqueda = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva' || !busquedaEnviada.trim()) {
       setResultados([])
+      setSearchTime(0) // Limpiar tiempo si no hay búsqueda
       return
     }
 
@@ -153,6 +156,8 @@ const BuscadorColeccion = () => {
             : null,
       }
 
+      const startTime = performance.now() // <-- CAPTURAR TIEMPO INICIAL
+
       const res = await fetch(`${API_URL}/api/search`, {
         method: 'POST',
         headers: {
@@ -162,16 +167,20 @@ const BuscadorColeccion = () => {
         body: JSON.stringify(searchRequest),
       })
 
+      const endTime = performance.now() // <-- CAPTURAR TIEMPO FINAL
+      const durationSeconds = parseFloat(((endTime - startTime) / 1000).toFixed(2))
+
       if (res.ok) {
         const data = await res.json()
-        // El backend devuelve SearchResponse con la llave "resultados"
         setResultados(data.resultados || [])
+        setSearchTime(durationSeconds) // <-- GUARDAR DURACIÓN EN SEGUNDOS
       } else if (res.status === 422) {
-        // Colección no procesada aún
         setResultados([])
+        setSearchTime(0)
       }
     } catch (e) {
       console.error('Error en búsqueda semántica:', e)
+      setSearchTime(0)
     } finally {
       setLoading(false)
     }
@@ -295,7 +304,7 @@ const BuscadorColeccion = () => {
           </div>
         </aside>
 
-        <main className="bc-main">
+<main className="bc-main">
           <div className="bc-searchbar-wrap">
             <div className="bc-searchbar">
               <Search size={17} className="bc-searchbar-icon" />
@@ -322,7 +331,7 @@ const BuscadorColeccion = () => {
                   </div>
                   <div className="bc-alert-text">
                     <span className="bc-alert-title">
-                      Próximamente: Filtros Avanzados
+                      Próximamente: Criterios de búsqueda avanzados
                     </span>
                   </div>
                 </div>
@@ -335,6 +344,14 @@ const BuscadorColeccion = () => {
               </div>
             )}
           </div>
+
+          {/* --- NUEVO COMPONENTE: CONTADOR ESTILO GOOGLE --- */}
+          {busquedaEnviada.trim() && !loading && (
+            <div className="bc-search-stats">
+              <br />
+              {resultados.length} {resultados.length === 1 ? 'resultado' : 'resultados'} en {searchTime} segundos
+            </div>
+          )}
 
           <div className="bc-results-area">
             {loading ? (
