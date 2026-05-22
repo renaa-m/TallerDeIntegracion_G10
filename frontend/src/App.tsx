@@ -1,11 +1,11 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import { useEffect } from 'react'
 import LandingPage from './pages/landing_page/landing_page'
 import LoginPage from './pages/login_page/login_page'
 import Navbar from './pages/navbar/navbar'
 import BuscadorColeccion from './pages/buscador_coleccion/buscador_coleccion'
-import GraphViewer from './pages/visualizador_grafo/visualizador_grafo' // <-- Importado correctamente
+import GraphViewer from './pages/visualizador_grafo/visualizador_grafo'
 
 // Componente que maneja el callback de Auth0
 function CallbackHandler() {
@@ -55,17 +55,21 @@ function App() {
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
+        width: '100vw',
+        overflow: 'hidden'
       }}
     >
       <Navbar />
-      {/* Este div empuja el contenido 70px hacia abajo (altura de la navbar fixed) */}
+      {/* Colchón para la Navbar fija de 70px */}
       <div style={{ height: '70px', flexShrink: 0 }} />
+      
       <main
         style={{
           flex: 1,
           minHeight: 0,
           width: '100%',
-          height: 'calc(100vh - 70px)',
+          position: 'relative',
+          overflow: 'hidden', 
         }}
       >
         <Routes>
@@ -81,28 +85,17 @@ function App() {
           />
           <Route path="/callback" element={<CallbackHandler />} />
           
+          {/* 🚀 CORRECCIÓN CRÍTICA: Rutas Anidadas Estructuradas para las Colecciones */}
           <Route
-            path="/:id_usuario/colecciones/:id_coleccion/buscador"
-            element={
-              isAuthenticated ? (
-                <BuscadorColeccion />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
-
-          {/* 🚀 NUEVA RUTA: Visualizador del Grafo en Pantalla Completa */}
-          <Route
-            path="/:id_usuario/colecciones/:id_coleccion/grafo"
-            element={
-              isAuthenticated ? (
-                <GraphViewer />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
+            path="/:id_usuario/colecciones/:id_coleccion"
+            element={isAuthenticated ? <BuscadorColeccion /> : <Navigate to="/" replace />}
+          >
+            {/* Vista por defecto: el buscador semántico interno */}
+            <Route path="buscador" element={<Outlet />} /> 
+            
+            {/* Cuando la URL sea /.../coleccion/123/grafo, se inyectará aquí de forma limpia */}
+            <Route path="grafo" element={<GraphViewer />} />
+          </Route>
 
           <Route
             path="/:id_usuario/buscador-coleccion"
@@ -114,6 +107,7 @@ function App() {
               )
             }
           />
+          
           <Route
             path="/landing-page/:id_usuario"
             element={
