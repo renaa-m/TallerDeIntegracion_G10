@@ -261,6 +261,115 @@ class TestProcessCollection:
         assert "documentos" in (err_kwargs.get("error_message") or "")
 
 
+class TestBuildWukongWorkdir:
+    """Verifica que _build_wukong_workdir escriba el data_model.json correcto."""
+
+    def _make_rows(self) -> list[dict]:
+        return [{"document_id": MOCK_DOC_UUID, "extracted_text": "Texto de prueba."}]
+
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_sin_custom_model_escribe_default(self, mock_get_texts, tmp_path):
+        mock_get_texts.return_value = self._make_rows()
+
+        wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID)
+
+        written = json.loads((tmp_path / "data_model.json").read_text())
+        # El default tiene Persona y Organizacion
+        assert "Persona" in written["entities"]
+        assert "Organizacion" in written["entities"]
+
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_con_custom_model_escribe_entidades_personalizadas(self, mock_get_texts, tmp_path):
+        mock_get_texts.return_value = self._make_rows()
+        custom = {
+            "parameters": {
+                "role": "Analista",
+                "context": "Docs",
+                "input_language": "spanish",
+                "output_language": "spanish",
+                "included_documents": ["preview"],
+                "included_entities": ["RangoMilitar"],
+                "included_relations": [],
+            },
+            "entities": {
+                "RangoMilitar": {
+                    "description": "Grado militar",
+                    "primary_key": "nombre",
+                    "properties": {"nombre": {"type": "string", "description": "Nombre"}},
+                }
+            },
+            "relations": {},
+        }
+
+        wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID, custom_data_model=custom)
+
+        written = json.loads((tmp_path / "data_model.json").read_text())
+        assert "RangoMilitar" in written["entities"]
+        assert "Persona" not in written["entities"]
+
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_custom_model_siempre_fuerza_included_documents_a_preview(
+        self, mock_get_texts, tmp_path
+    ):
+        mock_get_texts.return_value = self._make_rows()
+        # El usuario envía "full" — el runner debe corregirlo a "preview"
+        custom = {
+            "parameters": {
+                "role": "r",
+                "context": "c",
+                "input_language": "spanish",
+                "output_language": "spanish",
+                "included_documents": ["full"],  # valor incorrecto a propósito
+                "included_entities": ["RangoMilitar"],
+                "included_relations": [],
+            },
+            "entities": {
+                "RangoMilitar": {
+                    "description": "x",
+                    "primary_key": "nombre",
+                    "properties": {"nombre": {"type": "string", "description": "y"}},
+                }
+            },
+            "relations": {},
+        }
+
+        wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID, custom_data_model=custom)
+
+        written = json.loads((tmp_path / "data_model.json").read_text())
+        assert written["parameters"]["included_documents"] == ["preview"]
+
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_custom_model_no_muta_el_dict_original(self, mock_get_texts, tmp_path):
+        mock_get_texts.return_value = self._make_rows()
+        custom = {
+            "parameters": {
+                "role": "r", "context": "c",
+                "input_language": "spanish", "output_language": "spanish",
+                "included_documents": ["full"],
+                "included_entities": [], "included_relations": [],
+            },
+            "entities": {},
+            "relations": {},
+        }
+        original_docs = custom["parameters"]["included_documents"].copy()
+
+        wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID, custom_data_model=custom)
+
+        # El dict original no debe haber sido modificado por el deepcopy
+        assert custom["parameters"]["included_documents"] == original_docs
+
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_crea_archivos_txt_en_el_workdir(self, mock_get_texts, tmp_path):
+        mock_get_texts.return_value = self._make_rows()
+
+        n = wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID)
+
+        assert n == 1
+        txt_path = tmp_path / "docs" / "text" / "preview" / f"{MOCK_DOC_UUID}.txt"
+        assert txt_path.exists()
+        assert txt_path.read_text() == "Texto de prueba."
+
+
 def _stub_wukong_config_path(tmp_path):
     """default.toml del submódulo no está en CI (repo privado / no clonable); los tests solo necesitan un archivo existente."""
     p = tmp_path / "wukong-default-stub.toml"
