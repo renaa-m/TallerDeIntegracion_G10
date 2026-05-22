@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate, useParams, useSearchParams, useLocation, Outlet } from 'react-router-dom'
+import {
+  useNavigate,
+  useParams,
+  useSearchParams,
+  useLocation,
+  Outlet,
+} from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import {
   Search,
@@ -70,7 +76,10 @@ const BuscadorColeccion = () => {
   const location = useLocation() // 🚀 NUEVO: Monitorea la ruta activa
 
   // Determina si el usuario está visualizando específicamente la ruta del grafo
-  const isGrafoView = useMemo(() => location.pathname.endsWith('/grafo'), [location.pathname])
+  const isGrafoView = useMemo(
+    () => location.pathname.endsWith('/grafo'),
+    [location.pathname],
+  )
 
   // --- ESTADOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
@@ -130,7 +139,12 @@ const BuscadorColeccion = () => {
   // --- LÓGICA DE BÚSQUEDA SEMÁNTICA (POST) ---
   const ejecutarBusqueda = useCallback(async () => {
     // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
-    if (!id_coleccion || id_coleccion === 'nueva' || !busquedaEnviada.trim() || isGrafoView) {
+    if (
+      !id_coleccion ||
+      id_coleccion === 'nueva' ||
+      !busquedaEnviada.trim() ||
+      isGrafoView
+    ) {
       if (!isGrafoView) setResultados([])
       return
     }
@@ -279,17 +293,27 @@ const BuscadorColeccion = () => {
               <Link
                 to={`/${id_usuario}/colecciones/${id_coleccion}/buscador`}
                 className="bc-add-btn"
-                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                style={{
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
               >
-                <FileText size={15} /> <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
+                <FileText size={15} />{' '}
+                <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
               </Link>
             ) : (
               <Link
                 to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`}
                 className="bc-add-btn"
-                style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                style={{
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
               >
-                <Network size={15} /> <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
+                <Network size={15} />{' '}
+                <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
               </Link>
             )}
 
@@ -311,7 +335,9 @@ const BuscadorColeccion = () => {
         <main className="bc-main">
           {/* 🚀 RENDERING CONDICIONAL CRÍTICO: Si la URL pide el grafo, renderiza la sub-ruta usando Outlet, sino muestra el buscador de texto tradicional */}
           {isGrafoView ? (
-            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+            <div
+              style={{ width: '100%', height: '100%', position: 'relative' }}
+            >
               <Outlet />
             </div>
           ) : (
@@ -338,7 +364,10 @@ const BuscadorColeccion = () => {
                   <div className="bc-alert-banner">
                     <div className="bc-alert-content">
                       <div className="bc-alert-icon-wrap">
-                        <SlidersHorizontal size={14} className="bc-alert-icon" />
+                        <SlidersHorizontal
+                          size={14}
+                          className="bc-alert-icon"
+                        />
                       </div>
                       <div className="bc-alert-text">
                         <span className="bc-alert-title">
@@ -376,7 +405,10 @@ const BuscadorColeccion = () => {
                             <div
                               className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
                             >
-                              <CheckCircle2 size={12} className="bc-status-icon" />
+                              <CheckCircle2
+                                size={12}
+                                className="bc-status-icon"
+                              />
                               <span className="bc-score-value">
                                 {(r.score * 100).toFixed(0)}% de coincidencia
                               </span>
@@ -398,7 +430,10 @@ const BuscadorColeccion = () => {
 
                         <div className="bc-card-body">
                           <p className="bc-result-excerpt">
-                            <Highlight text={r.fragmento} query={busquedaEnviada} />
+                            <Highlight
+                              text={r.fragmento}
+                              query={busquedaEnviada}
+                            />
                           </p>
                         </div>
 

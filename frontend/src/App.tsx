@@ -56,20 +56,20 @@ function App() {
         flexDirection: 'column',
         height: '100vh',
         width: '100vw',
-        overflow: 'hidden'
+        overflow: 'hidden',
       }}
     >
       <Navbar />
       {/* Colchón para la Navbar fija de 70px */}
       <div style={{ height: '70px', flexShrink: 0 }} />
-      
+
       <main
         style={{
           flex: 1,
           minHeight: 0,
           width: '100%',
           position: 'relative',
-          overflow: 'hidden', 
+          overflow: 'hidden',
         }}
       >
         <Routes>
@@ -84,15 +84,21 @@ function App() {
             }
           />
           <Route path="/callback" element={<CallbackHandler />} />
-          
+
           {/* 🚀 CORRECCIÓN CRÍTICA: Rutas Anidadas Estructuradas para las Colecciones */}
           <Route
             path="/:id_usuario/colecciones/:id_coleccion"
-            element={isAuthenticated ? <BuscadorColeccion /> : <Navigate to="/" replace />}
+            element={
+              isAuthenticated ? (
+                <BuscadorColeccion />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
           >
             {/* Vista por defecto: el buscador semántico interno */}
-            <Route path="buscador" element={<Outlet />} /> 
-            
+            <Route path="buscador" element={<Outlet />} />
+
             {/* Cuando la URL sea /.../coleccion/123/grafo, se inyectará aquí de forma limpia */}
             <Route path="grafo" element={<GraphViewer />} />
           </Route>
@@ -107,7 +113,7 @@ function App() {
               )
             }
           />
-          
+
           <Route
             path="/landing-page/:id_usuario"
             element={
