@@ -18,7 +18,6 @@ import {
 import { Link } from 'react-router-dom'
 
 // Componentes
-import ModalNoDisponible from '../../components/modal_no_disponible/modal_no_disponible'
 import ModalCarga from '../../components/modal_carga/modal_carga'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
 import ModalDocumentosDisponibles from '../../components/modal_documentos_disponibles/modal_documentos_disponibles'
