@@ -15,6 +15,8 @@ import {
   Loader2,
 } from 'lucide-react'
 
+import { Link } from 'react-router-dom'
+
 // Componentes
 import ModalNoDisponible from '../../components/modal_no_disponible/modal_no_disponible'
 import ModalCarga from '../../components/modal_carga/modal_carga'
@@ -274,12 +276,15 @@ const BuscadorColeccion = () => {
             </div>
 
             <div className="bc-sidebar-divider" />
-            <button
+
+            <Link
+              to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`} // Cambiado a la ruta exacta con id_usuario
               className="bc-add-btn"
-              onClick={() => setModalGrafoOpen(true)}
+              style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
             >
-              <Network size={15} /> <span>Ver Grafo</span>
-            </button>
+              <Network size={15} /> <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
+            </Link>
+
             <button
               className="bc-add-btn"
               onClick={() => setIsModalFuentesOpen(true)}

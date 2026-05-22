@@ -5,6 +5,7 @@ import LandingPage from './pages/landing_page/landing_page'
 import LoginPage from './pages/login_page/login_page'
 import Navbar from './pages/navbar/navbar'
 import BuscadorColeccion from './pages/buscador_coleccion/buscador_coleccion'
+import GraphViewer from './pages/visualizador_grafo/visualizador_grafo' // <-- Importado correctamente
 
 // Componente que maneja el callback de Auth0
 function CallbackHandler() {
@@ -79,11 +80,24 @@ function App() {
             }
           />
           <Route path="/callback" element={<CallbackHandler />} />
+          
           <Route
             path="/:id_usuario/colecciones/:id_coleccion/buscador"
             element={
               isAuthenticated ? (
                 <BuscadorColeccion />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          {/* 🚀 NUEVA RUTA: Visualizador del Grafo en Pantalla Completa */}
+          <Route
+            path="/:id_usuario/colecciones/:id_coleccion/grafo"
+            element={
+              isAuthenticated ? (
+                <GraphViewer />
               ) : (
                 <Navigate to="/" replace />
               )
