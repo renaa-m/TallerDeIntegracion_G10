@@ -1,11 +1,12 @@
 from datetime import datetime, timezone
+from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from uuid import UUID
 from pydantic import BaseModel
 from app.middleware.auth import get_current_user
 from app.models.document import CollectionCreate, CollectionResponse
 from app.schemas.graph import DataModelUpdate
-from app.services import supabase_client, wukong_runner
+from app.services import supabase_client, wukong_runner, graph_transformer
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
@@ -339,3 +340,51 @@ async def generate_graph(
             "Hacé GET /api/collections/{id} para seguir el avance."
         ),
     )
+
+
+class CytoscapeElement(BaseModel):
+    data: dict[str, Any]
+
+
+class CytoscapeElements(BaseModel):
+    nodes: list[CytoscapeElement]
+    edges: list[CytoscapeElement]
+
+
+class CytoscapeGraph(BaseModel):
+    elements: CytoscapeElements
+
+
+@router.get("/{collection_id}/graph", response_model=CytoscapeGraph)
+async def get_collection_graph(
+    collection_id: UUID,
+    user_id: str = Depends(get_current_user),
+) -> CytoscapeGraph:
+    """Devuelve el grafo de conocimiento de la colección en formato Cytoscape.js."""
+    collection = supabase_client.get_collection(
+        collection_id=str(collection_id),
+        user_id=user_id,
+    )
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Colección no encontrada.")
+
+    status = collection.get("processing_status", "idle")
+    if status != "graph_ready":
+        raise HTTPException(
+            status_code=409,
+            detail=f"El grafo no está disponible (estado actual: {status}).",
+        )
+
+    try:
+        qm_bytes = supabase_client.download_collection_qm(
+            user_id=user_id,
+            collection_id=str(collection_id),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Error al descargar el grafo desde el almacenamiento.",
+        ) from exc
+
+    cytoscape = graph_transformer.qm_to_cytoscape(qm_bytes.decode("utf-8"))
+    return CytoscapeGraph(**cytoscape)
