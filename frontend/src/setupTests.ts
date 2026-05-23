@@ -1,4 +1,9 @@
 import '@testing-library/jest-dom'
-import { TextDecoder, TextEncoder } from 'node:util'
+import { TextEncoder, TextDecoder } from 'util'
 
-Object.assign(globalThis, { TextDecoder, TextEncoder })
+Object.assign(globalThis, {
+  TextEncoder,
+  TextDecoder,
+})
+
+process.env.VITE_API_URL = 'http://localhost:8080'
