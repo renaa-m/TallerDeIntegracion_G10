@@ -175,6 +175,12 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
         supabase_client.update_collection_processing_status(
             collection_id, "processing_graph"
         )
+        supabase_client.update_collection_progress(
+            collection_id=collection_id,
+            graph_progress_total=1,
+            graph_progress_processed=0,
+            graph_failed_documents=[],
+        )
 
         with tempfile.TemporaryDirectory(prefix=f"wukong-{collection_id}-") as tmp:
             workdir = Path(tmp)
@@ -186,13 +192,27 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
                 logger.info("Cancelación antes de lanzar Wukong: %s", collection_id)
                 return
 
-            wukong_error = _run_wukong(workdir) #con al carpeta temporal lista, corro wukong como subprocess.
+            wukong_error = _run_wukong(workdir, collection_id=collection_id) #con al carpeta temporal lista, corro wukong como subprocess.
             _persist_wukong_artifacts(workdir, collection_id, wukong_ok=wukong_error is None) #si wukong terminó OK, copiamos el workdir a disco para inspección local (.qm, textos, etc.).
             
+            if wukong_error is None:
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    graph_progress_processed=1,
+                )
             
             if wukong_error is not None:
                 if _skip_if_user_cancelled(collection_id, "error de Wukong tras cancelación"):
                     return
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    graph_failed_documents=[
+                        {
+                            "filename": "Wukong",
+                            "reason": wukong_error,
+                        }
+                    ],
+                )
                 _mark_collection_error(collection_id, wukong_error)
                 return
 
@@ -299,6 +319,13 @@ def _extract_texts(
     n_extracted = 0
     n_errored = 0
     failed_doc_labels: list[str] = []
+    total_docs = len(documents)
+    supabase_client.update_collection_progress(
+        collection_id=collection_id,
+        text_progress_total=total_docs,
+        text_progress_processed=0,
+        text_failed_documents=[],
+        )
 
     for doc in documents:
         if collection_id is not None:
@@ -323,9 +350,23 @@ def _extract_texts(
 
             if result.get("status") == "ok":
                 n_extracted += 1
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    text_progress_processed=n_extracted,
+                )
             else:
                 n_errored += 1
                 failed_doc_labels.append(_doc_display_name(doc))
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    text_failed_documents=[
+                        {
+                            "filename": label,
+                            "reason": "Error de extracción",
+                        }
+                        for label in failed_doc_labels
+                    ],
+                )
 
         except Exception as exc:
             logger.exception("Falló extracción del documento %s", doc["id"])
@@ -337,6 +378,16 @@ def _extract_texts(
             )
             n_errored += 1
             failed_doc_labels.append(_doc_display_name(doc))
+            supabase_client.update_collection_progress(
+                collection_id=collection_id,
+                text_failed_documents=[
+                    {
+                        "filename": label,
+                        "reason": "Error de extracción",
+                    }
+                    for label in failed_doc_labels
+                ],
+            )
 
     return n_extracted, n_errored, failed_doc_labels
 
@@ -423,7 +474,7 @@ def _persist_wukong_artifacts(
         )
 
 
-def _run_wukong(workdir: Path, timeout_seconds: int = 3600) -> str | None:
+def _run_wukong(workdir: Path, collection_id: str, timeout_seconds: int = 3600) -> str | None:
     """
     Pipeline 2. Ejecuta Wukong sobre la carpeta de trabajo.
 
@@ -432,22 +483,62 @@ def _run_wukong(workdir: Path, timeout_seconds: int = 3600) -> str | None:
     if not WUKONG_DEFAULT_CONFIG.is_file():
         return f"No existe la config de Wukong: {WUKONG_DEFAULT_CONFIG}"
     try:
-        subprocess.run(
+        #subprocess.run(
             # Arma el comando equivalente a:
             # <tu python> -m wukong_engine <workdir> --config <ruta al default.toml>
+            #[
+                #_wukong_python_executable(),
+                #"-m", # ejecuta el módulo wukong_engine
+                #"wukong_engine", # el nombre del módulo que contiene la función main() de Wukong
+                #str(workdir), # la ruta al workdir de Wukong
+                #"--config", # la ruta al archivo de configuración de Wukong
+                #str(WUKONG_DEFAULT_CONFIG), # la ruta al archivo de configuración de Wukong
+            #],
+            #check=True, # para que el proceso termine correctamente
+            #capture_output=True, # para capturar la salida de Wukong
+            #text=True, # para que el resultado sea un string legible
+            #timeout=timeout_seconds, # para que no se quede corriendo eternamente
+        #)
+        process = subprocess.Popen(
             [
                 _wukong_python_executable(),
-                "-m", # ejecuta el módulo wukong_engine
-                "wukong_engine", # el nombre del módulo que contiene la función main() de Wukong
-                str(workdir), # la ruta al workdir de Wukong
-                "--config", # la ruta al archivo de configuración de Wukong
-                str(WUKONG_DEFAULT_CONFIG), # la ruta al archivo de configuración de Wukong
+                "-m",
+                "wukong_engine",
+                str(workdir),
+                "--config",
+                str(WUKONG_DEFAULT_CONFIG),
             ],
-            check=True, # para que el proceso termine correctamente
-            capture_output=True, # para capturar la salida de Wukong
-            text=True, # para que el resultado sea un string legible
-            timeout=timeout_seconds, # para que no se quede corriendo eternamente
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
+
+        started_at = datetime.now(timezone.utc)
+
+        while process.poll() is None:
+            if _skip_if_user_cancelled(collection_id, "detener subprocess Wukong"):
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                raise ProcessingCancelled()
+
+            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+            if elapsed > timeout_seconds:
+                process.kill()
+                process.wait()
+                return f"Wukong superó el timeout de {timeout_seconds}s."
+
+            import time
+            time.sleep(1)
+
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            err = (stderr or stdout or "").strip()
+            return f"Wukong falló (exit {process.returncode}): {err[:500]}"
         return None
     except subprocess.CalledProcessError as exc:
         # el proceso Wukong sí arrancó y terminó, pero con código de salida distinto de 0, Suele ser un bug en datos, config, API key del LLM, etc.

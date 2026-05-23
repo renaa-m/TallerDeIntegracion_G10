@@ -194,6 +194,55 @@ def update_collection_processing_status(
     )
     return response.data[0] if response.data else None
 
+def update_collection_progress(
+    collection_id: str,
+    text_progress_total: int | None = None,
+    text_progress_processed: int | None = None,
+    graph_progress_total: int | None = None,
+    graph_progress_processed: int | None = None,
+    text_failed_documents: list[dict] | None = None,
+    graph_failed_documents: list[dict] | None = None,
+) -> dict | None:
+    """
+    Actualiza el progreso del procesamiento de una colección.
+
+    Se usan None como valores por defecto para actualizar solo los campos
+    enviados y no pisar el resto del progreso.
+    """
+    client = _get_service_client()
+
+    payload: dict = {}
+
+    if text_progress_total is not None:
+        payload["text_progress_total"] = text_progress_total
+
+    if text_progress_processed is not None:
+        payload["text_progress_processed"] = text_progress_processed
+
+    if graph_progress_total is not None:
+        payload["graph_progress_total"] = graph_progress_total
+
+    if graph_progress_processed is not None:
+        payload["graph_progress_processed"] = graph_progress_processed
+
+    if text_failed_documents is not None:
+        payload["text_failed_documents"] = text_failed_documents
+
+    if graph_failed_documents is not None:
+        payload["graph_failed_documents"] = graph_failed_documents
+
+    if not payload:
+        return None
+
+    response = (
+        client.table("collections")
+        .update(payload)
+        .eq("id", collection_id)
+        .execute()
+    )
+
+    return response.data[0] if response.data else None
+
 
 def update_collection_qm_storage_path(collection_id: str, qm_storage_path: str | None) -> None:
     """Persiste la ruta del .qm en Storage (service role)."""

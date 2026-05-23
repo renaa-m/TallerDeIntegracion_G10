@@ -34,6 +34,23 @@ type PipelineStatus =
   | 'cancelled'
   | 'error'
 
+type FailedProcessingDocument = {
+  filename: string
+  reason?: string | null
+}
+
+type StepProgress = {
+  total: number
+  processed: number
+  failed: FailedProcessingDocument[]
+}
+
+const EMPTY_PROGRESS: StepProgress = {
+  total: 0,
+  processed: 0,
+  failed: [],
+}
+
 const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   idle: 'Listo para procesar',
   processing_text: 'Extrayendo texto de los documentos...',
@@ -87,6 +104,8 @@ const ModalCarga = ({
   const [activeCollectionId, setActiveCollectionId] = useState<string | null>(
     localStorage.getItem(ACTIVE_COLLECTION_KEY),
   )
+  const [textProgress, setTextProgress] = useState<StepProgress>(EMPTY_PROGRESS)
+  const [graphProgress, setGraphProgress] = useState<StepProgress>(EMPTY_PROGRESS)
 
   const isUploadingLocked = isUploading
   const isPipelineRunning =
@@ -112,6 +131,16 @@ const ModalCarga = ({
           })
           if (res.ok) {
             const data = await res.json()
+            setTextProgress({
+              total: data.text_progress_total ?? 0,
+              processed: data.text_progress_processed ?? 0,
+              failed: data.text_failed_documents ?? [],
+            })
+            setGraphProgress({
+              total: data.graph_progress_total ?? 0,
+              processed: data.graph_progress_processed ?? 0,
+              failed: data.graph_failed_documents ?? [],
+            })
             setPipelineStatus(pipelineStatusFromApi(data.processing_status))
             if (
               data.processing_status === 'partial_error' ||
@@ -212,6 +241,17 @@ const ModalCarga = ({
         )
         if (!res.ok) return
         const data = await res.json()
+        setTextProgress({
+          total: data.text_progress_total ?? 0,
+          processed: data.text_progress_processed ?? 0,
+          failed: data.text_failed_documents ?? [],
+        })
+
+        setGraphProgress({
+          total: data.graph_progress_total ?? 0,
+          processed: data.graph_progress_processed ?? 0,
+          failed: data.graph_failed_documents ?? [],
+        })
         const status = pipelineStatusFromApi(data.processing_status)
         setPipelineStatus(status)
         if (
@@ -341,6 +381,18 @@ const ModalCarga = ({
     onClose()
     navigate('/landing_page')
   }, [onClose, navigate])
+
+  const getProgressPercent = (progress: StepProgress) => {
+    if (progress.total <= 0) return 0
+    return Math.min(100, Math.round((progress.processed / progress.total) * 100))
+  }
+
+  const textProgressPercent = getProgressPercent(textProgress)
+  const graphProgressPercent = getProgressPercent(graphProgress)
+
+  const textSuccessCount = Math.max(0,textProgress.processed - textProgress.failed.length,)
+
+  const graphSuccessCount = Math.max(0,graphProgress.processed - graphProgress.failed.length,)
 
   if (!isOpen) return null
 
@@ -518,6 +570,92 @@ const ModalCarga = ({
             <p className="mc-pipeline-status">
               {PIPELINE_LABELS[pipelineStatus] ?? pipelineStatus}
             </p>
+            <div className="mc-progress-stack">
+              {(pipelineStatus === 'processing_text' ||
+                pipelineStatus === 'processing_graph' ||
+                pipelineStatus === 'graph_ready' ||
+                pipelineStatus === 'partial_error' ||
+                pipelineStatus === 'error') && (
+                <div className="mc-progress-card">
+                  <div className="mc-progress-header">
+                    <span>Extracción de texto</span>
+                    <strong>{textProgressPercent}%</strong>
+                  </div>
+
+                  <div className="mc-progress-bar">
+                    <div
+                      className="mc-progress-fill"
+                      style={{ width: `${textProgressPercent}%` }}
+                    />
+                  </div>
+
+                  <p className="mc-progress-summary">
+                    {textSuccessCount} de {textProgress.total} documento(s) procesado(s)
+                    correctamente.
+                  </p>
+
+                  {textProgress.failed.length > 0 && (
+                    <div className="mc-progress-errors">
+                      <div className="mc-progress-errors-header">
+                        <strong>No pasaron extracción:</strong>
+                        <span>{textProgress.failed.length} archivo(s)</span>
+                      </div>
+
+                      <ul className="mc-progress-errors-list">
+                        {textProgress.failed.map((doc) => (
+                          <li key={`text-${doc.filename}`}>
+                            {doc.filename}
+                            {doc.reason ? ` — ${doc.reason}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(pipelineStatus === 'processing_graph' ||
+                pipelineStatus === 'graph_ready' ||
+                pipelineStatus === 'partial_error' ||
+                pipelineStatus === 'error') && (
+                <div className="mc-progress-card">
+                  <div className="mc-progress-header">
+                    <span>Construcción del grafo</span>
+                    <strong>{graphProgressPercent}%</strong>
+                  </div>
+
+                  <div className="mc-progress-bar">
+                    <div
+                      className="mc-progress-fill"
+                      style={{ width: `${graphProgressPercent}%` }}
+                    />
+                  </div>
+
+                  <p className="mc-progress-summary">
+                    {graphSuccessCount} de {graphProgress.total} etapa(s) completada(s)
+                    correctamente.
+                  </p>
+
+                  {graphProgress.failed.length > 0 && (
+                    <div className="mc-progress-errors">
+                      <div className="mc-progress-errors-header">
+                        <strong>No pasaron construcción del grafo:</strong>
+                        <span>{graphProgress.failed.length} archivo(s)</span>
+                      </div>
+
+                      <ul className="mc-progress-errors-list">
+                        {graphProgress.failed.map((doc) => (
+                          <li key={`graph-${doc.filename}`}>
+                            {doc.filename}
+                            {doc.reason ? ` — ${doc.reason}` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             {pipelineError && (
               <div className="mc-pipeline-error">
                 <AlertCircle size={14} /> {pipelineError}
