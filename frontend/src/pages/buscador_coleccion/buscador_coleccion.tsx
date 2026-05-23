@@ -325,7 +325,7 @@ const BuscadorColeccion = () => {
               className="bc-add-btn"
               onClick={() => setIsModalFuentesOpen(true)}
             >
-              <Files size={15} /> <span>Fuentes Disponibles</span>
+              <Files size={15} /> <span>Ver Documentos</span>
             </button>
             <button
               className="bc-delete-collection-btn"
