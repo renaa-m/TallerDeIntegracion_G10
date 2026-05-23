@@ -39,7 +39,10 @@ const GraphViewer = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cyRef, setCyRef] = useState<Core | null>(null)
-  const [selectedData, setSelectedData] = useState<Record<string, unknown> | null>(null)
+  const [selectedData, setSelectedData] = useState<Record<
+    string,
+    unknown
+  > | null>(null)
   const [selectedType, setSelectedType] = useState<'node' | 'edge' | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -119,7 +122,7 @@ const GraphViewer = () => {
   // Fix para el Linter: Usar bandera de montaje y función interna
   useEffect(() => {
     let isMounted = true
-    
+
     const init = async () => {
       await fetchGraph()
     }
@@ -128,7 +131,9 @@ const GraphViewer = () => {
       init()
     }
 
-    return () => { isMounted = false }
+    return () => {
+      isMounted = false
+    }
   }, [fetchGraph])
 
   useEffect(() => {
