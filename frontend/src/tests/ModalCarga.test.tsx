@@ -52,7 +52,6 @@ describe('ModalCarga', () => {
           onClose={onClose}
           darkMode={darkMode}
           onUploadSuccess={onUploadSuccess}
-          coleccionId="collection-1"
         />
       </MemoryRouter>,
     )
