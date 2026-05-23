@@ -202,7 +202,11 @@ const BuscadorColeccion = () => {
 
   // --- EFECTOS ---
   useEffect(() => {
-    cargarDatos()
+    const iniciarCarga = async () => {
+      await cargarDatos()
+    }
+
+    void iniciarCarga()
   }, [cargarDatos])
 
   useEffect(() => {
