@@ -7,7 +7,14 @@ import cytoscape, {
   type StylesheetStyle,
   type LayoutOptions,
 } from 'cytoscape'
-import { Loader2, ZoomIn, ZoomOut, RefreshCw, X } from 'lucide-react'
+import {
+  Loader2,
+  ZoomIn,
+  ZoomOut,
+  RefreshCw,
+  X,
+  AlertCircle,
+} from 'lucide-react'
 import { useAuth0 } from '@auth0/auth0-react'
 import './visualizador_grafo.css'
 
@@ -30,6 +37,7 @@ const GraphViewer = () => {
 
   const [elements, setElements] = useState<ElementDefinition[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [cyRef, setCyRef] = useState<Core | null>(null)
   const [selectedData, setSelectedData] = useState<Record<
     string,
@@ -43,55 +51,61 @@ const GraphViewer = () => {
     [],
   )
 
-  const runLayout = useCallback(
-    (cyInstance: Core | null) => {
-      if (!cyInstance || elements.length === 0) return
+  const runLayout = useCallback((cyInstance: Core | null) => {
+    if (!cyInstance) return
+    const layoutOptions: LayoutOptions = {
+      name: 'cose',
+      animate: true,
+      animationDuration: 500,
+      fit: true,
+      padding: 50,
+      componentSpacing: 180,
+    }
+    cyInstance.layout(layoutOptions).run()
+  }, [])
 
-      const layoutOptions: LayoutOptions = {
-        name: 'cose',
-        animate: true,
-        animationDuration: 500,
-        fit: true,
-        padding: 50,
-        componentSpacing: 180,
-      }
-
-      cyInstance.resize()
-      cyInstance.layout(layoutOptions).run()
-    },
-    [elements],
-  )
+  useEffect(() => {
+    if (cyRef && elements.length > 0) {
+      runLayout(cyRef)
+    }
+  }, [cyRef, elements, runLayout])
 
   const fetchGraph = useCallback(async () => {
     if (!id_coleccion) return
     setLoading(true)
+    setError(null)
     try {
       const token = await getAccessTokenSilently()
       const res = await fetch(
         `${API_URL}/api/collections/${id_coleccion}/graph`,
         {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: 'Bearer ' + token },
         },
       )
-      if (!res.ok) throw new Error(`Error ${res.status}`)
+
+      if (!res.ok) throw new Error(`Error al cargar el grafo`)
 
       const data: GraphResponse = await res.json()
 
-      const nodes: ElementDefinition[] = (data.elements?.nodes ?? []).map(
-        (n) => ({
-          data: { ...n.data, id: String(n.data.id) },
-        }),
-      )
+      if (
+        !data.elements ||
+        (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
+      ) {
+        throw new Error('No hay datos disponibles para visualizar.')
+      }
 
-      // Aseguramos que la etiqueta (label) se mantenga en el objeto de datos de la arista
-      const edges: ElementDefinition[] = (data.elements?.edges ?? []).map(
+      const nodes: ElementDefinition[] = data.elements.nodes.map((n) => ({
+        data: { ...n.data, id: String(n.data.id) },
+      }))
+
+      const edges: ElementDefinition[] = data.elements.edges.map(
         (e, index) => ({
           data: {
             ...e.data,
             id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
             source: String(e.data.source ?? e.data.from),
             target: String(e.data.target ?? e.data.to),
-            label: e.data.label || '', // Nombre de la arista para el estilo
+            label: e.data.label || '',
           },
         }),
       )
@@ -99,16 +113,14 @@ const GraphViewer = () => {
       setElements([...nodes, ...edges])
     } catch (err) {
       console.error('Error fetching graph:', err)
+      setError(err instanceof Error ? err.message : 'Error desconocido')
     } finally {
       setLoading(false)
     }
   }, [id_coleccion, getAccessTokenSilently])
 
   useEffect(() => {
-    const loadData = async () => {
-      await fetchGraph()
-    }
-    loadData()
+    void fetchGraph()
   }, [fetchGraph])
 
   useEffect(() => {
@@ -151,8 +163,8 @@ const GraphViewer = () => {
         style: {
           width: 4,
           'line-color': darkMode ? '#94a3b8' : '#64748b',
-          'curve-style': 'bezier', // Cambiado a bezier para mejorar visualización de etiquetas
-          label: 'data(label)', // Aquí vinculamos el nombre de la arista
+          'curve-style': 'bezier',
+          label: 'data(label)',
           'font-size': '10px',
           'text-background-opacity': 1,
           'text-background-color': '#ffffff',
@@ -173,8 +185,20 @@ const GraphViewer = () => {
 
   if (loading)
     return (
-      <div className="gv-outer-wrapper">
-        <Loader2 className="gv-spin-loader" />
+      <div className="gv-outer-wrapper gv-loading-container">
+        <Loader2 className="gv-spin-loader animate-spin" size={48} />
+        <p>Cargando grafo...</p>
+      </div>
+    )
+
+  if (error)
+    return (
+      <div className="gv-outer-wrapper gv-error-container">
+        <AlertCircle size={48} className="text-red-500" />
+        <p>{error}</p>
+        <button onClick={() => fetchGraph()} className="gv-retry-button">
+          Reintentar
+        </button>
       </div>
     )
 
