@@ -96,7 +96,7 @@ def build_workdir(workdir: Path, files: list[Path]) -> int:
 def run_wukong(workdir: Path, timeout: int = 1800) -> int:
     """Ejecuta Wukong como subprocess. Devuelve el exit code."""
     print(f"\n[2/3] Ejecutando Wukong sobre {workdir}...")
-    print(f"      (esto puede tardar varios minutos según el largo de los docs)\n")
+    print("      (esto puede tardar varios minutos según el largo de los docs)\n")
     result = subprocess.run(
         [
             sys.executable,
@@ -158,13 +158,13 @@ def main() -> int:
     if exports.is_dir():
         qm_files = list(exports.rglob("*.qm"))
         if qm_files:
-            print(f"✅ Grafo generado:")
+            print("✅ Grafo generado:")
             for qm in qm_files:
                 size_kb = qm.stat().st_size / 1024
                 print(f"   {qm}  ({size_kb:.1f} KB)")
         else:
             print(f"⚠️  No se encontraron archivos .qm en {exports}")
-            print(f"    Contenido de exports/:")
+            print("    Contenido de exports/:")
             for p in exports.rglob("*"):
                 print(f"      {p.relative_to(exports)}")
 

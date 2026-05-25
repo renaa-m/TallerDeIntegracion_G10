@@ -56,7 +56,8 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   idle: 'Listo para procesar',
   processing_text: 'Extrayendo texto de los documentos...',
   processing_graph: 'Construyendo grafo con Wukong...',
-  awaiting_graph_confirmation: 'Algunos documentos no pudieron extraerse. ¿Quieres continuar con el grafo?',
+  awaiting_graph_confirmation:
+    'Algunos documentos no pudieron extraerse. ¿Quieres continuar con el grafo?',
   graph_ready: '¡Grafo generado correctamente!',
   partial_error:
     'Procesamiento con advertencias: parte del grafo se generó; revisa el mensaje debajo.',
@@ -108,7 +109,8 @@ const ModalCarga = ({
     localStorage.getItem(ACTIVE_COLLECTION_KEY),
   )
   const [textProgress, setTextProgress] = useState<StepProgress>(EMPTY_PROGRESS)
-  const [graphProgress, setGraphProgress] = useState<StepProgress>(EMPTY_PROGRESS)
+  const [graphProgress, setGraphProgress] =
+    useState<StepProgress>(EMPTY_PROGRESS)
 
   const isUploadingLocked = isUploading
   const isPipelineRunning =
@@ -325,10 +327,7 @@ const ModalCarga = ({
       localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
       if (onUploadSuccess) onUploadSuccess()
     } catch (err: unknown) {
-      if (
-        err instanceof DOMException &&
-        err.name === 'AbortError'
-      ) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
         return
       }
 
@@ -339,11 +338,7 @@ const ModalCarga = ({
         return
       }
 
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Error en la carga',
-      )
+      setError(err instanceof Error ? err.message : 'Error en la carga')
     } finally {
       setIsUploading(false)
     }
@@ -380,15 +375,18 @@ const ModalCarga = ({
 
   const getProgressPercent = (progress: StepProgress) => {
     if (progress.total <= 0) return 0
-    return Math.min(100, Math.round((progress.processed / progress.total) * 100))
+    return Math.min(
+      100,
+      Math.round((progress.processed / progress.total) * 100),
+    )
   }
 
   const textProgressPercent = getProgressPercent(textProgress)
   const graphProgressPercent = getProgressPercent(graphProgress)
 
-  const textSuccessCount = textProgress.processed 
+  const textSuccessCount = textProgress.processed
 
-  const graphSuccessCount = graphProgress.processed 
+  const graphSuccessCount = graphProgress.processed
 
   const handleContinuarConGrafo = async () => {
     if (!activeCollectionId) return
@@ -416,10 +414,7 @@ const ModalCarga = ({
   if (!isOpen) return null
 
   return (
-    <div
-      className="mc-overlay"
-      onClick={handleClose}
-    >
+    <div className="mc-overlay" onClick={handleClose}>
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -435,11 +430,7 @@ const ModalCarga = ({
                 : 'Construye el grafo de conocimiento'}
             </p>
           </div>
-          <button
-            className="mc-close"
-            onClick={handleClose}
-            disabled={false}
-          >
+          <button className="mc-close" onClick={handleClose} disabled={false}>
             <X size={18} />
           </button>
         </div>
@@ -609,8 +600,8 @@ const ModalCarga = ({
                   </div>
 
                   <p className="mc-progress-summary">
-                    {textSuccessCount} de {textProgress.total} documento(s) procesado(s)
-                    correctamente.
+                    {textSuccessCount} de {textProgress.total} documento(s)
+                    procesado(s) correctamente.
                   </p>
 
                   {textProgress.failed.length > 0 && (
@@ -651,8 +642,8 @@ const ModalCarga = ({
                   </div>
 
                   <p className="mc-progress-summary">
-                    {graphSuccessCount} de {graphProgress.total} etapa(s) completada(s)
-                    correctamente.
+                    {graphSuccessCount} de {graphProgress.total} etapa(s)
+                    completada(s) correctamente.
                   </p>
 
                   {graphProgress.failed.length > 0 && (

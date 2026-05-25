@@ -407,23 +407,25 @@ def _extract_texts(
 
             if result.get("status") == "ok":
                 n_extracted += 1
-                supabase_client.update_collection_progress(
-                    collection_id=collection_id,
-                    text_progress_processed=n_extracted,
-                )
+                if collection_id is not None:
+                    supabase_client.update_collection_progress(
+                        collection_id=collection_id,
+                        text_progress_processed=n_extracted,
+                    )
             else:
                 n_errored += 1
                 failed_doc_labels.append(_doc_display_name(doc))
-                supabase_client.update_collection_progress(
-                    collection_id=collection_id,
-                    text_failed_documents=[
-                        {
-                            "filename": label,
-                            "reason": "Error de extracción",
-                        }
-                        for label in failed_doc_labels
-                    ],
-                )
+                if collection_id is not None:
+                    supabase_client.update_collection_progress(
+                        collection_id=collection_id,
+                        text_failed_documents=[
+                            {
+                                "filename": label,
+                                "reason": "Error de extracción",
+                            }
+                            for label in failed_doc_labels
+                        ],
+                    )
 
         except Exception as exc:
             logger.exception("Falló extracción del documento %s", doc["id"])
@@ -440,16 +442,18 @@ def _extract_texts(
             )
             n_errored += 1
             failed_doc_labels.append(_doc_display_name(doc))
-            supabase_client.update_collection_progress(
-                collection_id=collection_id,
-                text_failed_documents=[
-                    {
-                        "filename": label,
-                        "reason": "Error de extracción",
-                    }
-                    for label in failed_doc_labels
-                ],
-            )
+            if collection_id is not None:
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    text_progress_processed=n_extracted,
+                    text_failed_documents=[
+                        {
+                            "filename": label,
+                            "reason": "Error de extracción",
+                        }
+                        for label in failed_doc_labels
+                    ],
+                )
 
     return n_extracted, n_errored, failed_doc_labels
 
@@ -536,7 +540,7 @@ def _persist_wukong_artifacts(
         )
 
 
-def _run_wukong(workdir: Path, collection_id: str, timeout_seconds: int = 3600) -> str | None:
+def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds: int = 3600) -> str | None:
     """
     Pipeline 2. Ejecuta Wukong sobre la carpeta de trabajo.
 
@@ -578,7 +582,7 @@ def _run_wukong(workdir: Path, collection_id: str, timeout_seconds: int = 3600) 
         started_at = datetime.now(timezone.utc)
 
         while process.poll() is None:
-            if _skip_if_user_cancelled(collection_id, "detener subprocess Wukong"):
+            if collection_id is not None and _skip_if_user_cancelled(collection_id, "detener subprocess Wukong"):
                 process.terminate()
                 try:
                     process.wait(timeout=10)
