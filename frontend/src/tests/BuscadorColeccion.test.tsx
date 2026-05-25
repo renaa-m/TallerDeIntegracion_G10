@@ -56,25 +56,6 @@ jest.mock('../components/modal_carga/modal_carga', () => {
   }
 })
 
-jest.mock('../components/modal_no_disponible/modal_no_disponible', () => {
-  return function MockModalNoDisponible({
-    isOpen,
-    onClose,
-  }: {
-    isOpen: boolean
-    onClose: () => void
-  }) {
-    if (!isOpen) return null
-
-    return (
-      <div data-testid="modal-no-disponible">
-        <p>Modal No Disponible Abierto</p>
-        <button onClick={onClose}>Cerrar grafo</button>
-      </div>
-    )
-  }
-})
-
 jest.mock(
   '../components/modal_eliminar_coleccion/modal_eliminar_coleccion',
   () => {
@@ -426,22 +407,6 @@ describe('BuscadorColeccion', () => {
     })
 
     expect(await screen.findByText('Nuevo nombre')).toBeInTheDocument()
-  })
-
-  test('abre y cierra modal de grafo no disponible', async () => {
-    mockInitialLoad()
-
-    renderPage()
-
-    expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /ver grafo/i }))
-
-    expect(screen.getByTestId('modal-no-disponible')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /cerrar grafo/i }))
-
-    expect(screen.queryByTestId('modal-no-disponible')).not.toBeInTheDocument()
   })
 
   test('abre y cierra modal de documentos disponibles con fuentes cargadas', async () => {
