@@ -28,6 +28,9 @@ jobs:
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      - name: Write GCP Vision credentials
+        run: echo '${{ secrets.GCP_VISION_KEY }}' > backend/gcp-vision-key.json
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
@@ -59,3 +62,4 @@ jobs:
             DEBUG=false
             MAX_UPLOAD_RETRIES=3
             UPLOAD_RETRY_DELAY_SECONDS=1.0
+            GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json
