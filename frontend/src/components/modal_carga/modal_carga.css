@@ -23,6 +23,8 @@
   overflow: hidden;
   animation: mc-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
   font-family: 'DM Sans', sans-serif;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .mc-panel.dark {
@@ -50,6 +52,10 @@
   align-items: flex-start;
   justify-content: space-between;
   padding: 24px 24px 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: inherit;
 }
 
 .mc-title {
@@ -368,6 +374,9 @@
   flex-direction: column;
   gap: 20px;
   padding: 8px 0;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .mc-steps {
@@ -572,16 +581,46 @@
   font-size: 0.84rem;
 }
 
+.mc-progress-errors {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.84rem;
+}
+
+.mc-progress-errors-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.mc-progress-errors-header span {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.mc-progress-errors-list {
+  max-height: 140px;
+  overflow-y: auto;
+  margin: 0;
+  padding-left: 18px;
+  padding-right: 6px;
+}
+
+.mc-progress-errors-list li {
+  margin-top: 6px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
 .mc-panel.dark .mc-progress-errors {
   background: rgba(127, 29, 29, 0.35);
   color: #fecaca;
 }
 
-.mc-progress-errors ul {
-  margin: 6px 0 0;
-  padding-left: 18px;
-}
-
-.mc-progress-errors li {
-  margin-top: 4px;
-}

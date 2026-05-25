@@ -28,6 +28,7 @@ type Etapa = 'subida' | 'pipeline'
 type PipelineStatus =
   | 'idle'
   | 'processing_text'
+  | 'awaiting_graph_confirmation'
   | 'processing_graph'
   | 'graph_ready'
   | 'partial_error'
@@ -55,6 +56,7 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   idle: 'Listo para procesar',
   processing_text: 'Extrayendo texto de los documentos...',
   processing_graph: 'Construyendo grafo con Wukong...',
+  awaiting_graph_confirmation: 'Algunos documentos no pudieron extraerse. ¿Quieres continuar con el grafo?',
   graph_ready: '¡Grafo generado correctamente!',
   partial_error:
     'Procesamiento con advertencias: parte del grafo se generó; revisa el mensaje debajo.',
@@ -69,6 +71,7 @@ function pipelineStatusFromApi(raw: string | undefined): PipelineStatus {
     raw === 'idle' ||
     raw === 'processing_text' ||
     raw === 'processing_graph' ||
+    raw === 'awaiting_graph_confirmation' ||
     raw === 'graph_ready' ||
     raw === 'error'
   ) {
@@ -159,47 +162,32 @@ const ModalCarga = ({
 
   // --- 2. Lógica de Cierre y Cancelación Real (CORREGIDO) ---
   const handleClose = useCallback(async () => {
-    if (isUploadingLocked) return
-
-    // Cancelar pipeline en curso: la colección y los documentos se conservan;
-    // seguimos en esta ventana con "Generar grafo" otra vez.
-    if (etapa === 'pipeline' && isPipelineRunning && activeCollectionId) {
-      try {
-        const token = await getAccessTokenSilently()
-        await fetch(
-          `${API_BASE}/api/collections/${activeCollectionId}/process/cancel`,
-          {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        )
-      } catch (err) {
-        console.error('Error al cancelar procesamiento:', err)
-      }
-      localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId)
-      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-      setEtapa('pipeline')
-      setPipelineStatus('idle')
-      setPipelineError('')
-      return
-    }
-
-    // Cancelación antes de estados finales del pipeline: si ya hay colección, se borra.
-    // Estados graph_ready / partial_error / error están bloqueados (isLocked): usar
-    // Finalizar o "Cerrar sin borrar" para no llamar aquí.
+    abortControllersRef.current.forEach((controller) => controller.abort())
+    abortControllersRef.current = []
+    setError('')
     if (activeCollectionId) {
       try {
         const token = await getAccessTokenSilently()
+
+        if (isPipelineRunning) {
+          await fetch(
+            `${API_BASE}/api/collections/${activeCollectionId}/process/cancel`,
+            {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+            },
+          )
+        }
+
         await fetch(`${API_BASE}/api/collections/${activeCollectionId}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
         })
       } catch (err) {
-        console.error('Error borrando colección al cerrar modal:', err)
+        console.error('Error abortando colección:', err)
       }
     }
 
-    // Limpieza total
     localStorage.removeItem(ACTIVE_COLLECTION_KEY)
     localStorage.removeItem(MODAL_ETAPA_KEY)
     setFiles([])
@@ -207,18 +195,21 @@ const ModalCarga = ({
     setError('')
     setEtapa('subida')
     setPipelineStatus('idle')
+    setPipelineError('')
     setActiveCollectionId(null)
+    setIsUploading(false)
+    setUploadedCount(0)
+    setTextProgress(EMPTY_PROGRESS)
+    setGraphProgress(EMPTY_PROGRESS)
 
     navigate('/landing_page')
     onClose()
   }, [
-    onClose,
     activeCollectionId,
     getAccessTokenSilently,
-    navigate,
-    etapa,
     isPipelineRunning,
-    isUploadingLocked,
+    navigate,
+    onClose,
   ])
 
   // --- 3. Polling de Pipeline (Sigue funcionando tras recarga) ---
@@ -258,6 +249,7 @@ const ModalCarga = ({
           status === 'graph_ready' ||
           status === 'partial_error' ||
           status === 'error' ||
+          status === 'awaiting_graph_confirmation' ||
           data.processing_status === 'cancelled'
         ) {
           if (status === 'error' || status === 'partial_error') {
@@ -333,7 +325,25 @@ const ModalCarga = ({
       localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
       if (onUploadSuccess) onUploadSuccess()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error en la carga')
+      if (
+        err instanceof DOMException &&
+        err.name === 'AbortError'
+      ) {
+        return
+      }
+
+      if (
+        err instanceof Error &&
+        err.message.toLowerCase().includes('aborted')
+      ) {
+        return
+      }
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Error en la carga',
+      )
     } finally {
       setIsUploading(false)
     }
@@ -368,20 +378,6 @@ const ModalCarga = ({
     navigate(`/user/colecciones/${activeCollectionId}/buscador`)
   }
 
-  const handleDismissWithoutDelete = useCallback(() => {
-    localStorage.removeItem(ACTIVE_COLLECTION_KEY)
-    localStorage.removeItem(MODAL_ETAPA_KEY)
-    setFiles([])
-    setNombreColeccion('')
-    setError('')
-    setEtapa('subida')
-    setPipelineStatus('idle')
-    setPipelineError('')
-    setActiveCollectionId(null)
-    onClose()
-    navigate('/landing_page')
-  }, [onClose, navigate])
-
   const getProgressPercent = (progress: StepProgress) => {
     if (progress.total <= 0) return 0
     return Math.min(100, Math.round((progress.processed / progress.total) * 100))
@@ -394,12 +390,35 @@ const ModalCarga = ({
 
   const graphSuccessCount = Math.max(0,graphProgress.processed - graphProgress.failed.length,)
 
+  const handleContinuarConGrafo = async () => {
+    if (!activeCollectionId) return
+
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(
+        `${API_BASE}/api/collections/${activeCollectionId}/process/continue-graph`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+
+      if (!res.ok) throw new Error('Error al continuar con el grafo')
+
+      setPipelineStatus('processing_graph')
+    } catch (e: unknown) {
+      setPipelineError(
+        e instanceof Error ? e.message : 'Error al continuar con el grafo',
+      )
+    }
+  }
+
   if (!isOpen) return null
 
   return (
     <div
       className="mc-overlay"
-      onClick={isUploadingLocked || isPipelineRunning ? undefined : handleClose}
+      onClick={handleClose}
     >
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
@@ -419,7 +438,7 @@ const ModalCarga = ({
           <button
             className="mc-close"
             onClick={handleClose}
-            disabled={isUploadingLocked || isPipelineRunning}
+            disabled={false}
           >
             <X size={18} />
           </button>
@@ -510,7 +529,7 @@ const ModalCarga = ({
               <button
                 className="mc-btn-cancel"
                 onClick={handleClose}
-                disabled={isUploadingLocked}
+                disabled={false}
               >
                 Cancelar
               </button>
@@ -597,7 +616,7 @@ const ModalCarga = ({
                   {textProgress.failed.length > 0 && (
                     <div className="mc-progress-errors">
                       <div className="mc-progress-errors-header">
-                        <strong>No pasaron extracción:</strong>
+                        <strong>No pasaron extracción: </strong>
                         <span>{textProgress.failed.length} archivo(s)</span>
                       </div>
 
@@ -639,7 +658,7 @@ const ModalCarga = ({
                   {graphProgress.failed.length > 0 && (
                     <div className="mc-progress-errors">
                       <div className="mc-progress-errors-header">
-                        <strong>No pasaron construcción del grafo:</strong>
+                        <strong>No pasaron construcción del grafo: </strong>
                         <span>{graphProgress.failed.length} archivo(s)</span>
                       </div>
 
@@ -670,6 +689,25 @@ const ModalCarga = ({
                   <Network size={14} /> Generar grafo
                 </button>
               )}
+              {pipelineStatus === 'awaiting_graph_confirmation' && (
+                <>
+                  <button
+                    className="mc-btn-cancel"
+                    type="button"
+                    onClick={handleClose}
+                  >
+                    Abortar
+                  </button>
+
+                  <button
+                    className="mc-btn-upload"
+                    type="button"
+                    onClick={handleContinuarConGrafo}
+                  >
+                    <Network size={14} /> Continuar con grafo
+                  </button>
+                </>
+              )}
               {(pipelineStatus === 'graph_ready' ||
                 pipelineStatus === 'partial_error') && (
                 <button
@@ -684,9 +722,9 @@ const ModalCarga = ({
                   <button
                     className="mc-btn-cancel"
                     type="button"
-                    onClick={handleDismissWithoutDelete}
+                    onClick={handleClose}
                   >
-                    Cerrar sin borrar
+                    Abortar colección
                   </button>
                   <button
                     className="mc-btn-upload"

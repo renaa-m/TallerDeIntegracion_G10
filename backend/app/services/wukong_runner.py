@@ -165,7 +165,53 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
                 f"({n_errored} errores). No se generó grafo.{failed_part}",
             )
             return
+        
+        if n_errored > 0:
+            supabase_client.update_collection_processing_status(
+                collection_id,
+                "awaiting_graph_confirmation",
+                error_message=(
+                    f"{n_errored} documento(s) fallaron en la extracción "
+                    f"({', '.join(failed_doc_labels)}). "
+                    f"Puedes continuar generando el grafo con {n_extracted} documento(s)."
+                ),
+            )
+            return
+        process_graph_collection(
+            collection_id,
+            custom_data_model=custom_data_model,
+            final_status_on_success="graph_ready",
+        )
+        return
 
+    except ProcessingCancelled:
+        logger.info("Procesamiento cancelado (colección %s)", collection_id)
+        return
+    except Exception as exc:
+        logger.exception("Error inesperado procesando colección %s", collection_id)
+        if not _skip_if_user_cancelled(collection_id, "error inesperado"):
+            _mark_collection_error(
+                collection_id,
+                f"Error inesperado: {type(exc).__name__}: {exc}",
+            )
+        
+    
+def process_graph_collection(collection_id: str, custom_data_model: dict | None = None,
+    final_status_on_success: str = "graph_ready",) -> None:
+    try:
+        collection = supabase_client.get_collection_by_id(collection_id)
+        if collection is None:
+            logger.error("Colección %s no encontrada", collection_id)
+            return
+
+        rows = supabase_client.get_document_texts_by_collection(collection_id)
+        if not rows:
+            _mark_collection_error(
+                collection_id,
+                "No hay textos extraídos para construir el grafo.",
+            )
+            return
+        
         try:
             _check_cancelled(collection_id)
         except ProcessingCancelled:
@@ -266,33 +312,31 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
         if _skip_if_user_cancelled(collection_id, "marcar graph_ready"):
             return
 
-        final_status = "partial_error" if n_errored > 0 else "graph_ready"
-        final_message = (
-            (
-                f"{n_errored} documento(s) fallaron en la extracción "
-                f"({', '.join(failed_doc_labels)}). "
-                f"Grafo generado con {n_extracted} documento(s)."
-            )
-            if n_errored > 0
-            else None
-        )
         supabase_client.update_collection_processing_status(
             collection_id,
-            final_status,
-            error_message=final_message,
+            final_status_on_success,
             processed_at=_now_iso(),
         )
-
     except ProcessingCancelled:
-        logger.info("Procesamiento cancelado (colección %s)", collection_id)
+        logger.info("Construcción de grafo cancelada colección %s", collection_id)
         return
+
     except Exception as exc:
-        logger.exception("Error inesperado procesando colección %s", collection_id)
-        if not _skip_if_user_cancelled(collection_id, "error inesperado"):
+        logger.exception(
+            "Error inesperado construyendo grafo %s",
+            collection_id,
+        )
+
+        if not _skip_if_user_cancelled(
+            collection_id,
+            "error inesperado grafo",
+        ):
             _mark_collection_error(
                 collection_id,
                 f"Error inesperado: {type(exc).__name__}: {exc}",
             )
+    return
+
 
 
 def _doc_display_name(doc: dict) -> str:
@@ -320,12 +364,25 @@ def _extract_texts(
     n_errored = 0
     failed_doc_labels: list[str] = []
     total_docs = len(documents)
-    supabase_client.update_collection_progress(
-        collection_id=collection_id,
-        text_progress_total=total_docs,
-        text_progress_processed=0,
-        text_failed_documents=[],
+
+    existing_text_document_ids: set[str] = set()
+    if collection_id is not None:
+        existing_text_rows = supabase_client.get_document_texts_by_collection(
+            collection_id,
         )
+        existing_text_document_ids = {
+            str(row["document_id"])
+            for row in existing_text_rows
+        }
+
+        supabase_client.update_collection_progress(
+            collection_id=collection_id,
+            text_progress_total=total_docs,
+            text_progress_processed=len(existing_text_document_ids),
+            text_failed_documents=[],
+        )
+
+    n_extracted = len(existing_text_document_ids)
 
     for doc in documents:
         if collection_id is not None:

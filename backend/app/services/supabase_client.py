@@ -112,14 +112,15 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
     row = collection_response.data[0]
     documents_response = (
         client.table("documents")
-        .select("storage_path")
+        .select("id, storage_path")
         .eq("collection_id", collection_id)
         .eq("user_id", user_id)
         .execute()
     )
+    documents = documents_response.data or []
     storage_paths = [
         doc["storage_path"]
-        for doc in (documents_response.data or [])
+        for doc in (documents)
         if doc.get("storage_path")
     ]
     uid = _norm_storage_user_id(user_id)
@@ -140,6 +141,27 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
         except Exception:
             # Algunos objetos pueden no existir (p. ej. grafo nunca exportado).
             pass
+    client.table("chunk_embeddings").delete().eq(
+        "collection_id",
+        collection_id,
+    ).execute()
+
+    client.table("document_texts").delete().eq(
+        "collection_id",
+        collection_id,
+    ).eq(
+        "user_id",
+        user_id,
+    ).execute()
+
+    client.table("documents").delete().eq(
+        "collection_id",
+        collection_id,
+    ).eq(
+        "user_id",
+        user_id,
+    ).execute()
+    
     delete_response = (
         client.table("collections")
         .delete()
