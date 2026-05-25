@@ -161,7 +161,7 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
         "user_id",
         user_id,
     ).execute()
-    
+
     delete_response = (
         client.table("collections")
         .delete()
@@ -413,7 +413,7 @@ def update_document_status(
         .eq("user_id", user_id)
         .execute()
     )
-    return response.data[0]
+    return response.data[0] if response.data else None
 
 
 def save_document_text(

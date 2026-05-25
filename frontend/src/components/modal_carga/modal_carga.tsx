@@ -386,9 +386,9 @@ const ModalCarga = ({
   const textProgressPercent = getProgressPercent(textProgress)
   const graphProgressPercent = getProgressPercent(graphProgress)
 
-  const textSuccessCount = Math.max(0,textProgress.processed - textProgress.failed.length,)
+  const textSuccessCount = textProgress.processed 
 
-  const graphSuccessCount = Math.max(0,graphProgress.processed - graphProgress.failed.length,)
+  const graphSuccessCount = graphProgress.processed 
 
   const handleContinuarConGrafo = async () => {
     if (!activeCollectionId) return

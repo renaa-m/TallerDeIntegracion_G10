@@ -427,6 +427,11 @@ def _extract_texts(
 
         except Exception as exc:
             logger.exception("Falló extracción del documento %s", doc["id"])
+            if collection_id is not None and _skip_if_user_cancelled(
+                collection_id,
+                "actualizar error de documento tras cancelación",
+            ):
+                return n_extracted, n_errored, failed_doc_labels
             supabase_client.update_document_status(
                 document_id=doc["id"],
                 user_id=doc["user_id"],
