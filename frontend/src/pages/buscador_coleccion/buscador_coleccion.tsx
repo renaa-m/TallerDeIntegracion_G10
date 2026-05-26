@@ -371,7 +371,8 @@ const BuscadorColeccion = () => {
                     className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
                     onClick={() => setFiltroOpen(!filtroOpen)}
                   >
-                    <SlidersHorizontal size={14} /> <span>Criterios de Búsqueda</span>
+                    <SlidersHorizontal size={14} />{' '}
+                    <span>Criterios de Búsqueda</span>
                   </button>
                 </div>
 
@@ -410,7 +411,9 @@ const BuscadorColeccion = () => {
                   <>
                     <div className="bc-results-meta">
                       <span className="bc-results-count">
-                        {resultados.length} resultado{resultados.length !== 1 ? 's' : ''} en {searchTime > 0 ? `${searchTime}s` : ''}
+                        {resultados.length} resultado
+                        {resultados.length !== 1 ? 's' : ''} en{' '}
+                        {searchTime > 0 ? `${searchTime}s` : ''}
                       </span>
                     </div>
                     <div className="bc-results-list">
