@@ -74,6 +74,7 @@ function pipelineStatusFromApi(raw: string | undefined): PipelineStatus {
     raw === 'processing_graph' ||
     raw === 'awaiting_graph_confirmation' ||
     raw === 'graph_ready' ||
+    raw === 'partial_error' ||
     raw === 'error'
   ) {
     return raw
@@ -167,20 +168,17 @@ const ModalCarga = ({
     abortControllersRef.current.forEach((controller) => controller.abort())
     abortControllersRef.current = []
     setError('')
+
+    if (isPipelineRunning && activeCollectionId) {
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, activeCollectionId)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+      onClose()
+      return
+    }
+
     if (activeCollectionId) {
       try {
         const token = await getAccessTokenSilently()
-
-        if (isPipelineRunning) {
-          await fetch(
-            `${API_BASE}/api/collections/${activeCollectionId}/process/cancel`,
-            {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${token}` },
-            },
-          )
-        }
-
         await fetch(`${API_BASE}/api/collections/${activeCollectionId}`, {
           method: 'DELETE',
           headers: { Authorization: `Bearer ${token}` },
@@ -203,7 +201,6 @@ const ModalCarga = ({
     setUploadedCount(0)
     setTextProgress(EMPTY_PROGRESS)
     setGraphProgress(EMPTY_PROGRESS)
-
     navigate('/landing_page')
     onClose()
   }, [

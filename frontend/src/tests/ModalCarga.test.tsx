@@ -523,4 +523,82 @@ describe('ModalCarga', () => {
       screen.getByRole('button', { name: /reintentar/i }),
     ).toBeInTheDocument()
   })
+
+  test('cerrar el modal durante el procesamiento no cancela el pipeline y persiste en localStorage', async () => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-123')
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'processing_text',
+      }),
+    })
+
+    const onClose = jest.fn()
+    renderModal({ onClose })
+
+    expect(
+      await screen.findByText('Extrayendo texto de los documentos...'),
+    ).toBeInTheDocument()
+
+    const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
+    fireEvent.click(closeButton)
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      `${API_BASE}/api/collections/collection-123/process/cancel`,
+      expect.anything(),
+    )
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-123')
+    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
+  })
+
+  test('partial_error muestra estado de advertencia y detiene el polling', async () => {
+    jest.useFakeTimers()
+
+    await uploadSuccessfullyAndGoToPipeline()
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({}),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
+
+    expect(
+      await screen.findByText('Extrayendo texto de los documentos...'),
+    ).toBeInTheDocument()
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'partial_error',
+      }),
+    })
+
+    await act(async () => {
+      jest.advanceTimersByTime(3000)
+    })
+
+    expect(
+      await screen.findByText(
+        'Procesamiento con advertencias: parte del grafo se generó; revisa el mensaje debajo.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /generar grafo/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /finalizar/i }),
+    ).toBeInTheDocument()
+
+    const fetchCallCount = (globalThis.fetch as jest.Mock).mock.calls.length
+
+    await act(async () => {
+      jest.advanceTimersByTime(3000)
+    })
+
+    expect((globalThis.fetch as jest.Mock).mock.calls.length).toBe(fetchCallCount)
+  })
 })
