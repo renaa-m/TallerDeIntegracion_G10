@@ -347,7 +347,7 @@ const ModalCarga = ({
   return (
     <div
       className="mc-overlay"
-      onClick={isUploadingLocked ? undefined : handleClose}
+      onClick={isUploadingLocked || isPipelineRunning ? undefined : handleClose}
     >
       <div
         className={`mc-panel${darkMode ? ' dark' : ''}`}
@@ -367,7 +367,7 @@ const ModalCarga = ({
           <button
             className="mc-close"
             onClick={handleClose}
-            disabled={isUploadingLocked}
+            disabled={isUploadingLocked || isPipelineRunning}
           >
             <X size={18} />
           </button>

@@ -1,5 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  useNavigate,
+  useParams,
+  useSearchParams,
+  useLocation,
+  Outlet,
+} from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
 import {
   Search,
@@ -15,8 +21,9 @@ import {
   Loader2,
 } from 'lucide-react'
 
+import { Link } from 'react-router-dom'
+
 // Componentes
-import ModalNoDisponible from '../../components/modal_no_disponible/modal_no_disponible'
 import ModalCarga from '../../components/modal_carga/modal_carga'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
 import ModalDocumentosDisponibles from '../../components/modal_documentos_disponibles/modal_documentos_disponibles'
@@ -26,7 +33,6 @@ import './buscador_coleccion.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
 
-/** Coincide con `SearchResult` del backend (campos extra opcionales si el API los agrega). */
 interface SearchResultItem {
   titulo: string
   fragmento: string
@@ -67,8 +73,14 @@ const BuscadorColeccion = () => {
   const { getAccessTokenSilently } = useAuth0()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
+  const location = useLocation() // 🚀 NUEVO: Monitorea la ruta activa
 
-  // --- ESTADOS ---
+  // Determina si el usuario está visualizando específicamente la ruta del grafo
+  const isGrafoView = useMemo(
+    () => location.pathname.endsWith('/grafo'),
+    [location.pathname],
+  )
+
   // --- ESTADOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
   const [fuentes, setFuentes] = useState([])
@@ -84,13 +96,12 @@ const BuscadorColeccion = () => {
 
   // Modales
   const [modalCargaOpen, setModalCargaOpen] = useState(id_coleccion === 'nueva')
-  const [modalGrafoOpen, setModalGrafoOpen] = useState(false)
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
 
   // Filtros
   const [filtroOpen, setFiltroOpen] = useState(false)
-  const [personas] = useState<string[]>([]) // Se usa para 'tipo_entidad' en el backend
+  const [personas] = useState<string[]>([])
   const [fechaDesde] = useState('')
   const [fechaHasta] = useState('')
 
@@ -128,9 +139,14 @@ const BuscadorColeccion = () => {
 
   // --- LÓGICA DE BÚSQUEDA SEMÁNTICA (POST) ---
   const ejecutarBusqueda = useCallback(async () => {
-    if (!id_coleccion || id_coleccion === 'nueva' || !busquedaEnviada.trim()) {
-      setResultados([])
-      setSearchTime(0) // Limpiar tiempo si no hay búsqueda
+    // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
+    if (
+      !id_coleccion ||
+      id_coleccion === 'nueva' ||
+      !busquedaEnviada.trim() ||
+      isGrafoView
+    ) {
+      if (!isGrafoView) setResultados([])
       return
     }
 
@@ -138,7 +154,6 @@ const BuscadorColeccion = () => {
     try {
       const token = await getAccessTokenSilently()
 
-      // Construcción del SearchRequest para FastAPI
       const searchRequest = {
         coleccion_id: id_coleccion,
         query: busquedaEnviada,
@@ -192,19 +207,23 @@ const BuscadorColeccion = () => {
     personas,
     fechaDesde,
     fechaHasta,
+    isGrafoView,
     getAccessTokenSilently,
   ])
 
   // --- EFECTOS ---
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    cargarDatos()
+    const iniciarCarga = async () => {
+      await cargarDatos()
+    }
+
+    void iniciarCarga()
   }, [cargarDatos])
 
   useEffect(() => {
     const timer = setTimeout(() => {
       ejecutarBusqueda()
-    }, 400) // Debounce ligeramente mayor para búsqueda semántica
+    }, 400)
     return () => clearTimeout(timer)
   }, [ejecutarBusqueda])
 
@@ -251,8 +270,6 @@ const BuscadorColeccion = () => {
 
   const hayFiltrosActivos = personas.length > 0 || !!fechaDesde || !!fechaHasta
 
-  // ... (mismos imports y componente Highlight)
-
   return (
     <>
       <div className={`bc-root${darkMode ? ' bc-dark' : ''}`}>
@@ -285,12 +302,36 @@ const BuscadorColeccion = () => {
             </div>
 
             <div className="bc-sidebar-divider" />
-            <button
-              className="bc-add-btn"
-              onClick={() => setModalGrafoOpen(true)}
-            >
-              <Network size={15} /> <span>Ver Grafo</span>
-            </button>
+
+            {/* 🔄 MODIFICACIÓN DE NAVEGACIÓN: Alterna inteligentemente entre vista de Texto y vista de Grafo */}
+            {isGrafoView ? (
+              <Link
+                to={`/${id_usuario}/colecciones/${id_coleccion}/buscador`}
+                className="bc-add-btn"
+                style={{
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+              >
+                <FileText size={15} />{' '}
+                <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
+              </Link>
+            ) : (
+              <Link
+                to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`}
+                className="bc-add-btn"
+                style={{
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+              >
+                <Network size={15} />{' '}
+                <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
+              </Link>
+            )}
+
             <button
               className="bc-add-btn"
               onClick={() => setIsModalFuentesOpen(true)}
@@ -307,132 +348,147 @@ const BuscadorColeccion = () => {
         </aside>
 
         <main className="bc-main">
-          <div className="bc-searchbar-wrap">
-            <div className="bc-searchbar">
-              <Search size={17} className="bc-searchbar-icon" />
-              <input
-                className="bc-searchbar-input"
-                placeholder="Consulta algo a tus documentos..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
-              />
-              <button
-                className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
-                onClick={() => setFiltroOpen(!filtroOpen)}
-              >
-                <SlidersHorizontal size={14} />{' '}
-                <span>Criterios de Búsqueda</span>
-              </button>
+          {/* 🚀 RENDERING CONDICIONAL CRÍTICO: Si la URL pide el grafo, renderiza la sub-ruta usando Outlet, sino muestra el buscador de texto tradicional */}
+          {isGrafoView ? (
+            <div
+              style={{ width: '100%', height: '100%', position: 'relative' }}
+            >
+              <Outlet />
             </div>
-
-            {filtroOpen && (
-              <div className="bc-alert-banner">
-                <div className="bc-alert-content">
-                  <div className="bc-alert-icon-wrap">
-                    <SlidersHorizontal size={14} className="bc-alert-icon" />
-                  </div>
-                  <div className="bc-alert-text">
-                    <span className="bc-alert-title">
-                      Próximamente: Criterios de búsqueda avanzados
-                    </span>
-                  </div>
+          ) : (
+            <>
+              <div className="bc-searchbar-wrap">
+                <div className="bc-searchbar">
+                  <Search size={17} className="bc-searchbar-icon" />
+                  <input
+                    className="bc-searchbar-input"
+                    placeholder="Consulta algo a tus documentos..."
+                    value={busqueda}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
+                  />
+                  <button
+                    className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
+                    onClick={() => setFiltroOpen(!filtroOpen)}
+                  >
+                    <SlidersHorizontal size={14} /> <span>Criterios de Búsqueda</span>
+                  </button>
                 </div>
-                <button
-                  className="bc-alert-close"
-                  onClick={() => setFiltroOpen(false)}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
-          </div>
 
-          {/* --- NUEVO COMPONENTE: CONTADOR ESTILO GOOGLE --- */}
-          {busquedaEnviada.trim() && !loading && (
-            <div className="bc-search-stats">
-              <br />
-              {resultados.length}{' '}
-              {resultados.length === 1 ? 'resultado' : 'resultados'} en{' '}
-              {searchTime} segundos
-            </div>
+                {filtroOpen && (
+                  <div className="bc-alert-banner">
+                    <div className="bc-alert-content">
+                      <div className="bc-alert-icon-wrap">
+                        <SlidersHorizontal
+                          size={14}
+                          className="bc-alert-icon"
+                        />
+                      </div>
+                      <div className="bc-alert-text">
+                        <span className="bc-alert-title">
+                          Próximamente: Criterios de Búsqueda
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      className="bc-alert-close"
+                      onClick={() => setFiltroOpen(false)}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bc-results-area">
+                {loading ? (
+                  <div className="bc-empty">
+                    <Loader2 className="bc-spin" size={30} />
+                    <p>Consultando el grafo de conocimiento...</p>
+                  </div>
+                ) : resultados.length > 0 ? (
+                  <>
+                    <div className="bc-results-meta">
+                      <span className="bc-results-count">
+                        {resultados.length} resultado{resultados.length !== 1 ? 's' : ''} en {searchTime > 0 ? `${searchTime}s` : ''}
+                      </span>
+                    </div>
+                    <div className="bc-results-list">
+                      {resultados.map((r, idx) => (
+                        <article key={idx} className="bc-result-card">
+                          <div className="bc-card-header">
+                            <div className="bc-header-info">
+                              <div className="bc-title-row">
+                                <FileText size={14} className="bc-doc-icon" />
+                                <h3 className="bc-result-title">{r.titulo}</h3>
+                              </div>
+
+                              <div
+                                className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
+                              >
+                                <CheckCircle2
+                                  size={12}
+                                  className="bc-status-icon"
+                                />
+                                <span className="bc-score-value">
+                                  {(r.score * 100).toFixed(0)}% de coincidencia
+                                </span>
+                              </div>
+                            </div>
+
+                            {r.enlace && (
+                              <a
+                                href={r.enlace}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="bc-external-btn"
+                              >
+                                <ExternalLink size={13} />
+                                <span>Documento</span>
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="bc-card-body">
+                            <p className="bc-result-excerpt">
+                              <Highlight
+                                text={r.fragmento}
+                                query={busquedaEnviada}
+                              />
+                            </p>
+                          </div>
+
+                          <div className="bc-card-footer">
+                            <div className="bc-footer-tag">
+                              <Network size={12} />
+                              <span>Grafo IMFD</span>
+                            </div>
+                            {r.pagina && (
+                              <div className="bc-footer-tag">
+                                <span>Página {r.pagina}</span>
+                              </div>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="bc-empty">
+                    <div className="bc-empty-icon">
+                      <Search size={30} />
+                    </div>
+                    <h3 className="bc-empty-title">Sin resultados todavía</h3>
+                    <p className="bc-empty-sub">
+                      {busquedaEnviada
+                        ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
+                        : 'Haz una consulta para explorar los documentos de esta colección.'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
           )}
-
-          <div className="bc-results-area">
-            {loading ? (
-              <div className="bc-empty">
-                <Loader2 className="bc-spin" size={30} />
-                <p>Consultando el grafo de conocimiento...</p>
-              </div>
-            ) : resultados.length > 0 ? (
-              <div className="bc-results-list">
-                {resultados.map((r, idx) => (
-                  <article key={idx} className="bc-result-card">
-                    <div className="bc-card-header">
-                      <div className="bc-header-info">
-                        <div className="bc-title-row">
-                          <FileText size={14} className="bc-doc-icon" />
-                          <h3 className="bc-result-title">{r.titulo}</h3>
-                        </div>
-
-                        {/* Badge de Similitud Reforzado */}
-                        <div
-                          className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
-                        >
-                          <CheckCircle2 size={12} className="bc-status-icon" />
-                          <span className="bc-score-value">
-                            {(r.score * 100).toFixed(0)}% de coincidencia
-                          </span>
-                        </div>
-                      </div>
-
-                      {r.enlace && (
-                        <a
-                          href={r.enlace}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="bc-external-btn"
-                        >
-                          <ExternalLink size={13} />
-                          <span>Documento</span>
-                        </a>
-                      )}
-                    </div>
-
-                    <div className="bc-card-body">
-                      <p className="bc-result-excerpt">
-                        <Highlight text={r.fragmento} query={busquedaEnviada} />
-                      </p>
-                    </div>
-
-                    <div className="bc-card-footer">
-                      <div className="bc-footer-tag">
-                        <Network size={12} />
-                        <span>Grafo IMFD</span>
-                      </div>
-                      {r.pagina && (
-                        <div className="bc-footer-tag">
-                          <span>Página {r.pagina}</span>
-                        </div>
-                      )}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <div className="bc-empty">
-                <div className="bc-empty-icon">
-                  <Search size={30} />
-                </div>
-                <h3 className="bc-empty-title">Sin resultados todavía</h3>
-                <p className="bc-empty-sub">
-                  {busquedaEnviada
-                    ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
-                    : 'Haz una consulta para explorar los documentos de esta colección.'}
-                </p>
-              </div>
-            )}
-          </div>
         </main>
       </div>
 
@@ -455,11 +511,6 @@ const BuscadorColeccion = () => {
         fuentes={fuentes}
         onClose={() => setIsModalFuentesOpen(false)}
         darkMode={darkMode}
-      />
-
-      <ModalNoDisponible
-        isOpen={modalGrafoOpen}
-        onClose={() => setModalGrafoOpen(false)}
       />
     </>
   )

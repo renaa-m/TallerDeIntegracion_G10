@@ -4,10 +4,15 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import eslintConfigPrettier from 'eslint-config-prettier'
-import { defineConfig, globalIgnores } from 'eslint/config'
+import { defineConfig } from 'eslint/config' // quitamos globalIgnores de aquí
 
+// Importamos la función de configuración
+// Nota: En flat config, globalIgnores es un objeto de configuración independiente
 export default defineConfig([
-  globalIgnores(['dist']),
+  {
+    // Aquí añadimos la carpeta que genera Jest
+    ignores: ['dist', 'coverage/*'],
+  },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

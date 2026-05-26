@@ -23,6 +23,7 @@ BackgroundTasks o Cloud Tasks). NO debe propagar excepciones — cualquier
 fallo queda registrado en la propia colección o en cada documento.
 """
 
+import copy # para clonar el data model antes de mutarlo
 import json # para leer el archivo de configuración de Wukong
 import logging # para registrar errores
 import os # para manejar el entorno
@@ -107,7 +108,7 @@ except FileNotFoundError:
     _DEFAULT_DATA_MODEL = {"entities": [], "relations": []}
 
 
-def process_collection(collection_id: str) -> None:
+def process_collection(collection_id: str, custom_data_model: dict | None = None) -> None:
     """
     Punto de entrada del procesamiento. Orquesta los 3 pipelines y
     actualiza el estado de la colección y de cada documento.
@@ -177,7 +178,7 @@ def process_collection(collection_id: str) -> None:
 
         with tempfile.TemporaryDirectory(prefix=f"wukong-{collection_id}-") as tmp:
             workdir = Path(tmp)
-            _build_wukong_workdir(workdir, collection_id)
+            _build_wukong_workdir(workdir, collection_id, custom_data_model=custom_data_model)
 
             try:
                 _check_cancelled(collection_id)
@@ -340,7 +341,12 @@ def _extract_texts(
     return n_extracted, n_errored, failed_doc_labels
 
 
-def _build_wukong_workdir(workdir: Path, collection_id: str) -> int:
+def _build_wukong_workdir(
+    workdir: Path,
+    collection_id: str,
+    *,
+    custom_data_model: dict | None = None,
+) -> int:
     """
     Arma la estructura que espera Wukong:
 
@@ -348,8 +354,9 @@ def _build_wukong_workdir(workdir: Path, collection_id: str) -> int:
         ├── docs/text/<WUKONG_DOCUMENT_SET>/*.txt
         └── data_model.json
 
-    WUKONG_DOCUMENT_SET debe coincidir con included_documents en data_model.json
-    (por defecto "preview").
+    Si se provee ``custom_data_model``, se usa ese dict en lugar del default.
+    En ambos casos se sobreescribe ``parameters.included_documents`` para que
+    coincida con WUKONG_DOCUMENT_SET y evitar desincronización con el workdir.
     """
     text_dir = workdir / "docs" / "text" / WUKONG_DOCUMENT_SET
     text_dir.mkdir(parents=True, exist_ok=True)
@@ -362,8 +369,16 @@ def _build_wukong_workdir(workdir: Path, collection_id: str) -> int:
         file_path.write_text(row["extracted_text"], encoding="utf-8")
         n_files += 1
 
+    data_model = (
+        copy.deepcopy(custom_data_model)
+        if custom_data_model is not None
+        else _DEFAULT_DATA_MODEL
+    )
+    # Garantiza que Wukong lea desde la misma carpeta que acabamos de poblar.
+    data_model.setdefault("parameters", {})["included_documents"] = [WUKONG_DOCUMENT_SET]
+
     (workdir / "data_model.json").write_text(
-        json.dumps(_DEFAULT_DATA_MODEL, indent=2),
+        json.dumps(data_model, indent=2),
         encoding="utf-8",
     )
 

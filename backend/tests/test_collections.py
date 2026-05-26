@@ -254,3 +254,230 @@ class TestCancelarProcesamiento:
             f"/api/collections/{MOCK_COLLECTION_ID}/process/cancel",
         )
         assert response.status_code == 403
+
+
+# ── Grafo Cytoscape ────────────────────────────────────────────────────────────
+
+_QM_MINIMAL = (
+    'Nodo_1 :TipoA nombre:"Entidad A"\n'
+    'Nodo_2 :TipoB nombre:"Entidad B"\n'
+    "Nodo_1->Nodo_2 :Relacion\n"
+)
+
+class TestObtenerGrafo:
+    def test_grafo_listo_retorna_200_con_elements(self, client):
+        coleccion_lista = {**MOCK_COLLECTION, "processing_status": "graph_ready"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_lista,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.download_collection_qm",
+                return_value=_QM_MINIMAL.encode("utf-8"),
+            ),
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "elements" in data
+        assert "nodes" in data["elements"]
+        assert "edges" in data["elements"]
+
+    def test_grafo_retorna_nodos_y_aristas_correctos(self, client):
+        coleccion_lista = {**MOCK_COLLECTION, "processing_status": "graph_ready"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_lista,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.download_collection_qm",
+                return_value=_QM_MINIMAL.encode("utf-8"),
+            ),
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        data = response.json()
+        assert len(data["elements"]["nodes"]) == 2
+        assert len(data["elements"]["edges"]) == 1
+
+    def test_grafo_no_listo_retorna_409(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=MOCK_COLLECTION,  # processing_status: "idle"
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 409
+
+    def test_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=None,
+        ):
+            response = client.get(f"/api/collections/{uuid4()}/graph")
+
+        assert response.status_code == 404
+
+    def test_error_descarga_retorna_502(self, client):
+        coleccion_lista = {**MOCK_COLLECTION, "processing_status": "graph_ready"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_lista,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.download_collection_qm",
+                side_effect=RuntimeError("Storage error"),
+            ),
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 502
+
+    def test_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+        assert response.status_code == 403
+
+
+# ── Generar grafo con Data Model personalizado ─────────────────────────────────
+
+CUSTOM_DATA_MODEL_PAYLOAD = {
+    "parameters": {
+        "role": "Analista experto en documentos históricos.",
+        "context": "Documentos sobre la dictadura militar chilena.",
+        "input_language": "spanish",
+        "output_language": "spanish",
+        "included_documents": ["preview"],
+        "included_entities": ["RangoMilitar", "CentroDetencion"],
+        "included_relations": ["DetenidoEn"],
+    },
+    "entities": {
+        "RangoMilitar": {
+            "description": "Grado o rango dentro de las Fuerzas Armadas.",
+            "primary_key": "nombre",
+            "properties": {
+                "nombre": {"type": "string", "description": "Nombre del rango"}
+            },
+        },
+        "CentroDetencion": {
+            "description": "Lugar utilizado como centro de detención política.",
+            "primary_key": "nombre",
+            "properties": {
+                "nombre": {"type": "string", "description": "Nombre del centro"}
+            },
+        },
+    },
+    "relations": {
+        "DetenidoEn": {
+            "description": "Una persona fue detenida en un centro.",
+            "origin_target": {"RangoMilitar": ["CentroDetencion"]},
+        }
+    },
+}
+
+
+class TestGenerateGraph:
+    def test_retorna_202_y_encola_con_custom_model(self, client):
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.get_documents",
+                return_value=[{"id": str(uuid4())}],
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.update_collection_processing_status",
+            ),
+            patch(
+                "app.api.routes.collections.wukong_runner.process_collection",
+            ) as mock_process,
+        ):
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/generate-graph",
+                json=CUSTOM_DATA_MODEL_PAYLOAD,
+            )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["processing_status"] == "processing_text"
+        mock_process.assert_called_once()
+        _, kwargs_model = mock_process.call_args[0][0], mock_process.call_args[0][1]
+        assert "RangoMilitar" in kwargs_model["entities"]
+        assert "CentroDetencion" in kwargs_model["entities"]
+
+    def test_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=None,
+        ):
+            response = client.post(
+                f"/api/collections/{uuid4()}/generate-graph",
+                json=CUSTOM_DATA_MODEL_PAYLOAD,
+            )
+
+        assert response.status_code == 404
+
+    def test_coleccion_en_procesamiento_retorna_409(self, client):
+        coleccion_procesando = {**MOCK_COLLECTION, "processing_status": "processing_graph"}
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=coleccion_procesando,
+        ):
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/generate-graph",
+                json=CUSTOM_DATA_MODEL_PAYLOAD,
+            )
+
+        assert response.status_code == 409
+
+    def test_sin_documentos_retorna_422(self, client):
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.get_documents",
+                return_value=[],
+            ),
+        ):
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/generate-graph",
+                json=CUSTOM_DATA_MODEL_PAYLOAD,
+            )
+
+        assert response.status_code == 422
+
+    def test_sin_autenticacion_retorna_403(self, client_sin_auth):
+        response = client_sin_auth.post(
+            f"/api/collections/{MOCK_COLLECTION_ID}/generate-graph",
+            json=CUSTOM_DATA_MODEL_PAYLOAD,
+        )
+        assert response.status_code == 403
+
+    def test_body_invalido_sin_entities_retorna_422(self, client):
+        response = client.post(
+            f"/api/collections/{MOCK_COLLECTION_ID}/generate-graph",
+            json={"parameters": {}, "relations": {}},  # falta "entities"
+        )
+        assert response.status_code == 422
+
+    def test_relacion_sin_topologia_retorna_422(self, client):
+        payload_invalido = {
+            **CUSTOM_DATA_MODEL_PAYLOAD,
+            "relations": {
+                "Mala": {
+                    "description": "Sin origin_target ni origin/target",
+                }
+            },
+        }
+        response = client.post(
+            f"/api/collections/{MOCK_COLLECTION_ID}/generate-graph",
+            json=payload_invalido,
+        )
+        assert response.status_code == 422

@@ -1,0 +1,14 @@
+{
+    "extends": "./tsconfig.app.json",
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "NodeNext",
+        "moduleResolution": "NodeNext",
+        "jsx": "react-jsx",
+        "types": ["node", "jest", "@testing-library/jest-dom", "vite/client"],
+        "esModuleInterop": true,
+        "allowSyntheticDefaultImports": true,
+        "verbatimModuleSyntax": false
+    },
+    "include": ["src", "src/test.d.ts", "src/setupTests.ts"]
+}
