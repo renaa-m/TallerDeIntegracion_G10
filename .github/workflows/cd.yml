@@ -48,7 +48,7 @@ jobs:
           service: imfd-backend
           region: ${{ secrets.GCP_REGION }}
           image: ${{ env.IMAGE }}
-          flags: --allow-unauthenticated
+          flags: --allow-unauthenticated --memory=2Gi --cpu=2
           env_vars: |
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
