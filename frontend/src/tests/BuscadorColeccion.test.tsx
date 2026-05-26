@@ -355,7 +355,9 @@ describe('BuscadorColeccion', () => {
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /criterios de búsqueda/i }))
+    fireEvent.click(
+      screen.getByRole('button', { name: /criterios de búsqueda/i }),
+    )
 
     expect(
       screen.getByText('Próximamente: Criterios de Búsqueda'),
