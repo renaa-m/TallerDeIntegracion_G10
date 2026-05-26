@@ -112,14 +112,15 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
     row = collection_response.data[0]
     documents_response = (
         client.table("documents")
-        .select("storage_path")
+        .select("id, storage_path")
         .eq("collection_id", collection_id)
         .eq("user_id", user_id)
         .execute()
     )
+    documents = documents_response.data or []
     storage_paths = [
         doc["storage_path"]
-        for doc in (documents_response.data or [])
+        for doc in (documents)
         if doc.get("storage_path")
     ]
     uid = _norm_storage_user_id(user_id)
@@ -140,6 +141,27 @@ def delete_collection(collection_id: str, user_id: str) -> bool:
         except Exception:
             # Algunos objetos pueden no existir (p. ej. grafo nunca exportado).
             pass
+    client.table("chunk_embeddings").delete().eq(
+        "collection_id",
+        collection_id,
+    ).execute()
+
+    client.table("document_texts").delete().eq(
+        "collection_id",
+        collection_id,
+    ).eq(
+        "user_id",
+        user_id,
+    ).execute()
+
+    client.table("documents").delete().eq(
+        "collection_id",
+        collection_id,
+    ).eq(
+        "user_id",
+        user_id,
+    ).execute()
+
     delete_response = (
         client.table("collections")
         .delete()
@@ -192,6 +214,55 @@ def update_collection_processing_status(
         .eq("id", collection_id)
         .execute()
     )
+    return response.data[0] if response.data else None
+
+def update_collection_progress(
+    collection_id: str,
+    text_progress_total: int | None = None,
+    text_progress_processed: int | None = None,
+    graph_progress_total: int | None = None,
+    graph_progress_processed: int | None = None,
+    text_failed_documents: list[dict] | None = None,
+    graph_failed_documents: list[dict] | None = None,
+) -> dict | None:
+    """
+    Actualiza el progreso del procesamiento de una colección.
+
+    Se usan None como valores por defecto para actualizar solo los campos
+    enviados y no pisar el resto del progreso.
+    """
+    client = _get_service_client()
+
+    payload: dict = {}
+
+    if text_progress_total is not None:
+        payload["text_progress_total"] = text_progress_total
+
+    if text_progress_processed is not None:
+        payload["text_progress_processed"] = text_progress_processed
+
+    if graph_progress_total is not None:
+        payload["graph_progress_total"] = graph_progress_total
+
+    if graph_progress_processed is not None:
+        payload["graph_progress_processed"] = graph_progress_processed
+
+    if text_failed_documents is not None:
+        payload["text_failed_documents"] = text_failed_documents
+
+    if graph_failed_documents is not None:
+        payload["graph_failed_documents"] = graph_failed_documents
+
+    if not payload:
+        return None
+
+    response = (
+        client.table("collections")
+        .update(payload)
+        .eq("id", collection_id)
+        .execute()
+    )
+
     return response.data[0] if response.data else None
 
 
@@ -342,7 +413,7 @@ def update_document_status(
         .eq("user_id", user_id)
         .execute()
     )
-    return response.data[0]
+    return response.data[0] if response.data else None
 
 
 def save_document_text(

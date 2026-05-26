@@ -23,6 +23,8 @@
   overflow: hidden;
   animation: mc-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
   font-family: 'DM Sans', sans-serif;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .mc-panel.dark {
@@ -50,6 +52,10 @@
   align-items: flex-start;
   justify-content: space-between;
   padding: 24px 24px 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: inherit;
 }
 
 .mc-title {
@@ -368,6 +374,9 @@
   flex-direction: column;
   gap: 20px;
   padding: 8px 0;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .mc-steps {
@@ -503,4 +512,114 @@
 }
 .mc-panel.dark .mc-pipeline-status {
   color: var(--text-2, #8394b4);
+}
+
+.mc-progress-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.mc-progress-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.mc-panel.dark .mc-progress-card {
+  border-color: #374151;
+  background: #111827;
+}
+
+.mc-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.mc-progress-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.mc-panel.dark .mc-progress-bar {
+  background: #374151;
+}
+
+.mc-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #2563eb;
+  transition: width 0.3s ease;
+}
+
+.mc-progress-summary {
+  margin: 10px 0 0;
+  font-size: 0.86rem;
+  color: #4b5563;
+}
+
+.mc-panel.dark .mc-progress-summary {
+  color: #d1d5db;
+}
+
+.mc-progress-errors {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.84rem;
+}
+
+.mc-progress-errors {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.84rem;
+}
+
+.mc-progress-errors-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.mc-progress-errors-header span {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.mc-progress-errors-list {
+  max-height: 140px;
+  overflow-y: auto;
+  margin: 0;
+  padding-left: 18px;
+  padding-right: 6px;
+}
+
+.mc-progress-errors-list li {
+  margin-top: 6px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.mc-panel.dark .mc-progress-errors {
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
 }

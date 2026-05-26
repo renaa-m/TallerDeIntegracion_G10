@@ -1,12 +1,17 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CollectionCreate(BaseModel):
     name: str
     description: str | None = None
+
+
+class FailedProcessingDocument(BaseModel):
+    filename: str
+    reason: str | None = None
 
 
 class CollectionResponse(BaseModel):
@@ -18,6 +23,13 @@ class CollectionResponse(BaseModel):
     processing_status: str = "idle"
     processing_error_message: str | None = None
     processed_at: datetime | None = None
+    text_progress_total: int = 0
+    text_progress_processed: int = 0
+    graph_progress_total: int = 0
+    graph_progress_processed: int = 0
+
+    text_failed_documents: list[FailedProcessingDocument] = Field(default_factory=list)
+    graph_failed_documents: list[FailedProcessingDocument] = Field(default_factory=list)
     created_at: datetime
 
 

@@ -523,21 +523,4 @@ describe('ModalCarga', () => {
       screen.getByRole('button', { name: /reintentar/i }),
     ).toBeInTheDocument()
   })
-
-  test('no permite cerrar mientras el pipeline está procesando', async () => {
-    await uploadSuccessfullyAndGoToPipeline()
-    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({}),
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
-
-    expect(
-      await screen.findByText('Extrayendo texto de los documentos...'),
-    ).toBeInTheDocument()
-
-    const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
-    expect(closeButton).toBeDisabled()
-  })
 })

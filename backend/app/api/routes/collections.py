@@ -274,6 +274,42 @@ class GenerateGraphResponse(BaseModel):
     processing_status: str
     detail: str
 
+@router.post(
+    "/{collection_id}/process/continue-graph",
+    response_model=ProcessCollectionResponse,
+    status_code=202,
+)
+async def continue_graph_collection(
+    collection_id: UUID,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
+    collection = supabase_client.get_collection(
+        collection_id=str(collection_id),
+        user_id=user_id,
+    )
+
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Colección no encontrada.")
+
+    if collection.get("processing_status") != "awaiting_graph_confirmation":
+        raise HTTPException(
+            status_code=409,
+            detail="La colección no está esperando confirmación para grafo.",
+        )
+
+    background_tasks.add_task(
+        wukong_runner.process_graph_collection,
+        str(collection_id),
+        None,
+        "partial_error",
+    )
+
+    return ProcessCollectionResponse(
+        collection_id=collection_id,
+        processing_status="processing_graph",
+        detail="Construcción de grafo encolada.",
+    )
 
 @router.post(
     "/{collection_id}/generate-graph",
