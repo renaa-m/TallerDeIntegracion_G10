@@ -17,6 +17,8 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+          # wukong-engine es privado; GITHUB_TOKEN no alcanza. PAT con lectura en ambos repos.
+          token: ${{ secrets.SUBMODULES_PAT }}
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
