@@ -599,6 +599,8 @@ describe('ModalCarga', () => {
       jest.advanceTimersByTime(3000)
     })
 
-    expect((globalThis.fetch as jest.Mock).mock.calls.length).toBe(fetchCallCount)
+    expect((globalThis.fetch as jest.Mock).mock.calls.length).toBe(
+      fetchCallCount,
+    )
   })
 })
