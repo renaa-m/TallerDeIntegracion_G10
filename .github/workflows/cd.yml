@@ -1,0 +1,65 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE: us-central1-docker.pkg.dev/titulo-grupo10/imfd-backend/imfd-app:${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Write GCP Vision credentials
+        run: echo '${{ secrets.GCP_VISION_KEY }}' > backend/gcp-vision-key.json
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: docker build -t ${{ env.IMAGE }} .
+
+      - name: Push Docker image
+        run: docker push ${{ env.IMAGE }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: imfd-backend
+          region: ${{ secrets.GCP_REGION }}
+          image: ${{ env.IMAGE }}
+          flags: --allow-unauthenticated
+          env_vars: |
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            AUTH0_DOMAIN=${{ secrets.AUTH0_DOMAIN }}
+            AUTH0_API_AUDIENCE=${{ secrets.AUTH0_API_AUDIENCE }}
+            AUTH0_M2M_CLIENT_ID=${{ secrets.AUTH0_M2M_CLIENT_ID }}
+            AUTH0_M2M_CLIENT_SECRET=${{ secrets.AUTH0_M2M_CLIENT_SECRET }}
+            MILLENNIUMDB_HOST=${{ secrets.MILLENNIUMDB_HOST }}
+            MILLENNIUMDB_PORT=${{ secrets.MILLENNIUMDB_PORT }}
+            GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            DEBUG=false
+            MAX_UPLOAD_RETRIES=3
+            UPLOAD_RETRY_DELAY_SECONDS=1.0
+            GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json
