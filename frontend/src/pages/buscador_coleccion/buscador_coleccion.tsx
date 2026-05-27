@@ -137,13 +137,25 @@ const BuscadorColeccion = () => {
 
   const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
+  const [scopedCollectionId, setScopedCollectionId] = useState(id_coleccion)
+  if (id_coleccion !== scopedCollectionId) {
+    setScopedCollectionId(id_coleccion)
+    setCurrentProcessingSnapshot(null)
+    setIsCollectionProcessing(false)
+    setCollectionProcessingStatus('idle')
+    setBackgroundProcessingId(null)
+    setBackgroundProcessingSnapshot(null)
+  }
+
   useEffect(() => {
     clearStaleActiveCollectionForPage(id_coleccion)
   }, [id_coleccion])
 
   useEffect(() => {
     const state = location.state as { abrirModalCarga?: boolean } | null
-    if (state?.abrirModalCarga) {
+    if (!state?.abrirModalCarga) return
+
+    queueMicrotask(() => {
       const isNueva = id_coleccion === 'nueva'
       if (id_coleccion && !isNueva) {
         localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
@@ -154,7 +166,7 @@ const BuscadorColeccion = () => {
       }
       setModalCargaOpen(true)
       navigate(location.pathname, { replace: true, state: {} })
-    }
+    })
   }, [location.pathname, location.state, navigate, id_coleccion])
 
   const redirectIfCollectionMissing = useCallback(() => {
@@ -222,6 +234,7 @@ const BuscadorColeccion = () => {
   ])
 
   const isNuevaColeccionPage = id_coleccion === 'nueva'
+  const shouldPollBackground = isNuevaColeccionPage && !modalCargaOpen
 
   const currentPageInPipeline = isPipelineInProgress(collectionProcessingStatus)
 
@@ -314,18 +327,10 @@ const BuscadorColeccion = () => {
 
   // Barra de otra colección: solo en /nueva (nunca en la página de una colección concreta).
   useEffect(() => {
-    if (!isNuevaColeccionPage || modalCargaOpen) {
-      setBackgroundProcessingId(null)
-      setBackgroundProcessingSnapshot(null)
-      return
-    }
+    if (!shouldPollBackground) return
 
     const trackedId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
-    if (!trackedId) {
-      setBackgroundProcessingId(null)
-      setBackgroundProcessingSnapshot(null)
-      return
-    }
+    if (!trackedId) return
 
     let cancelled = false
     let intervalId: number | undefined
@@ -380,16 +385,15 @@ const BuscadorColeccion = () => {
     void pollBackground()
     intervalId = window.setInterval(pollBackground, 3000)
     return () => stopPolling()
-  }, [isNuevaColeccionPage, modalCargaOpen, getAccessTokenSilently])
+  }, [shouldPollBackground, getAccessTokenSilently])
 
-  // --- EFECTOS: reset al cambiar de colección ---
-  useEffect(() => {
-    setCurrentProcessingSnapshot(null)
-    setIsCollectionProcessing(false)
-    setCollectionProcessingStatus('idle')
-    setBackgroundProcessingId(null)
-    setBackgroundProcessingSnapshot(null)
-  }, [id_coleccion])
+  const visibleBackgroundProcessingId = shouldPollBackground
+    ? backgroundProcessingId
+    : null
+  const visibleBackgroundProcessingSnapshot = shouldPollBackground
+    ? backgroundProcessingSnapshot
+    : null
+
   const currentPagePipelineSnapshot = useMemo(() => {
     if (!id_coleccion || id_coleccion === 'nueva') return null
     if (
@@ -423,18 +427,18 @@ const BuscadorColeccion = () => {
   const otherPipelineBannerView = useMemo(() => {
     if (
       !isNuevaColeccionPage ||
-      !backgroundProcessingSnapshot ||
-      backgroundProcessingId === id_coleccion
+      !visibleBackgroundProcessingSnapshot ||
+      visibleBackgroundProcessingId === id_coleccion
     ) {
       return null
     }
-    return getProcessingBannerView(backgroundProcessingSnapshot, {
+    return getProcessingBannerView(visibleBackgroundProcessingSnapshot, {
       showCollectionName: true,
     })
   }, [
     isNuevaColeccionPage,
-    backgroundProcessingSnapshot,
-    backgroundProcessingId,
+    visibleBackgroundProcessingSnapshot,
+    visibleBackgroundProcessingId,
     id_coleccion,
   ])
 
@@ -452,12 +456,15 @@ const BuscadorColeccion = () => {
   }
 
   const handleOpenOtherCollection = () => {
-    if (backgroundProcessingId && id_usuario) {
-      localStorage.setItem(ACTIVE_COLLECTION_KEY, backgroundProcessingId)
+    if (visibleBackgroundProcessingId && id_usuario) {
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, visibleBackgroundProcessingId)
       localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-      navigate(`/${id_usuario}/colecciones/${backgroundProcessingId}/buscador`, {
-        state: { abrirModalCarga: true },
-      })
+      navigate(
+        `/${id_usuario}/colecciones/${visibleBackgroundProcessingId}/buscador`,
+        {
+          state: { abrirModalCarga: true },
+        },
+      )
     }
   }
 
@@ -990,6 +997,11 @@ const BuscadorColeccion = () => {
       </div>
 
       <ModalCarga
+        key={
+          id_coleccion === 'nueva'
+            ? `nueva-${modalCargaOpen ? 'open' : 'closed'}`
+            : (id_coleccion ?? 'none')
+        }
         isOpen={modalCargaOpen}
         scopeCollectionId={id_coleccion ?? null}
         scopeUserId={id_usuario ?? null}

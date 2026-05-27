@@ -186,6 +186,14 @@ const ModalCarga = ({
     () => resolveModalCollectionId(scopeCollectionId, activeCollectionId),
     [scopeCollectionId, activeCollectionId],
   )
+  const nuevaSessionCollectionId =
+    scopeCollectionId === 'nueva' ? activeCollectionId : null
+  const resolvedEtapa: Etapa = useMemo(() => {
+    if (forcePipelineEtapa && scopeCollectionId && scopeCollectionId !== 'nueva') {
+      return 'pipeline'
+    }
+    return etapa
+  }, [forcePipelineEtapa, scopeCollectionId, etapa])
   const isPipelineRunning =
     pipelineStatus === 'processing_text' ||
     pipelineStatus === 'processing_graph'
@@ -216,19 +224,6 @@ const ModalCarga = ({
     setIsCancelling(false)
   }, [])
 
-  // Nueva colección: formulario limpio (no heredar otra colección en background).
-  useEffect(() => {
-    if (isOpen && scopeCollectionId === 'nueva') {
-      resetUploadForm()
-    }
-  }, [isOpen, scopeCollectionId, resetUploadForm])
-
-  useEffect(() => {
-    if (isOpen && forcePipelineEtapa && scopeCollectionId !== 'nueva') {
-      setEtapa('pipeline')
-    }
-  }, [isOpen, forcePipelineEtapa, scopeCollectionId])
-
   // --- 1. Sincronización: colección de la ruta o sesión en /nueva ---
   useEffect(() => {
     const syncStatus = async () => {
@@ -237,7 +232,7 @@ const ModalCarga = ({
       const collectionId =
         scopeCollectionId && scopeCollectionId !== 'nueva'
           ? scopeCollectionId
-          : activeCollectionId
+          : nuevaSessionCollectionId
 
       if (!collectionId) return
 
@@ -345,7 +340,7 @@ const ModalCarga = ({
     isOpen,
     isCancelling,
     scopeCollectionId,
-    scopeCollectionId === 'nueva' ? activeCollectionId : null,
+    nuevaSessionCollectionId,
     forcePipelineEtapa,
     getAccessTokenSilently,
     onProcessingChange,
@@ -376,7 +371,7 @@ const ModalCarga = ({
     const collectionId =
       uploadCollectionIdRef.current ?? resolvedCollectionId
 
-    if (scopeCollectionId === 'nueva' && !collectionId && etapa === 'subida') {
+    if (scopeCollectionId === 'nueva' && !collectionId && resolvedEtapa === 'subida') {
       clearActiveCollectionStorage()
       onClose()
       if (landingUserId) {
@@ -386,7 +381,7 @@ const ModalCarga = ({
     }
 
     if (
-      etapa === 'pipeline' &&
+      resolvedEtapa === 'pipeline' &&
       isPipelineInProgress(pipelineStatus) &&
       resolvedCollectionId
     ) {
@@ -397,7 +392,7 @@ const ModalCarga = ({
 
     // Docs listos, grafo pendiente: cerrar modal pero mantener colección y ruta.
     if (
-      etapa === 'pipeline' &&
+      resolvedEtapa === 'pipeline' &&
       pipelineStatus === 'idle' &&
       resolvedCollectionId
     ) {
@@ -418,7 +413,7 @@ const ModalCarga = ({
   }, [
     resolvedCollectionId,
     landingUserId,
-    etapa,
+    resolvedEtapa,
     isUploading,
     isCancelling,
     navigate,
@@ -497,7 +492,7 @@ const ModalCarga = ({
     if (
       !isOpen ||
       isCancelling ||
-      etapa !== 'pipeline' ||
+      resolvedEtapa !== 'pipeline' ||
       !resolvedCollectionId ||
       (scopeCollectionId &&
         scopeCollectionId !== 'nueva' &&
@@ -574,7 +569,7 @@ const ModalCarga = ({
   }, [
     isOpen,
     isCancelling,
-    etapa,
+    resolvedEtapa,
     resolvedCollectionId,
     scopeCollectionId,
     pipelineStatus,
@@ -709,14 +704,14 @@ const ModalCarga = ({
 
   const pipelineStatusLabel = useMemo(() => {
     if (isCancelling) {
-      return getCancellingMessage(etapa, pipelineStatus)
+      return getCancellingMessage(resolvedEtapa, pipelineStatus)
     }
     return getPipelineStatusLabel(pipelineStatus, textProgress)
-  }, [isCancelling, etapa, pipelineStatus, textProgress])
+  }, [isCancelling, resolvedEtapa, pipelineStatus, textProgress])
 
   const cancellingMessage = useMemo(
-    () => getCancellingMessage(etapa, pipelineStatus),
-    [etapa, pipelineStatus],
+    () => getCancellingMessage(resolvedEtapa, pipelineStatus),
+    [resolvedEtapa, pipelineStatus],
   )
 
   const pipelineNoticeKind = useMemo(
@@ -792,10 +787,10 @@ const ModalCarga = ({
         <div className="mc-header">
           <div>
             <h2 className="mc-title">
-              {etapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}
+              {resolvedEtapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}
             </h2>
             <p className="mc-subtitle">
-              {etapa === 'subida'
+              {resolvedEtapa === 'subida'
                 ? 'Sube documentos para indexar'
                 : isCancelling
                   ? cancellingMessage
@@ -819,7 +814,7 @@ const ModalCarga = ({
           </button>
         </div>
 
-        {etapa === 'subida' ? (
+        {resolvedEtapa === 'subida' ? (
           <>
             <div
               className={`mc-dropzone ${isDragging ? 'dragging' : ''} ${isUploadingLocked ? 'disabled' : ''}`}
@@ -1069,7 +1064,7 @@ const ModalCarga = ({
             </div>
             {pipelineError &&
               (pipelineNoticeKind !== 'none' ||
-                (etapa === 'pipeline' && pipelineStatus === 'idle')) && (
+                (resolvedEtapa === 'pipeline' && pipelineStatus === 'idle')) && (
               <div
                 className={`mc-pipeline-notice mc-pipeline-notice--${
                   pipelineNoticeKind !== 'none' ? pipelineNoticeKind : 'error'
