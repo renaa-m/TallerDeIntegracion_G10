@@ -51,33 +51,36 @@ function LandingPage() {
     coleccionesRef.current = colecciones
   }, [colecciones])
 
-  const refreshColecciones = useCallback(async (options?: { silent?: boolean }) => {
-    const requestId = ++refreshRequestIdRef.current
-    try {
-      const token = await getAccessTokenSilently()
-      const response = await fetch(`${API_BASE}/api/collections`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-      const data = await response.json()
-      if (!response.ok) {
-        throw new Error(data?.detail || 'Error al cargar colecciones')
+  const refreshColecciones = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const requestId = ++refreshRequestIdRef.current
+      try {
+        const token = await getAccessTokenSilently()
+        const response = await fetch(`${API_BASE}/api/collections`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data?.detail || 'Error al cargar colecciones')
+        }
+        if (requestId !== refreshRequestIdRef.current) return
+        setColecciones(Array.isArray(data) ? data : [])
+        if (!options?.silent) {
+          setEstado('idle')
+          setMensaje('')
+        }
+      } catch (error) {
+        console.error('Error cargando colecciones:', error)
+        if (!options?.silent) {
+          setEstado('error')
+          setMensaje('No se pudieron cargar las colecciones')
+        }
       }
-      if (requestId !== refreshRequestIdRef.current) return
-      setColecciones(Array.isArray(data) ? data : [])
-      if (!options?.silent) {
-        setEstado('idle')
-        setMensaje('')
-      }
-    } catch (error) {
-      console.error('Error cargando colecciones:', error)
-      if (!options?.silent) {
-        setEstado('error')
-        setMensaje('No se pudieron cargar las colecciones')
-      }
-    }
-  }, [getAccessTokenSilently])
+    },
+    [getAccessTokenSilently],
+  )
 
   const handleIniciar = async () => {
     localStorage.removeItem(MODAL_ETAPA_KEY)

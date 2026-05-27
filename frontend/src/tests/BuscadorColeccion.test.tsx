@@ -289,7 +289,6 @@ describe('BuscadorColeccion', () => {
 
   test('ejecuta búsqueda al presionar Enter y muestra resultados', async () => {
     jest.useFakeTimers()
-
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
       if (typeof url === 'string' && url.includes('/api/search')) {
         return Promise.resolve({
@@ -369,7 +368,6 @@ describe('BuscadorColeccion', () => {
 
   test('si búsqueda retorna 422 muestra mensaje sin resultados', async () => {
     jest.useFakeTimers()
-
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
       if (typeof url === 'string' && url.includes('/api/search')) {
         return Promise.resolve({
@@ -416,7 +414,6 @@ describe('BuscadorColeccion', () => {
 
   test('highlight marca coincidencias de la búsqueda', async () => {
     jest.useFakeTimers()
-
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
       if (typeof url === 'string' && url.includes('/api/search')) {
         return Promise.resolve({

@@ -249,8 +249,7 @@ export function getCollectionCardProgressLabel(
   if (!status || !isPipelineInProgress(status)) return null
 
   const snapshot = snapshotFromCollectionApi(collection, '')
-  const stage =
-    PIPELINE_STAGE_LABELS[snapshot.processingStatus] ?? 'Procesando'
+  const stage = PIPELINE_STAGE_LABELS[snapshot.processingStatus] ?? 'Procesando'
   const overall = getOverallPipelinePercent(snapshot)
 
   if (overall !== null) {

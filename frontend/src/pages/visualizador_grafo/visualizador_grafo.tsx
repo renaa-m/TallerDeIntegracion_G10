@@ -80,85 +80,88 @@ const GraphViewer = () => {
     }
   }, [cyRef, elements, runLayout])
 
-  const fetchGraph = useCallback(async (options?: { silent?: boolean }) => {
-    if (!id_coleccion || id_coleccion === 'nueva') return
-    if (!options?.silent) {
-      setLoading(true)
-      setError(null)
-      setUnavailable(null)
-    }
-    try {
-      const token = await getAccessTokenSilently()
-      const headers = { Authorization: `Bearer ${token}` }
-      const res = await fetch(
-        `${API_URL}/api/collections/${id_coleccion}/graph`,
-        { headers },
-      )
-
-      if (res.status === 404) {
-        setUnavailable({
-          title: 'Colección no encontrada',
-          subtitle:
-            'Esta colección ya no existe. Vuelve al inicio e intenta con otra.',
-          pending: false,
-        })
-        return
-      }
-
-      if (!res.ok) {
-        let detail = `Error al cargar el grafo (${res.status})`
-        try {
-          const body = await res.json()
-          if (body?.detail) detail = String(body.detail)
-        } catch {
-          /* respuesta no JSON */
-        }
-        throw new Error(detail)
-      }
-
-      const data: GraphResponse = await res.json()
-
-      if (!data.ready) {
-        setUnavailable(
-          getGraphUnavailableView(data.processing_status ?? null),
-        )
-        return
-      }
-
-      if (
-        !data.elements ||
-        (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
-      ) {
-        setUnavailable(getGraphUnavailableView('idle'))
-        return
-      }
-
-      const nodes: ElementDefinition[] = data.elements.nodes.map((n) => ({
-        data: { ...n.data, id: String(n.data.id) },
-      }))
-
-      const edges: ElementDefinition[] = data.elements.edges.map(
-        (e, index) => ({
-          data: {
-            ...e.data,
-            id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
-            source: String(e.data.source ?? e.data.from),
-            target: String(e.data.target ?? e.data.to),
-            label: e.data.label || '',
-          },
-        }),
-      )
-
-      setElements([...nodes, ...edges])
-    } catch (err) {
-      console.error('Error fetching graph:', err)
-      setError(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
+  const fetchGraph = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!id_coleccion || id_coleccion === 'nueva') return
       if (!options?.silent) {
-        setLoading(false)
+        setLoading(true)
+        setError(null)
+        setUnavailable(null)
       }
-    }
-  }, [id_coleccion, getAccessTokenSilently])
+      try {
+        const token = await getAccessTokenSilently()
+        const headers = { Authorization: `Bearer ${token}` }
+        const res = await fetch(
+          `${API_URL}/api/collections/${id_coleccion}/graph`,
+          { headers },
+        )
+
+        if (res.status === 404) {
+          setUnavailable({
+            title: 'Colección no encontrada',
+            subtitle:
+              'Esta colección ya no existe. Vuelve al inicio e intenta con otra.',
+            pending: false,
+          })
+          return
+        }
+
+        if (!res.ok) {
+          let detail = `Error al cargar el grafo (${res.status})`
+          try {
+            const body = await res.json()
+            if (body?.detail) detail = String(body.detail)
+          } catch {
+            /* respuesta no JSON */
+          }
+          throw new Error(detail)
+        }
+
+        const data: GraphResponse = await res.json()
+
+        if (!data.ready) {
+          setUnavailable(
+            getGraphUnavailableView(data.processing_status ?? null),
+          )
+          return
+        }
+
+        if (
+          !data.elements ||
+          (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
+        ) {
+          setUnavailable(getGraphUnavailableView('idle'))
+          return
+        }
+
+        const nodes: ElementDefinition[] = data.elements.nodes.map((n) => ({
+          data: { ...n.data, id: String(n.data.id) },
+        }))
+
+        const edges: ElementDefinition[] = data.elements.edges.map(
+          (e, index) => ({
+            data: {
+              ...e.data,
+              id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
+              source: String(e.data.source ?? e.data.from),
+              target: String(e.data.target ?? e.data.to),
+              label: e.data.label || '',
+            },
+          }),
+        )
+
+        setElements([...nodes, ...edges])
+      } catch (err) {
+        console.error('Error fetching graph:', err)
+        setError(err instanceof Error ? err.message : 'Error desconocido')
+      } finally {
+        if (!options?.silent) {
+          setLoading(false)
+        }
+      }
+    },
+    [id_coleccion, getAccessTokenSilently],
+  )
 
   // Actualizar automáticamente mientras el grafo se genera (solo /graph, sin GET extra).
   useEffect(() => {
@@ -275,10 +278,7 @@ const GraphViewer = () => {
         ) : (
           <p>{error}</p>
         )}
-        <button
-          onClick={() => void fetchGraph()}
-          className="gv-retry-button"
-        >
+        <button onClick={() => void fetchGraph()} className="gv-retry-button">
           {unavailable?.pending ? 'Comprobar de nuevo' : 'Reintentar'}
         </button>
       </div>

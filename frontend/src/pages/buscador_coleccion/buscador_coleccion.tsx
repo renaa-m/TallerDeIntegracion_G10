@@ -396,9 +396,7 @@ const BuscadorColeccion = () => {
 
   const currentPagePipelineSnapshot = useMemo(() => {
     if (!id_coleccion || id_coleccion === 'nueva') return null
-    if (
-      currentProcessingSnapshot?.collectionId === id_coleccion
-    ) {
+    if (currentProcessingSnapshot?.collectionId === id_coleccion) {
       return currentProcessingSnapshot
     }
     if (currentPageInPipeline) {
@@ -607,7 +605,8 @@ const BuscadorColeccion = () => {
   }
 
   const handleDelete = async () => {
-    if (!id_coleccion || id_coleccion === 'nueva' || isDeletingCollection) return
+    if (!id_coleccion || id_coleccion === 'nueva' || isDeletingCollection)
+      return
     setIsDeletingCollection(true)
     try {
       const token = await getAccessTokenSilently()

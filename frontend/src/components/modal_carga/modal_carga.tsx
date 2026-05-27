@@ -104,7 +104,11 @@ function getPipelineStatusLabel(
     }
     return PIPELINE_LABELS.awaiting_graph_confirmation
   }
-  if (status === 'error' && textProgress.processed === 0 && textProgress.total > 0) {
+  if (
+    status === 'error' &&
+    textProgress.processed === 0 &&
+    textProgress.total > 0
+  ) {
     return 'Ningún documento se pudo procesar'
   }
   return PIPELINE_LABELS[status] ?? status
@@ -189,7 +193,11 @@ const ModalCarga = ({
   const nuevaSessionCollectionId =
     scopeCollectionId === 'nueva' ? activeCollectionId : null
   const resolvedEtapa: Etapa = useMemo(() => {
-    if (forcePipelineEtapa && scopeCollectionId && scopeCollectionId !== 'nueva') {
+    if (
+      forcePipelineEtapa &&
+      scopeCollectionId &&
+      scopeCollectionId !== 'nueva'
+    ) {
       return 'pipeline'
     }
     return etapa
@@ -200,13 +208,10 @@ const ModalCarga = ({
 
   const abortControllersRef = useRef<AbortController[]>([])
 
-  const persistBackgroundProcessing = useCallback(
-    (collectionId: string) => {
-      localStorage.setItem(ACTIVE_COLLECTION_KEY, collectionId)
-      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-    },
-    [],
-  )
+  const persistBackgroundProcessing = useCallback((collectionId: string) => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, collectionId)
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+  }, [])
 
   const resetUploadForm = useCallback(() => {
     setFiles([])
@@ -368,10 +373,13 @@ const ModalCarga = ({
   const handleDismiss = useCallback(() => {
     if (isUploading || isCancelling) return
 
-    const collectionId =
-      uploadCollectionIdRef.current ?? resolvedCollectionId
+    const collectionId = uploadCollectionIdRef.current ?? resolvedCollectionId
 
-    if (scopeCollectionId === 'nueva' && !collectionId && resolvedEtapa === 'subida') {
+    if (
+      scopeCollectionId === 'nueva' &&
+      !collectionId &&
+      resolvedEtapa === 'subida'
+    ) {
       clearActiveCollectionStorage()
       onClose()
       if (landingUserId) {
@@ -431,8 +439,7 @@ const ModalCarga = ({
     abortControllersRef.current = []
     setError('')
 
-    const collectionId =
-      uploadCollectionIdRef.current ?? resolvedCollectionId
+    const collectionId = uploadCollectionIdRef.current ?? resolvedCollectionId
 
     if (collectionId) {
       clearActiveCollectionStorageIfMatch(collectionId)
@@ -505,12 +512,9 @@ const ModalCarga = ({
     const interval = window.setInterval(async () => {
       try {
         const token = await getAccessTokenSilently()
-        const res = await fetch(
-          `${API_BASE}/api/collections/${collectionId}`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          },
-        )
+        const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         if (res.status === 404) {
           clearActiveCollectionStorageIfMatch(collectionId)
           clearInterval(interval)
@@ -685,9 +689,7 @@ const ModalCarga = ({
     onProcessingChange?.(false)
     onClose()
     if (resolvedCollectionId && landingUserId) {
-      navigate(
-        `/${landingUserId}/colecciones/${resolvedCollectionId}/buscador`,
-      )
+      navigate(`/${landingUserId}/colecciones/${resolvedCollectionId}/buscador`)
     }
   }
 
@@ -779,7 +781,11 @@ const ModalCarga = ({
         onClick={(e) => e.stopPropagation()}
       >
         {isCancelling && (
-          <div className="mc-cancelling-banner" role="status" aria-live="polite">
+          <div
+            className="mc-cancelling-banner"
+            role="status"
+            aria-live="polite"
+          >
             <Loader2 size={18} className="mc-spin" aria-hidden />
             <span>{cancellingMessage}</span>
           </div>
@@ -1064,20 +1070,21 @@ const ModalCarga = ({
             </div>
             {pipelineError &&
               (pipelineNoticeKind !== 'none' ||
-                (resolvedEtapa === 'pipeline' && pipelineStatus === 'idle')) && (
-              <div
-                className={`mc-pipeline-notice mc-pipeline-notice--${
-                  pipelineNoticeKind !== 'none' ? pipelineNoticeKind : 'error'
-                }`}
-              >
-                {pipelineNoticeKind === 'error' ? (
-                  <AlertCircle size={14} />
-                ) : (
-                  <CheckCircle2 size={14} />
-                )}{' '}
-                {pipelineError}
-              </div>
-            )}
+                (resolvedEtapa === 'pipeline' &&
+                  pipelineStatus === 'idle')) && (
+                <div
+                  className={`mc-pipeline-notice mc-pipeline-notice--${
+                    pipelineNoticeKind !== 'none' ? pipelineNoticeKind : 'error'
+                  }`}
+                >
+                  {pipelineNoticeKind === 'error' ? (
+                    <AlertCircle size={14} />
+                  ) : (
+                    <CheckCircle2 size={14} />
+                  )}{' '}
+                  {pipelineError}
+                </div>
+              )}
             <div className="mc-footer">
               {pipelineStatus === 'idle' && (
                 <>

@@ -385,9 +385,7 @@ describe('ModalCarga', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
 
-    expect(
-      await screen.findByText('Error pipeline'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Error pipeline')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /generar grafo/i }),
     ).toBeInTheDocument()
@@ -559,7 +557,6 @@ describe('ModalCarga', () => {
     await selectFileAndNameCollection()
     fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
     expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
-
     ;(globalThis.fetch as jest.Mock).mockImplementation(
       (url: string, init?: RequestInit) => {
         if (init?.method === 'DELETE') {
@@ -569,9 +566,7 @@ describe('ModalCarga', () => {
       },
     )
 
-    fireEvent.click(
-      screen.getAllByRole('button', { name: /cancelar/i })[0],
-    )
+    fireEvent.click(screen.getAllByRole('button', { name: /cancelar/i })[0])
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -724,9 +719,7 @@ describe('ModalCarga', () => {
     fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /subiendo/i }),
-      ).toBeDisabled()
+      expect(screen.getByRole('button', { name: /subiendo/i })).toBeDisabled()
     })
 
     fireEvent.click(screen.getByRole('button', { name: /cancelar/i }))
@@ -772,9 +765,7 @@ describe('ModalCarga', () => {
     fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
 
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /subiendo/i }),
-      ).toBeDisabled()
+      expect(screen.getByRole('button', { name: /subiendo/i })).toBeDisabled()
     })
 
     const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
@@ -800,7 +791,6 @@ describe('ModalCarga', () => {
     expect(
       await screen.findByText('Extrayendo texto de los documentos...'),
     ).toBeInTheDocument()
-
     ;(globalThis.fetch as jest.Mock).mockImplementation(
       (url: string, init?: RequestInit) => {
         if (String(url).includes('/process/cancel')) {
@@ -820,9 +810,9 @@ describe('ModalCarga', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /cancelar/i }))
 
-    expect(
-      document.querySelector('.mc-cancelling-banner'),
-    ).toHaveTextContent(/Deteniendo la extracción y eliminando la colección/i)
+    expect(document.querySelector('.mc-cancelling-banner')).toHaveTextContent(
+      /Deteniendo la extracción y eliminando la colección/i,
+    )
     expect(
       screen.queryByText('Extrayendo texto de los documentos...'),
     ).not.toBeInTheDocument()
@@ -850,7 +840,6 @@ describe('ModalCarga', () => {
     expect(
       await screen.findByText('Construyendo grafo con Wukong...'),
     ).toBeInTheDocument()
-
     ;(globalThis.fetch as jest.Mock).mockImplementation(
       (url: string, init?: RequestInit) => {
         if (String(url).includes('/process/cancel')) {
@@ -870,9 +859,9 @@ describe('ModalCarga', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /cancelar/i }))
 
-    expect(
-      document.querySelector('.mc-cancelling-banner'),
-    ).toHaveTextContent(/Deteniendo la construcción del grafo y eliminando la colección/i)
+    expect(document.querySelector('.mc-cancelling-banner')).toHaveTextContent(
+      /Deteniendo la construcción del grafo y eliminando la colección/i,
+    )
     expect(
       screen.queryByText('Construyendo grafo con Wukong...'),
     ).not.toBeInTheDocument()
@@ -914,7 +903,9 @@ describe('ModalCarga', () => {
     })
 
     expect(
-      await screen.findByText('¡Grafo generado! Revisa qué documentos quedaron fuera.'),
+      await screen.findByText(
+        '¡Grafo generado! Revisa qué documentos quedaron fuera.',
+      ),
     ).toBeInTheDocument()
     expect(
       screen.getByText(/Grafo generado exitosamente con 2 documento/),
