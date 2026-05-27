@@ -3,11 +3,15 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from app.services.text_extraction import (
+    choose_ocr_dpi,
     detect_file_type,
     extract_text_pymupdf,
     extract_text_vision,
+    page_needs_high_dpi,
     process_pdf_document,
     process_txt_document,
+    render_page_for_ocr,
+    _clamp_dpi_for_vision,
 )
 
 MOCK_DOC_ID = "aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb"
@@ -146,6 +150,36 @@ class TestProcessPdfDocument:
 
 # --- Tests OCR (Google Cloud Vision) ---
 
+class TestOcrDpiHelpers:
+    def test_clamp_dpi_reduces_on_huge_page(self):
+        doc = fitz.open()
+        page = doc.new_page(width=5000, height=5000)
+        clamped = _clamp_dpi_for_vision(page, 400)
+        assert clamped < 400
+        doc.close()
+
+    def test_choose_ocr_dpi_standard_page(self):
+        doc = fitz.open()
+        page = doc.new_page()
+        assert choose_ocr_dpi(page) == 300
+        doc.close()
+
+    def test_render_page_for_ocr_grayscale(self):
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_text((72, 100), "Hola")
+        pix = render_page_for_ocr(page, 150)
+        assert pix.n == 1
+        assert len(pix.tobytes("png")) > 0
+        doc.close()
+
+    def test_page_needs_high_dpi_large_format(self):
+        doc = fitz.open()
+        page = doc.new_page(width=1200, height=1600)
+        assert page_needs_high_dpi(page) is True
+        doc.close()
+
+
 def test_extract_text_vision_success(tmp_path):
     """Vision retorna texto correctamente para un PDF de una página."""
     # Creamos un PDF mínimo con PyMuPDF para el test
@@ -168,6 +202,8 @@ def test_extract_text_vision_success(tmp_path):
         result = extract_text_vision(str(pdf_path))
 
     assert result == "Texto extraído por Vision"
+    call_kwargs = mock_client.document_text_detection.call_args.kwargs
+    assert call_kwargs["image_context"].language_hints == ["es", "en"]
 
 
 def test_extract_text_vision_api_error(tmp_path):

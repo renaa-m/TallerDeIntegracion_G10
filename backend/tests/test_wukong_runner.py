@@ -180,7 +180,8 @@ class TestProcessCollection:
             -1
         ].kwargs
         assert "doc1.pdf" in (final_kwargs.get("error_message") or "")
-        assert "Puedes continuar generando el grafo con 1 documento(s)" in (final_kwargs.get("error_message") or "")
+        assert "Puedes continuar" not in (final_kwargs.get("error_message") or "")
+        assert "solo con 1 documento(s)" in (final_kwargs.get("error_message") or "")
 
         _mock_build.assert_not_called()
         _mock_run_wukong.assert_not_called()
@@ -263,6 +264,29 @@ class TestProcessCollection:
         assert statuses[-1] == "error"
         err_kwargs = mock_sb.update_collection_processing_status.call_args_list[-1].kwargs
         assert "documentos" in (err_kwargs.get("error_message") or "")
+
+
+class TestResolveGraphCompletion:
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_partial_extraction_mensaje_exito(self, mock_sb):
+        mock_sb.get_collection_by_id.return_value = {
+            "text_progress_processed": 2,
+            "text_failed_documents": [{"filename": "scan.pdf"}],
+        }
+        status, msg = wukong_runner._resolve_graph_completion(MOCK_COL_ID)
+        assert status == "partial_error"
+        assert "Grafo generado exitosamente con 2 documento(s)" in msg
+        assert "scan.pdf" in msg
+
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_sin_fallos_devuelve_graph_ready(self, mock_sb):
+        mock_sb.get_collection_by_id.return_value = {
+            "text_progress_processed": 3,
+            "text_failed_documents": [],
+        }
+        status, msg = wukong_runner._resolve_graph_completion(MOCK_COL_ID)
+        assert status == "graph_ready"
+        assert msg == ""
 
 
 class TestBuildWukongWorkdir:

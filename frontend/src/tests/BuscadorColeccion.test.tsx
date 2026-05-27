@@ -116,6 +116,23 @@ const API_BASE = 'http://localhost:8080'
 const collectionResponse = {
   id: 'collection-123',
   name: 'Colección Test',
+  processing_status: 'graph_ready',
+}
+
+const collectionIdleResponse = {
+  id: 'collection-123',
+  name: 'Colección Test',
+  processing_status: 'idle',
+}
+
+const processingCollectionResponse = {
+  id: 'collection-processing',
+  name: 'Colección en curso',
+  processing_status: 'processing_text',
+  text_progress_total: 4,
+  text_progress_processed: 2,
+  graph_progress_total: 0,
+  graph_progress_processed: 0,
 }
 
 const documentosResponse = [
@@ -134,6 +151,7 @@ const documentosResponse = [
 ]
 
 const searchResponse = {
+  ready: true,
   resultados: [
     {
       titulo: 'Documento sobre grafos',
@@ -157,6 +175,7 @@ describe('BuscadorColeccion', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     jest.useRealTimers()
+    localStorage.clear()
     mockGetToken.mockResolvedValue('fake-token')
     mockParams = {
       id_usuario: 'user-123',
@@ -184,16 +203,33 @@ describe('BuscadorColeccion', () => {
     )
   }
 
+  const mockFetchForCollection = (
+    collection = collectionResponse,
+    documentos = documentosResponse,
+  ) => {
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentos,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => collection,
+        })
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
+    })
+  }
+
   const mockInitialLoad = () => {
-    ;(globalThis.fetch as jest.Mock)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => collectionResponse,
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => documentosResponse,
-      })
+    mockFetchForCollection()
   }
 
   test('carga datos iniciales de colección y documentos', async () => {
@@ -224,7 +260,21 @@ describe('BuscadorColeccion', () => {
   })
 
   test('muestra estado vacío inicial cuando no hay búsqueda enviada', async () => {
-    mockInitialLoad()
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentosResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => collectionIdleResponse,
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
 
     renderPage()
 
@@ -232,7 +282,7 @@ describe('BuscadorColeccion', () => {
     expect(screen.getByText('Sin resultados todavía')).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Haz una consulta para explorar los documentos de esta colección.',
+        'Genera el grafo de la colección para habilitar la búsqueda semántica.',
       ),
     ).toBeInTheDocument()
   })
@@ -240,10 +290,30 @@ describe('BuscadorColeccion', () => {
   test('ejecuta búsqueda al presionar Enter y muestra resultados', async () => {
     jest.useFakeTimers()
 
-    mockInitialLoad()
-    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => searchResponse,
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string, init?: RequestInit) => {
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => searchResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentosResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => collectionResponse,
+        })
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
     })
 
     renderPage()
@@ -300,11 +370,31 @@ describe('BuscadorColeccion', () => {
   test('si búsqueda retorna 422 muestra mensaje sin resultados', async () => {
     jest.useFakeTimers()
 
-    mockInitialLoad()
-    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
-      status: 422,
-      json: async () => ({}),
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: false,
+          status: 422,
+          json: async () => ({}),
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentosResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => collectionResponse,
+        })
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
     })
 
     mockQuery = 'consulta inicial'
@@ -327,10 +417,30 @@ describe('BuscadorColeccion', () => {
   test('highlight marca coincidencias de la búsqueda', async () => {
     jest.useFakeTimers()
 
-    mockInitialLoad()
-    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => searchResponse,
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => searchResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentosResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => collectionResponse,
+        })
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
     })
 
     mockQuery = 'grafos'
@@ -460,7 +570,9 @@ describe('BuscadorColeccion', () => {
       )
     })
 
-    expect(mockNavigate).toHaveBeenCalledWith('/user-123/dashboard')
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/user-123', {
+      replace: true,
+    })
   })
 
   test('abre y cierra modal de eliminar colección sin borrar', async () => {
@@ -509,6 +621,26 @@ describe('BuscadorColeccion', () => {
     expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
   })
 
+  test('clic en barra de colección en procesamiento abre modal sin navegar', async () => {
+    mockParams = {
+      id_usuario: 'user-123',
+      id_coleccion: 'collection-processing',
+    }
+    localStorage.setItem('active_collection_id', 'collection-active')
+    mockFetchForCollection(processingCollectionResponse)
+
+    renderPage()
+
+    expect(
+      await screen.findByText(/Se está procesando «Colección en curso»/),
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Clic para ver detalle'))
+
+    expect(screen.getByTestId('modal-carga')).toBeInTheDocument()
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
   test('aplica clase dark cuando matchMedia indica dark mode', async () => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -527,5 +659,42 @@ describe('BuscadorColeccion', () => {
 
     const root = document.querySelector('.bc-root')
     expect(root).toHaveClass('bc-dark')
+  })
+
+  test('deja de hacer polling cuando la colección devuelve 404', async () => {
+    jest.useFakeTimers()
+
+    let collectionPollCount = 0
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentosResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        collectionPollCount += 1
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          json: async () => ({}),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(collectionPollCount).toBeGreaterThanOrEqual(1)
+    })
+
+    const callsAfter404 = collectionPollCount
+
+    await act(async () => {
+      jest.advanceTimersByTime(12000)
+    })
+
+    expect(collectionPollCount).toBe(callsAfter404)
   })
 })
