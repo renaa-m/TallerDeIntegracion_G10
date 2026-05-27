@@ -259,14 +259,7 @@ export function getCollectionCardProgressLabel(
 }
 
 export function snapshotFromCollectionApi(
-  data: {
-    name?: string
-    processing_status?: string
-    text_progress_total?: number
-    text_progress_processed?: number
-    graph_progress_total?: number
-    graph_progress_processed?: number
-  },
+  data: CollectionProgressFields & { name?: string },
   collectionId: string,
 ): CollectionProcessingSnapshot {
   const rawStatus = data.processing_status ?? 'idle'
