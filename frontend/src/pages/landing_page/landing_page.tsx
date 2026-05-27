@@ -34,6 +34,8 @@ function LandingPage() {
   const [cargandoColecciones, setCargandoColecciones] = useState(true)
 
   const handleIniciar = async () => {
+    localStorage.removeItem('active_collection_id')
+    localStorage.removeItem('modal_carga_etapa')
     navigate(`/${id_usuario || currentUserId}/colecciones/nueva/buscador`, {
       state: { abrirModalCarga: true },
     })

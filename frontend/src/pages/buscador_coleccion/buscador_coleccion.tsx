@@ -97,6 +97,9 @@ const BuscadorColeccion = () => {
   const [modalCargaOpen, setModalCargaOpen] = useState(id_coleccion === 'nueva')
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
+  const [hasActiveCollection, setHasActiveCollection] = useState(
+    () => !!localStorage.getItem('active_collection_id'),
+  )
 
   // Filtros
   const [filtroOpen, setFiltroOpen] = useState(false)
@@ -337,6 +340,25 @@ const BuscadorColeccion = () => {
         </aside>
 
         <main className="bc-main">
+          {/* FIX 2: banner de progreso en segundo plano */}
+          {!modalCargaOpen && hasActiveCollection && (
+            <div
+              className="bc-alert-banner"
+              style={{ cursor: 'pointer' }}
+              onClick={() => setModalCargaOpen(true)}
+            >
+              <div className="bc-alert-content">
+                <div className="bc-alert-icon-wrap">
+                  <Loader2 size={14} className="bc-alert-icon bc-spin" />
+                </div>
+                <div className="bc-alert-text">
+                  <span className="bc-alert-title">
+                    Procesando colección en segundo plano — Ver progreso
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
           {/* 🚀 RENDERING CONDICIONAL CRÍTICO: Si la URL pide el grafo, renderiza la sub-ruta usando Outlet, sino muestra el buscador de texto tradicional */}
           {isGrafoView ? (
             <div
@@ -476,7 +498,10 @@ const BuscadorColeccion = () => {
 
       <ModalCarga
         isOpen={modalCargaOpen}
-        onClose={() => setModalCargaOpen(false)}
+        onClose={() => {
+          setModalCargaOpen(false)
+          setHasActiveCollection(!!localStorage.getItem('active_collection_id'))
+        }}
         onUploadSuccess={cargarDatos}
         darkMode={darkMode}
       />
