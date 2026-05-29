@@ -195,8 +195,8 @@ def update_collection_processing_status(
     """
     Actualiza el estado de procesamiento de una colección.
 
-    Estados válidos: idle, processing_text, processing_graph,
-    graph_ready, partial_error, error, cancelled.
+    Estados válidos: idle, queued, processing_text, processing_graph,
+    awaiting_graph_confirmation, graph_ready, partial_error, error, cancelled.
 
     Cuando se llega a un estado terminal (graph_ready, partial_error, error, cancelled)
     conviene pasar también processed_at con el timestamp ISO.
@@ -215,6 +215,119 @@ def update_collection_processing_status(
         .execute()
     )
     return response.data[0] if response.data else None
+
+
+_ACTIVE_PROCESSING_STATUSES = (
+    "processing_text",
+    "processing_graph",
+    "awaiting_graph_confirmation",
+)
+
+
+def user_has_active_processing(
+    user_id: str,
+    *,
+    exclude_collection_id: str | None = None,
+) -> bool:
+    """True si el usuario ocupa el slot de pipeline (activo o esperando confirmación de grafo).
+
+    ``exclude_collection_id`` permite ignorar una colección (p. ej. continuar grafo en la misma
+    que está en ``awaiting_graph_confirmation``).
+    """
+    client = _get_service_client()
+    query = (
+        client.table("collections")
+        .select("id")
+        .eq("user_id", user_id)
+        .in_("processing_status", list(_ACTIVE_PROCESSING_STATUSES))
+    )
+    if exclude_collection_id:
+        query = query.neq("id", exclude_collection_id)
+    response = query.limit(1).execute()
+    return bool(response.data)
+
+
+def get_next_queued_collection(user_id: str) -> dict | None:
+    """Siguiente colección en cola (FIFO por ``updated_at``)."""
+    client = _get_service_client()
+    response = (
+        client.table("collections")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("processing_status", "queued")
+        .order("updated_at")
+        .limit(1)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
+
+def list_collections_by_processing_statuses(
+    statuses: tuple[str, ...] | list[str],
+    *,
+    user_id: str | None = None,
+) -> list[dict]:
+    if not statuses:
+        return []
+    client = _get_service_client()
+    query = (
+        client.table("collections")
+        .select("id, user_id, name, processing_status")
+        .in_("processing_status", list(statuses))
+    )
+    if user_id is not None:
+        query = query.eq("user_id", user_id)
+    response = query.execute()
+    return response.data or []
+
+
+def get_user_blocking_collection(
+    user_id: str,
+    *,
+    exclude_collection_id: str | None = None,
+) -> dict | None:
+    """Colección que impide iniciar procesamiento en otra (activa o en pausa)."""
+    client = _get_service_client()
+    query = (
+        client.table("collections")
+        .select("id, name, processing_status")
+        .eq("user_id", user_id)
+        .in_("processing_status", list(_ACTIVE_PROCESSING_STATUSES))
+    )
+    if exclude_collection_id:
+        query = query.neq("id", exclude_collection_id)
+    response = query.limit(1).execute()
+    return response.data[0] if response.data else None
+
+
+def set_collection_queued(
+    collection_id: str,
+    queue_action: str,
+    *,
+    payload: dict | None = None,
+) -> dict | None:
+    client = _get_service_client()
+    row: dict = {
+        "processing_status": "queued",
+        "queue_action": queue_action,
+        "queue_payload": payload,
+        "processing_error_message": None,
+    }
+    response = (
+        client.table("collections")
+        .update(row)
+        .eq("id", collection_id)
+        .execute()
+    )
+    return response.data[0] if response.data else None
+
+
+def clear_collection_queue_metadata(collection_id: str) -> None:
+    client = _get_service_client()
+    client.table("collections").update(
+        {"queue_action": None, "queue_payload": None}
+    ).eq("id", collection_id).execute()
+
 
 def update_collection_progress(
     collection_id: str,

@@ -28,11 +28,13 @@ async def search(
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
     if collection.get("processing_status") not in _READY_STATUSES:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                "La colección no tiene un grafo generado. "
-                "Procesá la colección primero y esperá a que el estado sea 'graph_ready'."
+        return SearchResponse(
+            resultados=[],
+            total=0,
+            ready=False,
+            message=(
+                "Aún no hay grafo generado. "
+                "Genera el grafo desde la colección para habilitar la búsqueda semántica."
             ),
         )
 

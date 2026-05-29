@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import health, collections, documentos, usuarios, search
 from app.config import settings
+from app.services import processing_queue
 
 # Clientes de Google Cloud leen credenciales solo desde os.environ.
 _backend_root = Path(__file__).resolve().parent.parent
@@ -41,6 +42,12 @@ app.include_router(collections.router)
 app.include_router(documentos.router)
 app.include_router(usuarios.router)
 app.include_router(search.router)
+
+
+@app.on_event("startup")
+def _recover_processing_queue_on_startup() -> None:
+    processing_queue.recover_orphaned_processing()
+
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 

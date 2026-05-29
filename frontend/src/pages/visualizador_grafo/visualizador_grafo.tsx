@@ -16,6 +16,10 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { useAuth0 } from '@auth0/auth0-react'
+import {
+  getGraphUnavailableView,
+  type GraphUnavailableView,
+} from '../../lib/collection_processing'
 import './visualizador_grafo.css'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
@@ -25,6 +29,9 @@ interface CytoscapeElement {
 }
 
 interface GraphResponse {
+  ready: boolean
+  processing_status?: string
+  message?: string | null
   elements: {
     nodes: CytoscapeElement[]
     edges: CytoscapeElement[]
@@ -38,6 +45,9 @@ const GraphViewer = () => {
   const [elements, setElements] = useState<ElementDefinition[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [unavailable, setUnavailable] = useState<GraphUnavailableView | null>(
+    null,
+  )
   const [cyRef, setCyRef] = useState<Core | null>(null)
   const [selectedData, setSelectedData] = useState<Record<
     string,
@@ -70,54 +80,97 @@ const GraphViewer = () => {
     }
   }, [cyRef, elements, runLayout])
 
-  const fetchGraph = useCallback(async () => {
-    if (!id_coleccion) return
-    setLoading(true)
-    setError(null)
-    try {
-      const token = await getAccessTokenSilently()
-      const res = await fetch(
-        `${API_URL}/api/collections/${id_coleccion}/graph`,
-        {
-          headers: { Authorization: 'Bearer ' + token },
-        },
-      )
-
-      if (!res.ok) throw new Error(`Error al cargar el grafo`)
-
-      const data: GraphResponse = await res.json()
-
-      if (
-        !data.elements ||
-        (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
-      ) {
-        throw new Error('No hay datos disponibles para visualizar.')
+  const fetchGraph = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!id_coleccion || id_coleccion === 'nueva') return
+      if (!options?.silent) {
+        setLoading(true)
+        setError(null)
+        setUnavailable(null)
       }
+      try {
+        const token = await getAccessTokenSilently()
+        const headers = { Authorization: `Bearer ${token}` }
+        const res = await fetch(
+          `${API_URL}/api/collections/${id_coleccion}/graph`,
+          { headers },
+        )
 
-      const nodes: ElementDefinition[] = data.elements.nodes.map((n) => ({
-        data: { ...n.data, id: String(n.data.id) },
-      }))
+        if (res.status === 404) {
+          setUnavailable({
+            title: 'Colección no encontrada',
+            subtitle:
+              'Esta colección ya no existe. Vuelve al inicio e intenta con otra.',
+            pending: false,
+          })
+          return
+        }
 
-      const edges: ElementDefinition[] = data.elements.edges.map(
-        (e, index) => ({
-          data: {
-            ...e.data,
-            id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
-            source: String(e.data.source ?? e.data.from),
-            target: String(e.data.target ?? e.data.to),
-            label: e.data.label || '',
-          },
-        }),
-      )
+        if (!res.ok) {
+          let detail = `Error al cargar el grafo (${res.status})`
+          try {
+            const body = await res.json()
+            if (body?.detail) detail = String(body.detail)
+          } catch {
+            /* respuesta no JSON */
+          }
+          throw new Error(detail)
+        }
 
-      setElements([...nodes, ...edges])
-    } catch (err) {
-      console.error('Error fetching graph:', err)
-      setError(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setLoading(false)
-    }
-  }, [id_coleccion, getAccessTokenSilently])
+        const data: GraphResponse = await res.json()
+
+        if (!data.ready) {
+          setUnavailable(
+            getGraphUnavailableView(data.processing_status ?? null),
+          )
+          return
+        }
+
+        if (
+          !data.elements ||
+          (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
+        ) {
+          setUnavailable(getGraphUnavailableView('idle'))
+          return
+        }
+
+        const nodes: ElementDefinition[] = data.elements.nodes.map((n) => ({
+          data: { ...n.data, id: String(n.data.id) },
+        }))
+
+        const edges: ElementDefinition[] = data.elements.edges.map(
+          (e, index) => ({
+            data: {
+              ...e.data,
+              id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
+              source: String(e.data.source ?? e.data.from),
+              target: String(e.data.target ?? e.data.to),
+              label: e.data.label || '',
+            },
+          }),
+        )
+
+        setElements([...nodes, ...edges])
+      } catch (err) {
+        console.error('Error fetching graph:', err)
+        setError(err instanceof Error ? err.message : 'Error desconocido')
+      } finally {
+        if (!options?.silent) {
+          setLoading(false)
+        }
+      }
+    },
+    [id_coleccion, getAccessTokenSilently],
+  )
+
+  // Actualizar automáticamente mientras el grafo se genera (solo /graph, sin GET extra).
+  useEffect(() => {
+    if (!unavailable?.pending) return
+    const interval = window.setInterval(() => {
+      void fetchGraph({ silent: true })
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [unavailable?.pending, fetchGraph])
 
   // Fix para el Linter: Usar bandera de montaje y función interna
   useEffect(() => {
@@ -204,13 +257,29 @@ const GraphViewer = () => {
       </div>
     )
 
-  if (error)
+  if (unavailable || error)
     return (
-      <div className="gv-outer-wrapper gv-error-container">
-        <AlertCircle size={48} className="text-red-500" />
-        <p>{error}</p>
-        <button onClick={() => fetchGraph()} className="gv-retry-button">
-          Reintentar
+      <div
+        className={`gv-outer-wrapper gv-error-container${unavailable?.pending ? ' gv-unavailable-pending' : unavailable ? ' gv-unavailable-info' : ''}`}
+      >
+        {unavailable?.pending ? (
+          <Loader2 size={48} className="gv-spin-loader animate-spin" />
+        ) : (
+          <AlertCircle
+            size={48}
+            className={unavailable ? 'gv-unavailable-icon' : 'text-red-500'}
+          />
+        )}
+        {unavailable ? (
+          <>
+            <h2 className="gv-unavailable-title">{unavailable.title}</h2>
+            <p className="gv-unavailable-subtitle">{unavailable.subtitle}</p>
+          </>
+        ) : (
+          <p>{error}</p>
+        )}
+        <button onClick={() => void fetchGraph()} className="gv-retry-button">
+          {unavailable?.pending ? 'Comprobar de nuevo' : 'Reintentar'}
         </button>
       </div>
     )

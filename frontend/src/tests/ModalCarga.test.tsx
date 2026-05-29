@@ -12,6 +12,7 @@ const API_BASE = 'http://localhost:8080'
 jest.mock('@auth0/auth0-react', () => ({
   useAuth0: () => ({
     getAccessTokenSilently: mockGetToken,
+    user: { sub: 'auth0|testuser', nickname: 'testuser' },
   }),
 }))
 
@@ -39,11 +40,15 @@ describe('ModalCarga', () => {
     onUploadSuccess,
     darkMode = false,
     isOpen = true,
+    scopeCollectionId = null as string | null,
+    forcePipelineEtapa = false,
   }: {
     onClose?: jest.Mock
     onUploadSuccess?: jest.Mock
     darkMode?: boolean
     isOpen?: boolean
+    scopeCollectionId?: string | null
+    forcePipelineEtapa?: boolean
   } = {}) => {
     render(
       <MemoryRouter>
@@ -52,6 +57,8 @@ describe('ModalCarga', () => {
           onClose={onClose}
           darkMode={darkMode}
           onUploadSuccess={onUploadSuccess}
+          scopeCollectionId={scopeCollectionId}
+          forcePipelineEtapa={forcePipelineEtapa}
         />
       </MemoryRouter>,
     )
@@ -204,12 +211,41 @@ describe('ModalCarga', () => {
       expect(onClose).toHaveBeenCalledTimes(1)
     })
 
-    expect(mockNavigate).toHaveBeenCalledWith('/landing_page')
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
     expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBeNull()
     expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBeNull()
   })
 
-  test('sube archivo creando colección y documento, guarda localStorage y pasa a pipeline', async () => {
+  test('cerrar con X en nueva sin colección redirige al landing', () => {
+    const onClose = jest.fn()
+    renderModal({ onClose, scopeCollectionId: 'nueva' })
+
+    const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
+    fireEvent.click(closeButton)
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBeNull()
+  })
+
+  test('clic en overlay en nueva sin colección redirige al landing', () => {
+    const onClose = jest.fn()
+    renderModal({ onClose, scopeCollectionId: 'nueva' })
+
+    const overlay = document.querySelector('.mc-overlay') as HTMLElement
+    fireEvent.click(overlay)
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
+  })
+
+  test('sube archivo creando colección y documento, pasa a pipeline sin pisar localStorage', async () => {
     const onUploadSuccess = jest.fn()
 
     ;(globalThis.fetch as jest.Mock)
@@ -259,8 +295,8 @@ describe('ModalCarga', () => {
       }),
     )
 
-    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-123')
-    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBeNull()
+    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBeNull()
     expect(onUploadSuccess).toHaveBeenCalledTimes(1)
 
     expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
@@ -318,7 +354,7 @@ describe('ModalCarga', () => {
     await uploadSuccessfullyAndGoToPipeline()
     ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({}),
+      json: async () => ({ processing_status: 'processing_text' }),
     })
 
     fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
@@ -349,11 +385,64 @@ describe('ModalCarga', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
 
-    expect(
-      await screen.findByText('Error al iniciar Wukong'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Error pipeline')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /generar grafo/i }),
+    ).toBeInTheDocument()
+  })
+
+  test('nueva colección ignora active_collection_id en localStorage', async () => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-processing')
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+
+    renderModal({ scopeCollectionId: 'nueva', forcePipelineEtapa: false })
+
+    expect(await screen.findByText('Añadir fuentes')).toBeInTheDocument()
+    expect(screen.queryByText('Procesar grafo')).not.toBeInTheDocument()
+    expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  test('colección idle con documentos abre etapa pipeline sin localStorage previo', async () => {
+    ;(globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          processing_status: 'idle',
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => [{ id: 'doc-1' }],
+      })
+
+    renderModal({
+      scopeCollectionId: 'collection-123',
+      forcePipelineEtapa: true,
+    })
+
+    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /generar grafo/i }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Añadir fuentes')).not.toBeInTheDocument()
+  })
+
+  test('awaiting_graph_confirmation abre etapa pipeline', async () => {
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'awaiting_graph_confirmation',
+        text_progress_total: 3,
+        text_progress_processed: 2,
+        text_failed_documents: [{ filename: 'a.pdf' }],
+      }),
+    })
+
+    renderModal({ scopeCollectionId: 'collection-123' })
+
+    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /continuar con grafo/i }),
     ).toBeInTheDocument()
   })
 
@@ -367,7 +456,7 @@ describe('ModalCarga', () => {
       }),
     })
 
-    renderModal()
+    renderModal({ scopeCollectionId: 'collection-123' })
 
     expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
     expect(
@@ -398,15 +487,22 @@ describe('ModalCarga', () => {
     })
 
     const onClose = jest.fn()
-    renderModal({ onClose })
+    renderModal({ onClose, scopeCollectionId: 'collection-123' })
 
-    fireEvent.click(await screen.findByRole('button', { name: /finalizar/i }))
+    expect(
+      await screen.findByRole('button', { name: /finalizar/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /cancelar/i }),
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /finalizar/i }))
 
     expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBeNull()
     expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBeNull()
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(mockNavigate).toHaveBeenCalledWith(
-      '/user/colecciones/collection-123/buscador',
+      '/testuser/colecciones/collection-123/buscador',
     )
 
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
@@ -415,23 +511,18 @@ describe('ModalCarga', () => {
     )
   })
 
-  test('cerrar con colección activa borra colección con DELETE y redirige', async () => {
+  test('cerrar con X en pipeline idle no borra la colección', async () => {
     localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-123')
     localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-    ;(globalThis.fetch as jest.Mock)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          processing_status: 'idle',
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({}),
-      })
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'idle',
+      }),
+    })
 
     const onClose = jest.fn()
-    renderModal({ onClose })
+    renderModal({ onClose, scopeCollectionId: 'collection-123' })
 
     expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
 
@@ -439,20 +530,57 @@ describe('ModalCarga', () => {
     fireEvent.click(closeButton)
 
     await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      `${API_BASE}/api/collections/collection-123`,
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-123')
+    expect(mockNavigate).not.toHaveBeenCalled()
+  })
+
+  test('cancelar en pipeline idle borra colección y redirige', async () => {
+    const onClose = jest.fn()
+    ;(globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'collection-123' }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'doc-123' }),
+      })
+
+    renderModal({ onClose })
+    await selectFileAndNameCollection()
+    fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
+    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+    ;(globalThis.fetch as jest.Mock).mockImplementation(
+      (url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true })
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) })
+      },
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: /cancelar/i })[0])
+
+    await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
         `${API_BASE}/api/collections/collection-123`,
         expect.objectContaining({
           method: 'DELETE',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer fake-token',
-          }),
         }),
       )
     })
 
     expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBeNull()
-    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBeNull()
-    expect(mockNavigate).toHaveBeenCalledWith('/landing_page')
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
@@ -462,7 +590,7 @@ describe('ModalCarga', () => {
     await uploadSuccessfullyAndGoToPipeline()
     ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({}),
+      json: async () => ({ processing_status: 'processing_text' }),
     })
 
     fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
@@ -487,6 +615,9 @@ describe('ModalCarga', () => {
     expect(
       screen.getByRole('button', { name: /finalizar/i }),
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /cancelar/i }),
+    ).not.toBeInTheDocument()
   })
 
   test('polling actualiza estado a error, muestra mensaje y botón Reintentar', async () => {
@@ -495,7 +626,7 @@ describe('ModalCarga', () => {
     await uploadSuccessfullyAndGoToPipeline()
     ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
-      json: async () => ({}),
+      json: async () => ({ processing_status: 'processing_text' }),
     })
 
     fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
@@ -522,5 +653,281 @@ describe('ModalCarga', () => {
     expect(
       screen.getByRole('button', { name: /reintentar/i }),
     ).toBeInTheDocument()
+  })
+
+  test('cerrar el modal durante el procesamiento no cancela el pipeline y persiste en localStorage', async () => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-123')
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'processing_text',
+      }),
+    })
+
+    const onClose = jest.fn()
+    renderModal({ onClose, scopeCollectionId: 'collection-123' })
+
+    expect(
+      await screen.findByText('Extrayendo texto de los documentos...'),
+    ).toBeInTheDocument()
+
+    const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
+    fireEvent.click(closeButton)
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      `${API_BASE}/api/collections/collection-123/process/cancel`,
+      expect.anything(),
+    )
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-123')
+    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
+  })
+
+  test('cancelar durante subida borra colección y redirige', async () => {
+    ;(globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'collection-upload' }),
+      })
+      .mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true })
+        }
+        if (String(url).includes('/upload')) {
+          return new Promise(() => {
+            /* upload colgado a propósito */
+          })
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) })
+      })
+
+    const onClose = jest.fn()
+    renderModal({ onClose, scopeCollectionId: 'nueva' })
+
+    const file = new File(['contenido'], 'doc.txt', { type: 'text/plain' })
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+    fireEvent.change(screen.getByPlaceholderText('Nombre de colección'), {
+      target: { value: 'Mi colección' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /subiendo/i })).toBeDisabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /cancelar/i }))
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-upload`,
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBeNull()
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
+  })
+
+  test('X durante subida está deshabilitado y no borra', async () => {
+    ;(globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'collection-upload' }),
+      })
+      .mockImplementation(
+        () =>
+          new Promise(() => {
+            /* upload colgado a propósito */
+          }),
+      )
+
+    const onClose = jest.fn()
+    renderModal({ onClose, scopeCollectionId: 'nueva' })
+
+    const file = new File(['contenido'], 'doc.txt', { type: 'text/plain' })
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+    fireEvent.change(screen.getByPlaceholderText('Nombre de colección'), {
+      target: { value: 'Mi colección' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /subiendo/i })).toBeDisabled()
+    })
+
+    const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
+    expect(closeButton).toBeDisabled()
+    fireEvent.click(closeButton)
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(globalThis.fetch).not.toHaveBeenCalledWith(
+      `${API_BASE}/api/collections/collection-upload`,
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+
+  test('cancelar durante procesamiento borra la colección', async () => {
+    await uploadSuccessfullyAndGoToPipeline()
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ processing_status: 'processing_text' }),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
+
+    expect(
+      await screen.findByText('Extrayendo texto de los documentos...'),
+    ).toBeInTheDocument()
+    ;(globalThis.fetch as jest.Mock).mockImplementation(
+      (url: string, init?: RequestInit) => {
+        if (String(url).includes('/process/cancel')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ processing_status: 'cancelled' }),
+          })
+        }
+        if (init?.method === 'DELETE') {
+          return new Promise(() => {
+            /* DELETE colgado para ver el estado de cancelación */
+          })
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) })
+      },
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /cancelar/i }))
+
+    expect(document.querySelector('.mc-cancelling-banner')).toHaveTextContent(
+      /Deteniendo la extracción y eliminando la colección/i,
+    )
+    expect(
+      screen.queryByText('Extrayendo texto de los documentos...'),
+    ).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-123/process/cancel`,
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+  })
+
+  test('cancelar durante construcción del grafo muestra mensaje de detención', async () => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-123')
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'processing_graph',
+      }),
+    })
+
+    renderModal({ scopeCollectionId: 'collection-123' })
+
+    expect(
+      await screen.findByText('Construyendo grafo con Wukong...'),
+    ).toBeInTheDocument()
+    ;(globalThis.fetch as jest.Mock).mockImplementation(
+      (url: string, init?: RequestInit) => {
+        if (String(url).includes('/process/cancel')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({ processing_status: 'cancelled' }),
+          })
+        }
+        if (init?.method === 'DELETE') {
+          return new Promise(() => {
+            /* DELETE colgado para ver el estado de cancelación */
+          })
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) })
+      },
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /cancelar/i }))
+
+    expect(document.querySelector('.mc-cancelling-banner')).toHaveTextContent(
+      /Deteniendo la construcción del grafo y eliminando la colección/i,
+    )
+    expect(
+      screen.queryByText('Construyendo grafo con Wukong...'),
+    ).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-123/process/cancel`,
+        expect.objectContaining({ method: 'POST' }),
+      )
+    })
+  })
+
+  test('partial_error muestra estado de advertencia y detiene el polling', async () => {
+    jest.useFakeTimers()
+
+    await uploadSuccessfullyAndGoToPipeline()
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ processing_status: 'processing_text' }),
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /generar grafo/i }))
+
+    expect(
+      await screen.findByText('Extrayendo texto de los documentos...'),
+    ).toBeInTheDocument()
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'partial_error',
+        processing_error_message:
+          'Grafo generado exitosamente con 2 documento(s). 1 documento(s) no se incluyeron.',
+        graph_progress_processed: 1,
+      }),
+    })
+
+    await act(async () => {
+      jest.advanceTimersByTime(3000)
+    })
+
+    expect(
+      await screen.findByText(
+        '¡Grafo generado! Revisa qué documentos quedaron fuera.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Grafo generado exitosamente con 2 documento/),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /generar grafo/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /finalizar/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /cancelar/i }),
+    ).not.toBeInTheDocument()
+
+    const fetchCallCount = (globalThis.fetch as jest.Mock).mock.calls.length
+
+    await act(async () => {
+      jest.advanceTimersByTime(3000)
+    })
+
+    expect((globalThis.fetch as jest.Mock).mock.calls.length).toBe(
+      fetchCallCount,
+    )
   })
 })

@@ -52,14 +52,21 @@ class ProcessingCancelled(Exception):
 
 def _check_cancelled(collection_id: str) -> None:
     row = supabase_client.get_collection_by_id(collection_id)
-    if row and row.get("processing_status") == "cancelled":
+    if row is None:
+        raise ProcessingCancelled()
+    if row.get("processing_status") == "cancelled":
         raise ProcessingCancelled()
 
 
 def _skip_if_user_cancelled(collection_id: str, where: str) -> bool:
-    """Si ya está ``cancelled``, no sobrescribir con error ni éxito. Devuelve True si hay que salir."""
+    """Si ya está ``cancelled`` o borrada, no sobrescribir estado. Devuelve True si hay que salir."""
     row = supabase_client.get_collection_by_id(collection_id)
-    if row and row.get("processing_status") == "cancelled":
+    if row is None:
+        logger.info(
+            "Omitiendo %s: colección %s ya no existe.", where, collection_id
+        )
+        return True
+    if row.get("processing_status") == "cancelled":
         logger.info(
             "Omitiendo %s: colección %s cancelada por la usuaria.", where, collection_id
         )
@@ -161,21 +168,29 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
             )
             _mark_collection_error(
                 collection_id,
-                f"Ningún documento pudo extraerse correctamente "
-                f"({n_errored} errores). No se generó grafo.{failed_part}",
+                f"Ningún documento pudo extraerse ({n_errored} error(es)). "
+                f"Sube otros archivos (TXT o PDF con texto seleccionable) e intenta de nuevo."
+                f"{failed_part}",
             )
             return
         
         if n_errored > 0:
+            if _skip_if_user_cancelled(
+                collection_id, "marcar awaiting tras extracción parcial"
+            ):
+                return
             supabase_client.update_collection_processing_status(
                 collection_id,
                 "awaiting_graph_confirmation",
                 error_message=(
-                    f"{n_errored} documento(s) fallaron en la extracción "
+                    f"{n_errored} documento(s) no se extrajeron "
                     f"({', '.join(failed_doc_labels)}). "
-                    f"Puedes continuar generando el grafo con {n_extracted} documento(s)."
+                    f"El grafo se creará solo con {n_extracted} documento(s) "
+                    f"que sí pasaron la extracción."
                 ),
             )
+            return
+        if _skip_if_user_cancelled(collection_id, "iniciar grafo tras extracción"):
             return
         process_graph_collection(
             collection_id,
@@ -312,9 +327,14 @@ def process_graph_collection(collection_id: str, custom_data_model: dict | None 
         if _skip_if_user_cancelled(collection_id, "marcar graph_ready"):
             return
 
+        final_status, completion_message = _resolve_graph_completion(
+            collection_id,
+            prefer_partial=(final_status_on_success == "partial_error"),
+        )
         supabase_client.update_collection_processing_status(
             collection_id,
-            final_status_on_success,
+            final_status,
+            error_message=completion_message,
             processed_at=_now_iso(),
         )
     except ProcessingCancelled:
@@ -355,8 +375,8 @@ def _extract_texts(
     según su tipo. Devuelve (n_extracted_ok, n_errored, failed_display_names).
 
     Un fallo en un documento NO interrumpe el resto: queda con
-    status='error' y se sigue con el siguiente. PDFs escaneados quedan
-    como error hasta que se implemente OCR (PDT10-116).
+    status='error' y se sigue con el siguiente. PDFs escaneados usan
+    Cloud Vision OCR con DPI adaptativo.
 
     Si ``collection_id`` está definido, se consulta cancelación entre documentos.
     """
@@ -387,6 +407,11 @@ def _extract_texts(
     for doc in documents:
         if collection_id is not None:
             _check_cancelled(collection_id)
+
+        doc_id = str(doc["id"])
+        if doc_id in existing_text_document_ids:
+            continue
+
         try:
             if doc["file_type"] == "txt":
                 result = process_txt_document(
@@ -621,7 +646,43 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
         )
 
 
+def _resolve_graph_completion(
+    collection_id: str,
+    *,
+    prefer_partial: bool = False,
+) -> tuple[str, str]:
+    """Estado y mensaje final tras construir el grafo. Mensaje vacío limpia el anterior."""
+    row = supabase_client.get_collection_by_id(collection_id) or {}
+    text_failed = row.get("text_failed_documents") or []
+    n_ok = int(row.get("text_progress_processed") or 0)
+
+    if text_failed:
+        names = ", ".join(str(d.get("filename", "?")) for d in text_failed)
+        return (
+            "partial_error",
+            (
+                f"Grafo generado exitosamente con {n_ok} documento(s). "
+                f"{len(text_failed)} documento(s) no se incluyeron por fallo "
+                f"en extracción: {names}."
+            ),
+        )
+    if prefer_partial:
+        return ("partial_error", "")
+    return ("graph_ready", "")
+
+
 def _mark_collection_error(collection_id: str, message: str) -> None:
+    row = supabase_client.get_collection_by_id(collection_id)
+    if row is None:
+        logger.info(
+            "Colección %s ya no existe; omitimos marcar error.", collection_id
+        )
+        return
+    if row.get("processing_status") == "cancelled":
+        logger.info(
+            "Colección %s cancelada; omitimos marcar error.", collection_id
+        )
+        return
     supabase_client.update_collection_processing_status(
         collection_id,
         "error",

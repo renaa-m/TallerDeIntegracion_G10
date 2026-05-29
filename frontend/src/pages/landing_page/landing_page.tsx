@@ -1,8 +1,14 @@
 import './landing_page.css'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom' // Importar para capturar el :id_usuario y navegar
 import { useAuth0 } from '@auth0/auth0-react' // Para validar contra el usuario real
-import { Pencil, Trash2 } from 'lucide-react'
+import { Pencil, Trash2, Loader2 } from 'lucide-react'
+import {
+  getCollectionCardProgressLabel,
+  isPipelineRunning,
+  MODAL_ETAPA_KEY,
+  clearActiveCollectionStorageIfMatch,
+} from '../../lib/collection_processing'
 
 interface Collection {
   id: string
@@ -10,6 +16,11 @@ interface Collection {
   name: string
   description: string | null
   status: string
+  processing_status?: string
+  text_progress_total?: number
+  text_progress_processed?: number
+  graph_progress_total?: number
+  graph_progress_processed?: number
   created_at: string
 }
 
@@ -32,8 +43,47 @@ function LandingPage() {
 
   const [colecciones, setColecciones] = useState<Collection[]>([])
   const [cargandoColecciones, setCargandoColecciones] = useState(true)
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(() => new Set())
+  const coleccionesRef = useRef(colecciones)
+  const refreshRequestIdRef = useRef(0)
+
+  useEffect(() => {
+    coleccionesRef.current = colecciones
+  }, [colecciones])
+
+  const refreshColecciones = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const requestId = ++refreshRequestIdRef.current
+      try {
+        const token = await getAccessTokenSilently()
+        const response = await fetch(`${API_BASE}/api/collections`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        const data = await response.json()
+        if (!response.ok) {
+          throw new Error(data?.detail || 'Error al cargar colecciones')
+        }
+        if (requestId !== refreshRequestIdRef.current) return
+        setColecciones(Array.isArray(data) ? data : [])
+        if (!options?.silent) {
+          setEstado('idle')
+          setMensaje('')
+        }
+      } catch (error) {
+        console.error('Error cargando colecciones:', error)
+        if (!options?.silent) {
+          setEstado('error')
+          setMensaje('No se pudieron cargar las colecciones')
+        }
+      }
+    },
+    [getAccessTokenSilently],
+  )
 
   const handleIniciar = async () => {
+    localStorage.removeItem(MODAL_ETAPA_KEY)
     navigate(`/${id_usuario || currentUserId}/colecciones/nueva/buscador`, {
       state: { abrirModalCarga: true },
     })
@@ -85,11 +135,15 @@ function LandingPage() {
   }
 
   const eliminarColeccion = async (idColeccion: string) => {
+    if (deletingIds.has(idColeccion)) return
+
     const confirmar = window.confirm(
       '¿Seguro quieres eliminar esta colección? Esta acción no se puede deshacer',
     )
 
     if (!confirmar) return
+
+    setDeletingIds((prev) => new Set(prev).add(idColeccion))
 
     try {
       const token = await getAccessTokenSilently()
@@ -106,10 +160,18 @@ function LandingPage() {
 
       if (!response.ok) {
         const text = await response.text()
-        const data = text ? JSON.parse(text) : null
-        throw new Error(data?.detail || 'Error al eliminar la colección')
+        let detail = 'Error al eliminar la colección'
+        if (text) {
+          try {
+            detail = JSON.parse(text)?.detail ?? detail
+          } catch {
+            detail = text
+          }
+        }
+        throw new Error(detail)
       }
 
+      clearActiveCollectionStorageIfMatch(idColeccion)
       setColecciones((prev) =>
         prev.filter((coleccion) => coleccion.id !== idColeccion),
       )
@@ -117,39 +179,36 @@ function LandingPage() {
       console.error('Error eliminando colección:', error)
       setEstado('error')
       setMensaje('No se pudo eliminar la colección')
+    } finally {
+      setDeletingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(idColeccion)
+        return next
+      })
     }
   }
 
   useEffect(() => {
     const fetchColecciones = async () => {
-      try {
-        const token = await getAccessTokenSilently()
-
-        const response = await fetch(`${API_BASE}/api/collections`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data?.detail || 'Error al cargar colecciones')
-        }
-        setColecciones(Array.isArray(data) ? data : [])
-        setEstado('idle')
-        setMensaje('')
-      } catch (error) {
-        console.error('Error cargando colecciones:', error)
-        setEstado('error')
-        setMensaje('No se pudieron cargar las colecciones')
-      } finally {
-        setCargandoColecciones(false)
-      }
+      setCargandoColecciones(true)
+      await refreshColecciones()
+      setCargandoColecciones(false)
     }
 
-    fetchColecciones()
-  }, [getAccessTokenSilently])
+    void fetchColecciones()
+  }, [refreshColecciones])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      const hayProcesando = coleccionesRef.current.some((c) =>
+        isPipelineRunning(c.processing_status),
+      )
+      if (!hayProcesando) return
+      void refreshColecciones({ silent: true })
+    }, 5000)
+
+    return () => clearInterval(interval)
+  }, [refreshColecciones])
 
   const abrirColeccionExistente = (idColeccion: string) => {
     navigate(
@@ -236,16 +295,40 @@ function LandingPage() {
                       type="button"
                       className="card-icon-btn card-icon-delete"
                       aria-label="Eliminar colección"
+                      disabled={deletingIds.has(coleccion.id)}
                       onClick={(e) => {
                         e.stopPropagation()
-                        eliminarColeccion(coleccion.id)
+                        void eliminarColeccion(coleccion.id)
                       }}
                     >
-                      <Trash2 size={18} />
+                      {deletingIds.has(coleccion.id) ? (
+                        <Loader2 size={18} className="landing-delete-spin" />
+                      ) : (
+                        <Trash2 size={18} />
+                      )}
                     </button>
                   </div>
 
-                  <h3>{coleccion.name}</h3>
+                  <div className="card-body">
+                    <h3>{coleccion.name}</h3>
+                    {(() => {
+                      const progressLabel =
+                        getCollectionCardProgressLabel(coleccion)
+                      if (!progressLabel) return null
+                      return (
+                        <p className="card-progress" role="status">
+                          {isPipelineRunning(coleccion.processing_status) && (
+                            <Loader2
+                              size={14}
+                              className="card-progress-spin"
+                              aria-hidden
+                            />
+                          )}
+                          <span>{progressLabel}</span>
+                        </p>
+                      )
+                    })()}
+                  </div>
                 </div>
               ))
             )}
