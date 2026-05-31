@@ -1,5 +1,4 @@
 import json
-import subprocess
 from unittest.mock import patch
 
 import pytest
@@ -149,7 +148,7 @@ class TestProcessCollection:
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=1)
     @patch("app.services.wukong_runner.process_pdf_document")
     @patch("app.services.wukong_runner.process_txt_document")
-    def test_partial_error_cuando_algun_doc_falla(
+    def test_awaiting_graph_confirmation_cuando_algun_doc_falla(
         self,
         mock_process_txt,
         mock_process_pdf,
@@ -176,11 +175,17 @@ class TestProcessCollection:
             call.args[1]
             for call in mock_sb.update_collection_processing_status.call_args_list
         ]
-        assert statuses[-1] == "partial_error"
+        assert statuses[-1] == "awaiting_graph_confirmation"
         final_kwargs = mock_sb.update_collection_processing_status.call_args_list[
             -1
         ].kwargs
         assert "doc1.pdf" in (final_kwargs.get("error_message") or "")
+        assert "Puedes continuar" not in (final_kwargs.get("error_message") or "")
+        assert "solo con 1 documento(s)" in (final_kwargs.get("error_message") or "")
+
+        _mock_build.assert_not_called()
+        _mock_run_wukong.assert_not_called()
+        _mock_qm.assert_not_called()
 
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner.process_pdf_document")
@@ -259,6 +264,29 @@ class TestProcessCollection:
         assert statuses[-1] == "error"
         err_kwargs = mock_sb.update_collection_processing_status.call_args_list[-1].kwargs
         assert "documentos" in (err_kwargs.get("error_message") or "")
+
+
+class TestResolveGraphCompletion:
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_partial_extraction_mensaje_exito(self, mock_sb):
+        mock_sb.get_collection_by_id.return_value = {
+            "text_progress_processed": 2,
+            "text_failed_documents": [{"filename": "scan.pdf"}],
+        }
+        status, msg = wukong_runner._resolve_graph_completion(MOCK_COL_ID)
+        assert status == "partial_error"
+        assert "Grafo generado exitosamente con 2 documento(s)" in msg
+        assert "scan.pdf" in msg
+
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_sin_fallos_devuelve_graph_ready(self, mock_sb):
+        mock_sb.get_collection_by_id.return_value = {
+            "text_progress_processed": 3,
+            "text_failed_documents": [],
+        }
+        status, msg = wukong_runner._resolve_graph_completion(MOCK_COL_ID)
+        assert status == "graph_ready"
+        assert msg == ""
 
 
 class TestBuildWukongWorkdir:
@@ -378,28 +406,32 @@ def _stub_wukong_config_path(tmp_path):
 
 
 class TestRunWukong:
-    @patch("app.services.wukong_runner.subprocess.run")
-    def test_subprocess_ok_devuelve_none(self, mock_run, tmp_path):
+    @patch("app.services.wukong_runner.subprocess.Popen")
+    def test_subprocess_ok_devuelve_none(self, mock_popen, tmp_path):
         cfg = _stub_wukong_config_path(tmp_path)
-        mock_run.return_value = subprocess.CompletedProcess([], 0, "", "")
+        process = mock_popen.return_value
+        process.poll.side_effect = [0]
+        process.communicate.return_value = ("", "")
+        process.returncode = 0
         with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
             assert wukong_runner._run_wukong(tmp_path) is None
 
-    @patch("app.services.wukong_runner.subprocess.run")
-    def test_subprocess_falla_devuelve_mensaje(self, mock_run, tmp_path):
+    @patch("app.services.wukong_runner.subprocess.Popen")
+    def test_subprocess_falla_devuelve_mensaje(self, mock_popen, tmp_path):
         cfg = _stub_wukong_config_path(tmp_path)
-        mock_run.side_effect = subprocess.CalledProcessError(
-            returncode=1, cmd=[], stderr="boom"
-        )
+        process = mock_popen.return_value
+        process.poll.side_effect = [1]
+        process.communicate.return_value = ("", "boom")
+        process.returncode = 1
         with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
             result = wukong_runner._run_wukong(tmp_path)
         assert result is not None
         assert "boom" in result
 
-    @patch("app.services.wukong_runner.subprocess.run")
-    def test_wukong_no_instalado_devuelve_mensaje_claro(self, mock_run, tmp_path):
+    @patch("app.services.wukong_runner.subprocess.Popen")
+    def test_wukong_no_instalado_devuelve_mensaje_claro(self, mock_popen, tmp_path):
         cfg = _stub_wukong_config_path(tmp_path)
-        mock_run.side_effect = FileNotFoundError()
+        mock_popen.side_effect = FileNotFoundError()
         with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
             result = wukong_runner._run_wukong(tmp_path)
         assert result is not None

@@ -23,6 +23,32 @@
   overflow: hidden;
   animation: mc-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
   font-family: 'DM Sans', sans-serif;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.mc-panel.is-cancelling {
+  pointer-events: none;
+  opacity: 0.92;
+}
+
+.mc-cancelling-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(239, 68, 68, 0.1);
+  border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+  color: #b91c1c;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.mc-panel.dark .mc-cancelling-banner {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
 }
 
 .mc-panel.dark {
@@ -50,6 +76,10 @@
   align-items: flex-start;
   justify-content: space-between;
   padding: 24px 24px 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: inherit;
 }
 
 .mc-title {
@@ -241,6 +271,10 @@
 }
 
 .mc-btn-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   padding: 9px 20px;
   border-radius: 12px;
   border: 1.5px solid var(--mc-border);
@@ -368,6 +402,9 @@
   flex-direction: column;
   gap: 20px;
   padding: 8px 0;
+  max-height: calc(90vh - 120px);
+  overflow-y: auto;
+  padding-right: 6px;
 }
 
 .mc-steps {
@@ -449,6 +486,16 @@
   min-height: 20px;
 }
 
+.mc-pipeline-status.is-cancelling-status {
+  color: #b91c1c;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.mc-panel.dark .mc-pipeline-status.is-cancelling-status {
+  color: #fca5a5;
+}
+
 .mc-pipeline-error {
   display: flex;
   align-items: center;
@@ -460,6 +507,35 @@
   color: #ef4444;
   font-size: 13px;
   font-family: 'DM Sans', sans-serif;
+}
+
+.mc-pipeline-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: 'DM Sans', sans-serif;
+  line-height: 1.45;
+}
+
+.mc-pipeline-notice--warn {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  color: #b45309;
+}
+
+.mc-pipeline-notice--success {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.25);
+  color: #15803d;
+}
+
+.mc-pipeline-notice--error {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
 }
 
 .mc-processing-note {
@@ -503,4 +579,114 @@
 }
 .mc-panel.dark .mc-pipeline-status {
   color: var(--text-2, #8394b4);
+}
+
+.mc-progress-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.mc-progress-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  padding: 14px;
+  background: #ffffff;
+}
+
+.mc-panel.dark .mc-progress-card {
+  border-color: #374151;
+  background: #111827;
+}
+
+.mc-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.mc-progress-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.mc-panel.dark .mc-progress-bar {
+  background: #374151;
+}
+
+.mc-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #2563eb;
+  transition: width 0.3s ease;
+}
+
+.mc-progress-summary {
+  margin: 10px 0 0;
+  font-size: 0.86rem;
+  color: #4b5563;
+}
+
+.mc-panel.dark .mc-progress-summary {
+  color: #d1d5db;
+}
+
+.mc-progress-errors {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.84rem;
+}
+
+.mc-progress-errors {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 0.84rem;
+}
+
+.mc-progress-errors-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.mc-progress-errors-header span {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.mc-progress-errors-list {
+  max-height: 140px;
+  overflow-y: auto;
+  margin: 0;
+  padding-left: 18px;
+  padding-right: 6px;
+}
+
+.mc-progress-errors-list li {
+  margin-top: 6px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.mc-panel.dark .mc-progress-errors {
+  background: rgba(127, 29, 29, 0.35);
+  color: #fecaca;
 }

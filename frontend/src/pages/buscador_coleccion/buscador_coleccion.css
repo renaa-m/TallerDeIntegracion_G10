@@ -1331,6 +1331,80 @@
   color: var(--text-1);
 }
 
+/* ── BANNER DE PROCESAMIENTO EN BACKGROUND ─────────────────────────────────── */
+.bc-processing-banner {
+  flex-direction: column;
+  align-items: stretch;
+  cursor: pointer;
+}
+
+.bc-processing-banner-main {
+  width: 100%;
+  align-items: flex-start;
+}
+
+.bc-processing-banner-text {
+  flex: 1;
+  gap: 6px;
+}
+
+.bc-processing-banner-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.bc-processing-banner-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bc-processing-banner-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.35s ease;
+  min-width: 0;
+}
+
+.bc-processing-banner-track.is-indeterminate .bc-processing-banner-fill {
+  width: 35% !important;
+  animation: bc-processing-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes bc-processing-indeterminate {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+.bc-processing-banner-percent {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  white-space: nowrap;
+  min-width: 88px;
+  text-align: right;
+}
+
+.bc-processing-banner-action {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.bc-pending-graph-banner {
+  border-left-color: var(--accent);
+}
+
 /* Animación de entrada */
 @keyframes bc-slide-down {
   from {

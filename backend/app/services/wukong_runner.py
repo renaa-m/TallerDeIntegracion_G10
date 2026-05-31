@@ -52,14 +52,21 @@ class ProcessingCancelled(Exception):
 
 def _check_cancelled(collection_id: str) -> None:
     row = supabase_client.get_collection_by_id(collection_id)
-    if row and row.get("processing_status") == "cancelled":
+    if row is None:
+        raise ProcessingCancelled()
+    if row.get("processing_status") == "cancelled":
         raise ProcessingCancelled()
 
 
 def _skip_if_user_cancelled(collection_id: str, where: str) -> bool:
-    """Si ya está ``cancelled``, no sobrescribir con error ni éxito. Devuelve True si hay que salir."""
+    """Si ya está ``cancelled`` o borrada, no sobrescribir estado. Devuelve True si hay que salir."""
     row = supabase_client.get_collection_by_id(collection_id)
-    if row and row.get("processing_status") == "cancelled":
+    if row is None:
+        logger.info(
+            "Omitiendo %s: colección %s ya no existe.", where, collection_id
+        )
+        return True
+    if row.get("processing_status") == "cancelled":
         logger.info(
             "Omitiendo %s: colección %s cancelada por la usuaria.", where, collection_id
         )
@@ -161,11 +168,65 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
             )
             _mark_collection_error(
                 collection_id,
-                f"Ningún documento pudo extraerse correctamente "
-                f"({n_errored} errores). No se generó grafo.{failed_part}",
+                f"Ningún documento pudo extraerse ({n_errored} error(es)). "
+                f"Sube otros archivos (TXT o PDF con texto seleccionable) e intenta de nuevo."
+                f"{failed_part}",
             )
             return
+        
+        if n_errored > 0:
+            if _skip_if_user_cancelled(
+                collection_id, "marcar awaiting tras extracción parcial"
+            ):
+                return
+            supabase_client.update_collection_processing_status(
+                collection_id,
+                "awaiting_graph_confirmation",
+                error_message=(
+                    f"{n_errored} documento(s) no se extrajeron "
+                    f"({', '.join(failed_doc_labels)}). "
+                    f"El grafo se creará solo con {n_extracted} documento(s) "
+                    f"que sí pasaron la extracción."
+                ),
+            )
+            return
+        if _skip_if_user_cancelled(collection_id, "iniciar grafo tras extracción"):
+            return
+        process_graph_collection(
+            collection_id,
+            custom_data_model=custom_data_model,
+            final_status_on_success="graph_ready",
+        )
+        return
 
+    except ProcessingCancelled:
+        logger.info("Procesamiento cancelado (colección %s)", collection_id)
+        return
+    except Exception as exc:
+        logger.exception("Error inesperado procesando colección %s", collection_id)
+        if not _skip_if_user_cancelled(collection_id, "error inesperado"):
+            _mark_collection_error(
+                collection_id,
+                f"Error inesperado: {type(exc).__name__}: {exc}",
+            )
+        
+    
+def process_graph_collection(collection_id: str, custom_data_model: dict | None = None,
+    final_status_on_success: str = "graph_ready",) -> None:
+    try:
+        collection = supabase_client.get_collection_by_id(collection_id)
+        if collection is None:
+            logger.error("Colección %s no encontrada", collection_id)
+            return
+
+        rows = supabase_client.get_document_texts_by_collection(collection_id)
+        if not rows:
+            _mark_collection_error(
+                collection_id,
+                "No hay textos extraídos para construir el grafo.",
+            )
+            return
+        
         try:
             _check_cancelled(collection_id)
         except ProcessingCancelled:
@@ -174,6 +235,12 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
 
         supabase_client.update_collection_processing_status(
             collection_id, "processing_graph"
+        )
+        supabase_client.update_collection_progress(
+            collection_id=collection_id,
+            graph_progress_total=1,
+            graph_progress_processed=0,
+            graph_failed_documents=[],
         )
 
         with tempfile.TemporaryDirectory(prefix=f"wukong-{collection_id}-") as tmp:
@@ -186,13 +253,27 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
                 logger.info("Cancelación antes de lanzar Wukong: %s", collection_id)
                 return
 
-            wukong_error = _run_wukong(workdir) #con al carpeta temporal lista, corro wukong como subprocess.
+            wukong_error = _run_wukong(workdir, collection_id=collection_id) #con al carpeta temporal lista, corro wukong como subprocess.
             _persist_wukong_artifacts(workdir, collection_id, wukong_ok=wukong_error is None) #si wukong terminó OK, copiamos el workdir a disco para inspección local (.qm, textos, etc.).
             
+            if wukong_error is None:
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    graph_progress_processed=1,
+                )
             
             if wukong_error is not None:
                 if _skip_if_user_cancelled(collection_id, "error de Wukong tras cancelación"):
                     return
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    graph_failed_documents=[
+                        {
+                            "filename": "Wukong",
+                            "reason": wukong_error,
+                        }
+                    ],
+                )
                 _mark_collection_error(collection_id, wukong_error)
                 return
 
@@ -246,33 +327,36 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
         if _skip_if_user_cancelled(collection_id, "marcar graph_ready"):
             return
 
-        final_status = "partial_error" if n_errored > 0 else "graph_ready"
-        final_message = (
-            (
-                f"{n_errored} documento(s) fallaron en la extracción "
-                f"({', '.join(failed_doc_labels)}). "
-                f"Grafo generado con {n_extracted} documento(s)."
-            )
-            if n_errored > 0
-            else None
+        final_status, completion_message = _resolve_graph_completion(
+            collection_id,
+            prefer_partial=(final_status_on_success == "partial_error"),
         )
         supabase_client.update_collection_processing_status(
             collection_id,
             final_status,
-            error_message=final_message,
+            error_message=completion_message,
             processed_at=_now_iso(),
         )
-
     except ProcessingCancelled:
-        logger.info("Procesamiento cancelado (colección %s)", collection_id)
+        logger.info("Construcción de grafo cancelada colección %s", collection_id)
         return
+
     except Exception as exc:
-        logger.exception("Error inesperado procesando colección %s", collection_id)
-        if not _skip_if_user_cancelled(collection_id, "error inesperado"):
+        logger.exception(
+            "Error inesperado construyendo grafo %s",
+            collection_id,
+        )
+
+        if not _skip_if_user_cancelled(
+            collection_id,
+            "error inesperado grafo",
+        ):
             _mark_collection_error(
                 collection_id,
                 f"Error inesperado: {type(exc).__name__}: {exc}",
             )
+    return
+
 
 
 def _doc_display_name(doc: dict) -> str:
@@ -291,18 +375,43 @@ def _extract_texts(
     según su tipo. Devuelve (n_extracted_ok, n_errored, failed_display_names).
 
     Un fallo en un documento NO interrumpe el resto: queda con
-    status='error' y se sigue con el siguiente. PDFs escaneados quedan
-    como error hasta que se implemente OCR (PDT10-116).
+    status='error' y se sigue con el siguiente. PDFs escaneados usan
+    Cloud Vision OCR con DPI adaptativo.
 
     Si ``collection_id`` está definido, se consulta cancelación entre documentos.
     """
     n_extracted = 0
     n_errored = 0
     failed_doc_labels: list[str] = []
+    total_docs = len(documents)
+
+    existing_text_document_ids: set[str] = set()
+    if collection_id is not None:
+        existing_text_rows = supabase_client.get_document_texts_by_collection(
+            collection_id,
+        )
+        existing_text_document_ids = {
+            str(row["document_id"])
+            for row in existing_text_rows
+        }
+
+        supabase_client.update_collection_progress(
+            collection_id=collection_id,
+            text_progress_total=total_docs,
+            text_progress_processed=len(existing_text_document_ids),
+            text_failed_documents=[],
+        )
+
+    n_extracted = len(existing_text_document_ids)
 
     for doc in documents:
         if collection_id is not None:
             _check_cancelled(collection_id)
+
+        doc_id = str(doc["id"])
+        if doc_id in existing_text_document_ids:
+            continue
+
         try:
             if doc["file_type"] == "txt":
                 result = process_txt_document(
@@ -323,12 +432,33 @@ def _extract_texts(
 
             if result.get("status") == "ok":
                 n_extracted += 1
+                if collection_id is not None:
+                    supabase_client.update_collection_progress(
+                        collection_id=collection_id,
+                        text_progress_processed=n_extracted,
+                    )
             else:
                 n_errored += 1
                 failed_doc_labels.append(_doc_display_name(doc))
+                if collection_id is not None:
+                    supabase_client.update_collection_progress(
+                        collection_id=collection_id,
+                        text_failed_documents=[
+                            {
+                                "filename": label,
+                                "reason": "Error de extracción",
+                            }
+                            for label in failed_doc_labels
+                        ],
+                    )
 
         except Exception as exc:
             logger.exception("Falló extracción del documento %s", doc["id"])
+            if collection_id is not None and _skip_if_user_cancelled(
+                collection_id,
+                "actualizar error de documento tras cancelación",
+            ):
+                return n_extracted, n_errored, failed_doc_labels
             supabase_client.update_document_status(
                 document_id=doc["id"],
                 user_id=doc["user_id"],
@@ -337,6 +467,18 @@ def _extract_texts(
             )
             n_errored += 1
             failed_doc_labels.append(_doc_display_name(doc))
+            if collection_id is not None:
+                supabase_client.update_collection_progress(
+                    collection_id=collection_id,
+                    text_progress_processed=n_extracted,
+                    text_failed_documents=[
+                        {
+                            "filename": label,
+                            "reason": "Error de extracción",
+                        }
+                        for label in failed_doc_labels
+                    ],
+                )
 
     return n_extracted, n_errored, failed_doc_labels
 
@@ -423,7 +565,7 @@ def _persist_wukong_artifacts(
         )
 
 
-def _run_wukong(workdir: Path, timeout_seconds: int = 3600) -> str | None:
+def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds: int = 3600) -> str | None:
     """
     Pipeline 2. Ejecuta Wukong sobre la carpeta de trabajo.
 
@@ -432,22 +574,62 @@ def _run_wukong(workdir: Path, timeout_seconds: int = 3600) -> str | None:
     if not WUKONG_DEFAULT_CONFIG.is_file():
         return f"No existe la config de Wukong: {WUKONG_DEFAULT_CONFIG}"
     try:
-        subprocess.run(
+        #subprocess.run(
             # Arma el comando equivalente a:
             # <tu python> -m wukong_engine <workdir> --config <ruta al default.toml>
+            #[
+                #_wukong_python_executable(),
+                #"-m", # ejecuta el módulo wukong_engine
+                #"wukong_engine", # el nombre del módulo que contiene la función main() de Wukong
+                #str(workdir), # la ruta al workdir de Wukong
+                #"--config", # la ruta al archivo de configuración de Wukong
+                #str(WUKONG_DEFAULT_CONFIG), # la ruta al archivo de configuración de Wukong
+            #],
+            #check=True, # para que el proceso termine correctamente
+            #capture_output=True, # para capturar la salida de Wukong
+            #text=True, # para que el resultado sea un string legible
+            #timeout=timeout_seconds, # para que no se quede corriendo eternamente
+        #)
+        process = subprocess.Popen(
             [
                 _wukong_python_executable(),
-                "-m", # ejecuta el módulo wukong_engine
-                "wukong_engine", # el nombre del módulo que contiene la función main() de Wukong
-                str(workdir), # la ruta al workdir de Wukong
-                "--config", # la ruta al archivo de configuración de Wukong
-                str(WUKONG_DEFAULT_CONFIG), # la ruta al archivo de configuración de Wukong
+                "-m",
+                "wukong_engine",
+                str(workdir),
+                "--config",
+                str(WUKONG_DEFAULT_CONFIG),
             ],
-            check=True, # para que el proceso termine correctamente
-            capture_output=True, # para capturar la salida de Wukong
-            text=True, # para que el resultado sea un string legible
-            timeout=timeout_seconds, # para que no se quede corriendo eternamente
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
         )
+
+        started_at = datetime.now(timezone.utc)
+
+        while process.poll() is None:
+            if collection_id is not None and _skip_if_user_cancelled(collection_id, "detener subprocess Wukong"):
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                raise ProcessingCancelled()
+
+            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+            if elapsed > timeout_seconds:
+                process.kill()
+                process.wait()
+                return f"Wukong superó el timeout de {timeout_seconds}s."
+
+            import time
+            time.sleep(1)
+
+        stdout, stderr = process.communicate()
+
+        if process.returncode != 0:
+            err = (stderr or stdout or "").strip()
+            return f"Wukong falló (exit {process.returncode}): {err[:500]}"
         return None
     except subprocess.CalledProcessError as exc:
         # el proceso Wukong sí arrancó y terminó, pero con código de salida distinto de 0, Suele ser un bug en datos, config, API key del LLM, etc.
@@ -464,7 +646,43 @@ def _run_wukong(workdir: Path, timeout_seconds: int = 3600) -> str | None:
         )
 
 
+def _resolve_graph_completion(
+    collection_id: str,
+    *,
+    prefer_partial: bool = False,
+) -> tuple[str, str]:
+    """Estado y mensaje final tras construir el grafo. Mensaje vacío limpia el anterior."""
+    row = supabase_client.get_collection_by_id(collection_id) or {}
+    text_failed = row.get("text_failed_documents") or []
+    n_ok = int(row.get("text_progress_processed") or 0)
+
+    if text_failed:
+        names = ", ".join(str(d.get("filename", "?")) for d in text_failed)
+        return (
+            "partial_error",
+            (
+                f"Grafo generado exitosamente con {n_ok} documento(s). "
+                f"{len(text_failed)} documento(s) no se incluyeron por fallo "
+                f"en extracción: {names}."
+            ),
+        )
+    if prefer_partial:
+        return ("partial_error", "")
+    return ("graph_ready", "")
+
+
 def _mark_collection_error(collection_id: str, message: str) -> None:
+    row = supabase_client.get_collection_by_id(collection_id)
+    if row is None:
+        logger.info(
+            "Colección %s ya no existe; omitimos marcar error.", collection_id
+        )
+        return
+    if row.get("processing_status") == "cancelled":
+        logger.info(
+            "Colección %s cancelada; omitimos marcar error.", collection_id
+        )
+        return
     supabase_client.update_collection_processing_status(
         collection_id,
         "error",

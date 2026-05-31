@@ -34,3 +34,5 @@ class SearchResult(BaseModel):
 class SearchResponse(BaseModel):
     resultados: list[SearchResult]
     total: int
+    ready: bool = True
+    message: str | None = None

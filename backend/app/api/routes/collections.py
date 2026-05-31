@@ -6,7 +6,8 @@ from pydantic import BaseModel
 from app.middleware.auth import get_current_user
 from app.models.document import CollectionCreate, CollectionResponse
 from app.schemas.graph import DataModelUpdate
-from app.services import supabase_client, wukong_runner, graph_transformer
+from app.services import supabase_client, graph_transformer, processing_queue
+from app.services.processing_queue import ProcessingSlotBusyError
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
@@ -78,6 +79,16 @@ async def delete_collection(
     user_id: str = Depends(get_current_user),
 ):
     try:
+        collection = supabase_client.get_collection(
+            collection_id=str(collection_id),
+            user_id=user_id,
+        )
+        if collection is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Colección no encontrada.",
+            )
+
         deleted = supabase_client.delete_collection(
             collection_id=str(collection_id),
             user_id=user_id,
@@ -131,9 +142,61 @@ async def update_collection(
         ) from exc
 
 
-# Estados que indican que una colección ya está siendo procesada
-# (no se permite re-disparar el botón "Generar Grafo" mientras esté en estos).
-_PROCESSING_STATUSES = {"processing_text", "processing_graph"}
+# Estados en los que esta colección ya tiene un job en curso.
+_ACTIVE_PIPELINE_STATUSES = {"processing_text", "processing_graph"}
+# Worker en background: al borrar durante extracción/grafo, el job activo termina solo.
+_GRAPH_AVAILABLE_STATUSES = frozenset({"graph_ready", "partial_error"})
+
+
+def _graph_unavailable_detail(status: str) -> str:
+    """Mensaje legible cuando el grafo aún no se puede servir."""
+    messages = {
+        "idle": (
+            "Aún no hay grafo para visualizar. "
+            "Genera el grafo desde la colección cuando los documentos estén cargados."
+        ),
+        "processing_text": (
+            "El grafo se está generando (extracción de texto en curso). "
+            "Vuelve a intentarlo en unos momentos."
+        ),
+        "processing_graph": (
+            "El grafo se está generando. Vuelve a intentarlo en unos momentos."
+        ),
+        "awaiting_graph_confirmation": (
+            "El grafo aún no está listo. "
+            "Confirma la construcción del grafo desde la colección para visualizarlo."
+        ),
+        "cancelled": (
+            "No hay grafo para visualizar. Genera el grafo de nuevo desde la colección."
+        ),
+        "error": (
+            "No se pudo generar el grafo. Revisa el estado de la colección e inténtalo de nuevo."
+        ),
+    }
+    return messages.get(
+        status,
+        "El grafo aún no está disponible para visualizar.",
+    )
+
+
+def _normalize_legacy_queued(collection_id: str, status: str) -> str:
+    """Estado ``queued`` ya no se usa; restablecer a idle."""
+    if status != "queued":
+        return status
+    supabase_client.clear_collection_queue_metadata(str(collection_id))
+    supabase_client.update_collection_processing_status(
+        str(collection_id),
+        "idle",
+        error_message="",
+    )
+    return "idle"
+
+
+def _slot_busy_http_exception(exc: ProcessingSlotBusyError) -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail=processing_queue.busy_detail_message(exc.blocking),
+    )
 
 
 class ProcessCollectionResponse(BaseModel):
@@ -177,7 +240,20 @@ async def cancel_process_collection(
             processing_status="cancelled",
             detail="La colección ya estaba cancelada.",
         )
-    if st not in _PROCESSING_STATUSES:
+    if st == "queued":
+        supabase_client.clear_collection_queue_metadata(str(collection_id))
+        supabase_client.update_collection_processing_status(
+            str(collection_id),
+            "idle",
+            error_message="",
+        )
+        return CancelProcessResponse(
+            collection_id=collection_id,
+            processing_status="idle",
+            detail="Estado de cola obsoleto; colección restablecida.",
+        )
+
+    if st not in _ACTIVE_PIPELINE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -189,7 +265,7 @@ async def cancel_process_collection(
     supabase_client.update_collection_processing_status(
         str(collection_id),
         "cancelled",
-        error_message="Procesamiento cancelado por la usuaria.",
+        error_message="Procesamiento cancelado.",
         processed_at=datetime.now(timezone.utc).isoformat(),
     )
     return CancelProcessResponse(
@@ -231,13 +307,25 @@ async def process_collection(
     if collection is None:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
-    current_status = collection.get("processing_status", "idle")
-    if current_status in _PROCESSING_STATUSES:
+    current_status = _normalize_legacy_queued(
+        str(collection_id),
+        collection.get("processing_status", "idle"),
+    )
+    if current_status in _ACTIVE_PIPELINE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=(
                 f"La colección ya está siendo procesada "
                 f"(estado actual: {current_status})."
+            ),
+        )
+    if current_status == "awaiting_graph_confirmation":
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "La extracción terminó con errores parciales. "
+                "Use POST /process/continue-graph para construir el grafo "
+                "con los documentos que sí se extrajeron."
             ),
         )
 
@@ -251,20 +339,21 @@ async def process_collection(
             detail="La colección no tiene documentos para procesar.",
         )
 
-    # Marca el estado inmediatamente para que el front lo vea en el siguiente
-    # poll, sin tener que esperar a que arranque la BackgroundTask.
-    supabase_client.update_collection_processing_status(
-        str(collection_id), "processing_text"
-    )
-
-    background_tasks.add_task(wukong_runner.process_collection, str(collection_id))
+    try:
+        status = processing_queue.request_process(
+            str(collection_id),
+            user_id,
+            background_tasks,
+        )
+    except ProcessingSlotBusyError as exc:
+        raise _slot_busy_http_exception(exc) from exc
 
     return ProcessCollectionResponse(
         collection_id=collection_id,
-        processing_status="processing_text",
+        processing_status=status,
         detail=(
-            "Procesamiento encolado. "
-            "Hacé GET /api/collections/{id} para seguir el avance."
+            "Procesamiento iniciado. Consulte GET /api/collections/{id} "
+            "para seguir el avance."
         ),
     )
 
@@ -274,6 +363,48 @@ class GenerateGraphResponse(BaseModel):
     processing_status: str
     detail: str
 
+@router.post(
+    "/{collection_id}/process/continue-graph",
+    response_model=ProcessCollectionResponse,
+    status_code=202,
+)
+async def continue_graph_collection(
+    collection_id: UUID,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
+    collection = supabase_client.get_collection(
+        collection_id=str(collection_id),
+        user_id=user_id,
+    )
+
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Colección no encontrada.")
+
+    current_status = _normalize_legacy_queued(
+        str(collection_id),
+        collection.get("processing_status", "idle"),
+    )
+    if current_status != "awaiting_graph_confirmation":
+        raise HTTPException(
+            status_code=409,
+            detail="La colección no está esperando confirmación para grafo.",
+        )
+
+    try:
+        status = processing_queue.request_continue_graph(
+            str(collection_id),
+            user_id,
+            background_tasks,
+        )
+    except ProcessingSlotBusyError as exc:
+        raise _slot_busy_http_exception(exc) from exc
+
+    return ProcessCollectionResponse(
+        collection_id=collection_id,
+        processing_status=status,
+        detail="Construcción de grafo iniciada.",
+    )
 
 @router.post(
     "/{collection_id}/generate-graph",
@@ -302,8 +433,11 @@ async def generate_graph(
     if collection is None:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
-    current_status = collection.get("processing_status", "idle")
-    if current_status in _PROCESSING_STATUSES:
+    current_status = _normalize_legacy_queued(
+        str(collection_id),
+        collection.get("processing_status", "idle"),
+    )
+    if current_status in _ACTIVE_PIPELINE_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -322,22 +456,23 @@ async def generate_graph(
             detail="La colección no tiene documentos para procesar.",
         )
 
-    supabase_client.update_collection_processing_status(
-        str(collection_id), "processing_text"
-    )
-
-    background_tasks.add_task(
-        wukong_runner.process_collection,
-        str(collection_id),
-        body.model_dump(exclude_none=True),
-    )
+    custom_model = body.model_dump(exclude_none=True)
+    try:
+        status = processing_queue.request_process(
+            str(collection_id),
+            user_id,
+            background_tasks,
+            custom_data_model=custom_model,
+        )
+    except ProcessingSlotBusyError as exc:
+        raise _slot_busy_http_exception(exc) from exc
 
     return GenerateGraphResponse(
         collection_id=collection_id,
-        processing_status="processing_text",
+        processing_status=status,
         detail=(
-            "Procesamiento con modelo personalizado encolado. "
-            "Hacé GET /api/collections/{id} para seguir el avance."
+            "Procesamiento con modelo personalizado iniciado. "
+            "Consulte GET /api/collections/{id} para seguir el avance."
         ),
     )
 
@@ -352,6 +487,9 @@ class CytoscapeElements(BaseModel):
 
 
 class CytoscapeGraph(BaseModel):
+    ready: bool = True
+    processing_status: str = "graph_ready"
+    message: str | None = None
     elements: CytoscapeElements
 
 
@@ -369,10 +507,12 @@ async def get_collection_graph(
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
     status = collection.get("processing_status", "idle")
-    if status != "graph_ready":
-        raise HTTPException(
-            status_code=409,
-            detail=f"El grafo no está disponible (estado actual: {status}).",
+    if status not in _GRAPH_AVAILABLE_STATUSES:
+        return CytoscapeGraph(
+            ready=False,
+            processing_status=status,
+            message=_graph_unavailable_detail(status),
+            elements=CytoscapeElements(nodes=[], edges=[]),
         )
 
     try:
@@ -387,4 +527,9 @@ async def get_collection_graph(
         ) from exc
 
     cytoscape = graph_transformer.qm_to_cytoscape(qm_bytes.decode("utf-8"))
-    return CytoscapeGraph(**cytoscape)
+    return CytoscapeGraph(
+        ready=True,
+        processing_status=status,
+        message=None,
+        elements=CytoscapeElements(**cytoscape["elements"]),
+    )

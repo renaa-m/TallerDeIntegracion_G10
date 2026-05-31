@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     max_upload_retries: int = 3
     upload_retry_delay_seconds: float = 1.0
 
+    # OCR (Cloud Vision): DPI base y elevado para páginas complejas / reintento
+    ocr_dpi_default: int = 300
+    ocr_dpi_complex: int = 400
+    ocr_language_hints: str = "es,en"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
