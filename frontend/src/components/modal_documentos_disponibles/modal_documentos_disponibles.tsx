@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, FileText, Loader2 } from 'lucide-react'
+import { X, FileText, Loader2, ExternalLink } from 'lucide-react'
 import './modal_documentos_disponibles.css'
 
 interface Fuente {
@@ -7,6 +7,7 @@ interface Fuente {
   filename: string
   file_type: string
   status: string
+  url?: string
 }
 
 interface ModalProps {
@@ -16,19 +17,22 @@ interface ModalProps {
   darkMode?: boolean
 }
 
-const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
-  isOpen,
-  fuentes,
-  onClose,
-  darkMode,
-}) => {
+const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onClose, darkMode }) => {
   if (!isOpen) return null
 
+  // Función simplificada usando el enlace directo
+  const handleAccessDocument = (e: React.MouseEvent, url?: string) => {
+    e.stopPropagation() // Evita que se dispare el onClick de la tarjeta
+
+    if (url) {
+      window.open(url, '_blank')
+    } else {
+      console.error('El documento no tiene un enlace disponible')
+    }
+  }
+
   return (
-    <div
-      className={`mdd-overlay ${darkMode ? 'bc-dark' : ''}`}
-      onClick={onClose}
-    >
+    <div className={`mdd-overlay ${darkMode ? 'bc-dark' : ''}`} onClick={onClose}>
       <div className="mdd-panel" onClick={(e) => e.stopPropagation()}>
         <header className="mdd-header">
           <div className="mdd-header-left">
@@ -48,10 +52,10 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
               <div className="mdd-empty">No hay documentos cargados.</div>
             ) : (
               fuentes.map((f) => (
-                <div
-                  key={f.id}
-                  className="mdd-card"
-                  onClick={() => console.log('Documento seleccionado:', f.id)} // Aquí puedes añadir la lógica de selección
+                <div 
+                  key={f.id} 
+                  className="mdd-card" 
+                  onClick={() => console.log('Seleccionado:', f.id)}
                 >
                   <div className="mdd-card-icon">
                     {f.status === 'processing' ? (
@@ -60,10 +64,22 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
                       <FileText size={20} />
                     )}
                   </div>
+                  
                   <div className="mdd-card-content">
                     <span className="mdd-card-title">{f.filename}</span>
-                    <div className="mdd-card-footer"></div>
                   </div>
+
+                  {/* BOTÓN DE ACCESO USANDO LA URL FIRMADA */}
+                  <button
+                    type="button"
+                    className="mdd-access-btn"
+                    onClick={(e) => handleAccessDocument(e, f.url)}
+                    disabled={!f.url || f.status === 'processing'}
+                    title={f.url ? "Acceder al documento" : "URL no disponible"}
+                    aria-label={f.url ? "Acceder al documento" : "URL no disponible"}
+                  >
+                    <ExternalLink size={16} />
+                  </button>
                 </div>
               ))
             )}
