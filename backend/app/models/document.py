@@ -41,10 +41,18 @@ class DocumentResponse(BaseModel):
     file_type: str
     file_size_bytes: int | None
     storage_path: str
+    url: str | None = Field(
+        default=None,
+        description="URL firmada del documento original.",
+    )
     status: str
     error_message: str | None
     sha256_hash: str | None = None
     created_at: datetime
+
+
+class DocumentSignedUrlResponse(BaseModel):
+    url: str
 
 
 class DocumentStatusUpdate(BaseModel):
