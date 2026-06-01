@@ -462,10 +462,12 @@ describe('BuscadorColeccion', () => {
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /filtrar/i }))
+    fireEvent.click(
+      screen.getByRole('button', { name: /criterios de búsqueda/i }),
+    )
 
     expect(
-      screen.getByText('Próximamente: Filtros Avanzados'),
+      screen.getByText('Próximamente: Criterios de Búsqueda'),
     ).toBeInTheDocument()
 
     const closeButton = document.querySelector(
@@ -474,7 +476,7 @@ describe('BuscadorColeccion', () => {
     fireEvent.click(closeButton)
 
     expect(
-      screen.queryByText('Próximamente: Filtros Avanzados'),
+      screen.queryByText('Próximamente: Criterios de Búsqueda'),
     ).not.toBeInTheDocument()
   })
 

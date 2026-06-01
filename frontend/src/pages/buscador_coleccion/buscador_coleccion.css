@@ -1416,3 +1416,14 @@
     transform: translateY(0);
   }
 }
+
+.bc-search-stats {
+  padding: 0 24px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #70757a; /* El color gris exacto de Google Search */
+}
+
+.bc-dark .bc-search-stats {
+  color: #9aa0a6; /* Variación gris claro para el modo oscuro */
+}

@@ -106,6 +106,7 @@ const BuscadorColeccion = () => {
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState('')
   const [loading, setLoading] = useState(false)
+  const [searchTime, setSearchTime] = useState<number>(0) // <-- NUEVO ESTADO
 
   const queryFromUrl = searchParams.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(queryFromUrl)
@@ -524,6 +525,8 @@ const BuscadorColeccion = () => {
             : null,
       }
 
+      const startTime = performance.now() // <-- CAPTURAR TIEMPO INICIAL
+
       const res = await fetch(`${API_URL}/api/search`, {
         method: 'POST',
         headers: {
@@ -532,6 +535,11 @@ const BuscadorColeccion = () => {
         },
         body: JSON.stringify(searchRequest),
       })
+
+      const endTime = performance.now() // <-- CAPTURAR TIEMPO FINAL
+      const durationSeconds = parseFloat(
+        ((endTime - startTime) / 1000).toFixed(2),
+      )
 
       if (res.ok) {
         const data = await res.json()
@@ -543,12 +551,15 @@ const BuscadorColeccion = () => {
           )
         } else {
           setResultados(data.resultados || [])
+          setSearchTime(durationSeconds) // <-- GUARDAR DURACIÓN EN SEGUNDOS
         }
       } else {
         setResultados([])
+        setSearchTime(0)
       }
     } catch (e) {
       console.error('Error en búsqueda semántica:', e)
+      setSearchTime(0)
     } finally {
       setLoading(false)
     }
@@ -874,7 +885,8 @@ const BuscadorColeccion = () => {
                     className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
                     onClick={() => setFiltroOpen(!filtroOpen)}
                   >
-                    <SlidersHorizontal size={14} /> <span>Filtrar</span>
+                    <SlidersHorizontal size={14} />{' '}
+                    <span>Criterios de Búsqueda</span>
                   </button>
                 </div>
 
@@ -889,7 +901,7 @@ const BuscadorColeccion = () => {
                       </div>
                       <div className="bc-alert-text">
                         <span className="bc-alert-title">
-                          Próximamente: Filtros Avanzados
+                          Próximamente: Criterios de Búsqueda
                         </span>
                       </div>
                     </div>
@@ -910,65 +922,74 @@ const BuscadorColeccion = () => {
                     <p>Consultando el grafo de conocimiento...</p>
                   </div>
                 ) : resultados.length > 0 ? (
-                  <div className="bc-results-list">
-                    {resultados.map((r, idx) => (
-                      <article key={idx} className="bc-result-card">
-                        <div className="bc-card-header">
-                          <div className="bc-header-info">
-                            <div className="bc-title-row">
-                              <FileText size={14} className="bc-doc-icon" />
-                              <h3 className="bc-result-title">{r.titulo}</h3>
+                  <>
+                    <div className="bc-results-meta">
+                      <span className="bc-results-count">
+                        {resultados.length} resultado
+                        {resultados.length !== 1 ? 's' : ''} en{' '}
+                        {searchTime > 0 ? `${searchTime}s` : ''}
+                      </span>
+                    </div>
+                    <div className="bc-results-list">
+                      {resultados.map((r, idx) => (
+                        <article key={idx} className="bc-result-card">
+                          <div className="bc-card-header">
+                            <div className="bc-header-info">
+                              <div className="bc-title-row">
+                                <FileText size={14} className="bc-doc-icon" />
+                                <h3 className="bc-result-title">{r.titulo}</h3>
+                              </div>
+
+                              <div
+                                className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
+                              >
+                                <CheckCircle2
+                                  size={12}
+                                  className="bc-status-icon"
+                                />
+                                <span className="bc-score-value">
+                                  {(r.score * 100).toFixed(0)}% de coincidencia
+                                </span>
+                              </div>
                             </div>
 
-                            <div
-                              className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
-                            >
-                              <CheckCircle2
-                                size={12}
-                                className="bc-status-icon"
+                            {r.enlace && (
+                              <a
+                                href={r.enlace}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="bc-external-btn"
+                              >
+                                <ExternalLink size={13} />
+                                <span>Documento</span>
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="bc-card-body">
+                            <p className="bc-result-excerpt">
+                              <Highlight
+                                text={r.fragmento}
+                                query={busquedaEnviada}
                               />
-                              <span className="bc-score-value">
-                                {(r.score * 100).toFixed(0)}% de coincidencia
-                              </span>
-                            </div>
+                            </p>
                           </div>
 
-                          {r.enlace && (
-                            <a
-                              href={r.enlace}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="bc-external-btn"
-                            >
-                              <ExternalLink size={13} />
-                              <span>Documento</span>
-                            </a>
-                          )}
-                        </div>
-
-                        <div className="bc-card-body">
-                          <p className="bc-result-excerpt">
-                            <Highlight
-                              text={r.fragmento}
-                              query={busquedaEnviada}
-                            />
-                          </p>
-                        </div>
-
-                        <div className="bc-card-footer">
-                          <div className="bc-footer-tag">
-                            <Network size={12} />
-                            <span>Grafo IMFD</span>
-                          </div>
-                          {r.pagina && (
+                          <div className="bc-card-footer">
                             <div className="bc-footer-tag">
-                              <span>Página {r.pagina}</span>
+                              <Network size={12} />
+                              <span>Grafo IMFD</span>
                             </div>
-                          )}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                            {r.pagina && (
+                              <div className="bc-footer-tag">
+                                <span>Página {r.pagina}</span>
+                              </div>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <div className="bc-empty">
                     <div className="bc-empty-icon">
