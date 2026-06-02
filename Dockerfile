@@ -36,6 +36,10 @@ WORKDIR /app
 
 COPY --from=backend /install /usr/local
 COPY backend/app ./app
+# Las credenciales de Cloud Vision se escriben en el runner de CI justo antes del build.
+# Se copian a /app/gcp-vision-key.json para coincidir con la ruta que main.py
+# construye a partir de GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json.
+COPY backend/gcp-vision-key.json .
 COPY --from=frontend /frontend/dist ./static
 
 EXPOSE 8080
