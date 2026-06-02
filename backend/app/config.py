@@ -57,6 +57,10 @@ OCR_SUPPORTED_LANGUAGES: frozenset[str] = frozenset(
 DEFAULT_COLLECTION_LANGUAGE = "es"
 
 
+# Mapeo de códigos BCP-47 → archivo default_data_model_<code>.json.
+# Sólo los idiomas que tienen su propio JSON se incluyen; el resto cae al fallback 'es'.
+WUKONG_DATA_MODEL_LANGUAGES: frozenset[str] = frozenset({"es", "en"})
+
 # Mapeo de códigos BCP-47 → nombres de idioma que entiende Wukong en data_model.json.
 # Wukong usa nombres completos en inglés ("spanish", "english", …).
 WUKONG_LANGUAGE_MAP: dict[str, str] = {

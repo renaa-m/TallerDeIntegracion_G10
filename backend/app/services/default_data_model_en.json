@@ -1,0 +1,179 @@
+{
+  "parameters": {
+    "role": "An expert analyst specialized in extracting structured entities from documents. Your task is to identify PERSONS (individual humans), ORGANIZATIONS (institutions, companies, parties, courts, ministries, universities, government agencies), GEOGRAPHIC PLACES (cities, districts, regions, countries, physical addresses) and EVENTS (occurrences with an associated date). Be extremely careful to distinguish Organizations from Places: an institution is NOT a place.",
+    "context": "Text documents that may mention persons, organizations, places, and relevant events.",
+    "input_language": "english",
+    "output_language": "english",
+    "included_documents": [
+      "preview"
+    ],
+    "included_entities": [
+      "Person",
+      "Organization",
+      "Place",
+      "Event"
+    ],
+    "included_relations": [
+      "WorksAt",
+      "OwnerOf",
+      "LocatedIn",
+      "Participated",
+      "Mentions"
+    ]
+  },
+  "entities": {
+    "Person": {
+      "description": "A natural person (individual human) mentioned by name in the document. Does NOT include fictional characters or generic titles without a proper name (e.g. 'the minister' alone does NOT count, but 'minister John Smith' DOES).",
+      "primary_key": "name",
+      "duplicates": "similar",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the person as it appears in the document. If only a surname is mentioned, use the surname. Must be unique.",
+          "example": "John Michael Smith",
+          "required": true
+        },
+        "role": {
+          "type": "string",
+          "description": "Most relevant title, profession or occupation of the person, if explicitly mentioned in the document. If not mentioned, omit.",
+          "example": "Director of the Internal Revenue Service"
+        }
+      }
+    },
+    "Organization": {
+      "description": "A collective entity with its own identity: companies, political parties, NGOs, ministries, prosecutors' offices, courts, universities, committees, public agencies, investment firms, banks, state bodies. It is ANY institution that acts as a collective subject, EVEN if its name mentions a place (e.g. 'Manhattan District Court' is an Organization, NOT a Place; 'University of Chicago' is an Organization, NOT a Place).",
+      "primary_key": "name",
+      "duplicates": "similar",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Official name of the organization as it appears in the document. Must be unique.",
+          "example": "Internal Revenue Service",
+          "required": true
+        },
+        "type": {
+          "type": "string",
+          "description": "General category of the organization.",
+          "options": [
+            "Company",
+            "NGO",
+            "University",
+            "GovernmentAgency",
+            "CourtOrProsecutor",
+            "PoliticalParty",
+            "Bank",
+            "Other"
+          ]
+        }
+      }
+    },
+    "Place": {
+      "description": "EXCLUSIVELY a physical geographic location: a city, district, region, country, neighborhood, street, postal address, or geographic area (e.g. 'New York', 'Manhattan', 'Northeast region', 'eastern district'). NEVER a Place: a university, court, ministry, government agency, company, party, or a building identified by its institution (those are Organization). If in doubt between Place and Organization, choose Organization.",
+      "primary_key": "name",
+      "duplicates": "similar",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Name of the geographic location as it appears in the document.",
+          "example": "Manhattan",
+          "required": true
+        },
+        "type": {
+          "type": "string",
+          "description": "Type of the place. Must be strictly geographic.",
+          "options": [
+            "City",
+            "District",
+            "Region",
+            "Country",
+            "Neighborhood",
+            "Address",
+            "Other"
+          ]
+        }
+      }
+    },
+    "Event": {
+      "description": "A concrete occurrence with an associated date (arraignments, meetings, lawsuits, announcements, newsworthy facts). The mere existence of something is NOT an event (e.g. 'Acme Corp owns a bank' is NOT an event; 'the arraignment of Smith on October 10, 2014' IS).",
+      "primary_key": "name",
+      "duplicates": "similar",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Short descriptive title of the event, 2 to 8 words. Serves as a readable identifier. Do NOT include the date in the title.",
+          "example": "Arraignment of Smith and Jones",
+          "required": true
+        },
+        "description": {
+          "type": "string",
+          "description": "Longer description of the event (1 to 3 sentences) explaining what happened.",
+          "example": "The Manhattan District Court arraigned the controlling shareholders of Acme Corp on tax evasion charges.",
+          "required": true
+        },
+        "date": {
+          "type": "string",
+          "description": "Date of the event. Format TYYYYMMDD. If day is unknown, use 01. If month is unknown, use 01. If year is unknown, omit the event entirely.",
+          "example": "T20141010",
+          "required": true
+        }
+      }
+    }
+  },
+  "relations": {
+    "WorksAt": {
+      "origin_target": {
+        "Person": [
+          "Organization"
+        ]
+      },
+      "description": "A person holds a professional or employment position within an organization.",
+      "duplicates": "similar",
+      "properties": {
+        "position": {
+          "type": "string",
+          "description": "Specific title or role the person holds in the organization, if mentioned.",
+          "example": "Chief Prosecutor"
+        }
+      }
+    },
+    "OwnerOf": {
+      "origin_target": {
+        "Person": [
+          "Organization"
+        ]
+      },
+      "description": "A person is the owner, controller, proprietor, or majority shareholder of an organization.",
+      "force_unique": true
+    },
+    "LocatedIn": {
+      "origin_target": {
+        "Organization": [
+          "Place"
+        ]
+      },
+      "description": "An organization has its headquarters, offices, or domicile in a specific geographic place.",
+      "force_unique": true
+    },
+    "Participated": {
+      "origin_target": {
+        "Person": [
+          "Event"
+        ]
+      },
+      "description": "A person participated in, attended, or was directly involved in an event.",
+      "force_unique": true
+    },
+    "Mentions": {
+      "origin": [
+        "Event"
+      ],
+      "target": [
+        "Organization",
+        "Place"
+      ],
+      "description": "An event mentions or involves an organization or place.",
+      "bypass_LLM": true,
+      "force_unique": true
+    }
+  }
+}

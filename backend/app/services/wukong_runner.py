@@ -34,7 +34,11 @@ import tempfile # para crear un directorio temporal para el workdir de Wukong
 from datetime import datetime, timezone # para manejar fechas y horas en UTC
 from pathlib import Path # para manejar rutas de archivos   
 
-from app.config import language_to_ocr_hints, language_to_wukong_name, settings
+from app.config import (
+    WUKONG_DATA_MODEL_LANGUAGES,
+    language_to_ocr_hints,
+    settings,
+)
 # importamos el cliente de Supabase para interactuar con la base de datos
 from app.services import supabase_client
 from app.services.qm_storage import export_qm_to_supabase
@@ -89,23 +93,45 @@ def _wukong_python_executable() -> str:
         return str(v313)
     return sys.executable
 
-# Debe coincidir con parameters.included_documents en default_data_model.json
-WUKONG_DOCUMENT_SET = "preview" # para manejar el conjunto de documentos de Wukong
+# Debe coincidir con parameters.included_documents en default_data_model_*.json
+WUKONG_DOCUMENT_SET = "preview"
 
-_DEFAULT_DATA_MODEL_PATH = Path(__file__).resolve().parent / "default_data_model.json" # para manejar el archivo de configuración de Wukong
+_DATA_MODEL_DIR = Path(__file__).resolve().parent
 WUKONG_DEFAULT_CONFIG = (
     Path(__file__).resolve().parent.parent.parent
     / "wukong-engine"
     / "config"
     / "default.toml"
 )
-try:
-    _DEFAULT_DATA_MODEL: dict = json.loads(
-        _DEFAULT_DATA_MODEL_PATH.read_text(encoding="utf-8")
-    )
-except FileNotFoundError:
-    logger.error("No se encontró default_data_model.json en %s", _DEFAULT_DATA_MODEL_PATH)
-    _DEFAULT_DATA_MODEL = {"entities": [], "relations": []}
+
+
+def _load_data_model(lang: str) -> dict:
+    """Carga el data_model por defecto para el idioma indicado.
+
+    Busca ``default_data_model_<lang>.json``. Si no existe (idioma sin JSON propio)
+    cae al español como idioma base de la aplicación.
+    """
+    candidates = [
+        _DATA_MODEL_DIR / f"default_data_model_{lang}.json",
+        _DATA_MODEL_DIR / "default_data_model_es.json",
+        _DATA_MODEL_DIR / "default_data_model.json",  # compatibilidad con nombre legacy
+    ]
+    for path in candidates:
+        if path.exists():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                logger.exception("Error leyendo data model desde %s", path)
+    logger.error("No se encontró ningún default_data_model para lang=%s", lang)
+    return {"parameters": {}, "entities": {}, "relations": {}}
+
+
+# Cache en memoria: un dict por código de idioma soportado
+_DATA_MODEL_CACHE: dict[str, dict] = {
+    lang: _load_data_model(lang) for lang in WUKONG_DATA_MODEL_LANGUAGES
+}
+# Fallback legacy para compatibilidad con código que usa _DEFAULT_DATA_MODEL directamente
+_DEFAULT_DATA_MODEL: dict = _DATA_MODEL_CACHE.get("es", {})
 
 
 def process_collection(collection_id: str, custom_data_model: dict | None = None) -> None:
@@ -513,21 +539,18 @@ def _build_wukong_workdir(
         file_path.write_text(row["extracted_text"], encoding="utf-8")
         n_files += 1
 
-    data_model = (
-        copy.deepcopy(custom_data_model)
-        if custom_data_model is not None
-        else copy.deepcopy(_DEFAULT_DATA_MODEL)
-    )
-
-    # Parchar el idioma solo cuando se usa el data_model por defecto
-    # (si el usuario pasó uno custom, respetamos sus settings).
-    if custom_data_model is None and collection_language:
-        wukong_lang = language_to_wukong_name(collection_language)
-        data_model["input_language"] = wukong_lang
-        data_model["output_language"] = wukong_lang
+    if custom_data_model is not None:
+        # El usuario pasó un data_model propio: respetarlo íntegro.
+        data_model = copy.deepcopy(custom_data_model)
+    else:
+        # Elegir el JSON por defecto correcto según el idioma de la colección.
+        # Si el idioma no tiene JSON propio, se usa el español como fallback.
+        lang_key = collection_language or "es"
+        default = _DATA_MODEL_CACHE.get(lang_key) or _DATA_MODEL_CACHE.get("es") or _DEFAULT_DATA_MODEL
+        data_model = copy.deepcopy(default)
         logger.info(
-            "Wukong data_model: idioma seteado a '%s' (BCP-47: '%s')",
-            wukong_lang,
+            "Wukong data_model: usando esquema '%s' para colección con idioma '%s'",
+            lang_key if lang_key in _DATA_MODEL_CACHE else "es (fallback)",
             collection_language,
         )
 
