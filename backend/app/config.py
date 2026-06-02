@@ -32,7 +32,41 @@ class Settings(BaseSettings):
     max_upload_retries: int = 3
     upload_retry_delay_seconds: float = 1.0
 
+    # OCR (Cloud Vision): DPI base y elevado para páginas complejas / reintento
+    ocr_dpi_default: int = 300
+    ocr_dpi_complex: int = 400
+    # Hints globales de fallback cuando la colección no tiene idioma configurado.
+    # Lista separada por comas de códigos BCP-47 (https://cloud.google.com/vision/docs/languages).
+    ocr_language_hints: str = "es,en"
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
 settings = Settings()
+
+# ---------------------------------------------------------------------------
+# Constantes de idioma — no dependen de las variables de entorno
+# ---------------------------------------------------------------------------
+
+# Idiomas soportados como campo en colección → código BCP-47 para Cloud Vision.
+OCR_SUPPORTED_LANGUAGES: frozenset[str] = frozenset(
+    {"es", "en", "fr", "pt", "de", "it", "zh", "ar", "ja", "ko", "ru"}
+)
+
+# Idioma por defecto si no se especifica al crear la colección.
+DEFAULT_COLLECTION_LANGUAGE = "es"
+
+
+def language_to_ocr_hints(language: str | None) -> list[str]:
+    """Convierte el código de idioma de una colección a hints para Cloud Vision.
+
+    - Si el idioma no es reconocido o es None, devuelve los hints globales del .env.
+    - Para 'es' agrega 'en' como secundario (documentos en español suelen tener
+      términos técnicos en inglés).
+    - Para cualquier otro idioma soportado, usa solo ese código.
+    """
+    if not language or language not in OCR_SUPPORTED_LANGUAGES:
+        return [h.strip() for h in settings.ocr_language_hints.split(",") if h.strip()]
+    if language == "es":
+        return ["es", "en"]
+    return [language]

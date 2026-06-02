@@ -1,8 +1,10 @@
 import fitz
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
+from app.config import language_to_ocr_hints
 from app.services.text_extraction import (
+    _build_image_context,
     detect_file_type,
     extract_text_pymupdf,
     extract_text_vision,
@@ -215,6 +217,136 @@ def test_process_pdf_document_scanned_marks_error_on_vision_failure(tmp_path):
     # Verifica que se intentó marcar como error
     calls = [str(c) for c in mock_status.call_args_list]
     assert any("error" in c for c in calls)
+
+
+# ---------------------------------------------------------------------------
+# Tests: language_to_ocr_hints (config.py)
+# ---------------------------------------------------------------------------
+
+
+class TestLanguageToOcrHints:
+    def test_espanol_devuelve_es_en(self):
+        hints = language_to_ocr_hints("es")
+        assert hints == ["es", "en"]
+
+    def test_ingles_devuelve_solo_en(self):
+        hints = language_to_ocr_hints("en")
+        assert hints == ["en"]
+
+    def test_portugues_devuelve_solo_pt(self):
+        hints = language_to_ocr_hints("pt")
+        assert hints == ["pt"]
+
+    def test_idioma_no_soportado_usa_fallback(self):
+        hints = language_to_ocr_hints("xx")
+        # debe devolver los hints globales del settings (por defecto "es,en")
+        assert "es" in hints
+
+    def test_none_usa_fallback(self):
+        hints = language_to_ocr_hints(None)
+        assert isinstance(hints, list)
+        assert len(hints) > 0
+
+
+# ---------------------------------------------------------------------------
+# Tests: _build_image_context
+# ---------------------------------------------------------------------------
+
+
+class TestBuildImageContext:
+    def test_sin_hints_retorna_none(self):
+        assert _build_image_context(None) is None
+        assert _build_image_context([]) is None
+
+    def test_con_hints_retorna_image_context(self):
+        ctx = _build_image_context(["es", "en"])
+        assert ctx is not None
+        assert list(ctx.language_hints) == ["es", "en"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: extract_text_vision con language_hints
+# ---------------------------------------------------------------------------
+
+
+def test_extract_text_vision_con_language_hints(tmp_path):
+    """Los language_hints se pasan a document_text_detection como image_context."""
+    pdf_path = tmp_path / "test.pdf"
+    doc = fitz.open()
+    doc.new_page()
+    doc.save(str(pdf_path))
+    doc.close()
+
+    mock_response = MagicMock()
+    mock_response.error.message = ""
+    mock_response.full_text_annotation.text = "Texto OCR"
+
+    with patch("app.services.text_extraction.vision.ImageAnnotatorClient") as mock_cls:
+        mock_client = MagicMock()
+        mock_client.document_text_detection.return_value = mock_response
+        mock_cls.return_value = mock_client
+
+        result = extract_text_vision(str(pdf_path), language_hints=["es", "en"])
+
+    assert result == "Texto OCR"
+    call_kwargs = mock_client.document_text_detection.call_args.kwargs
+    assert "image_context" in call_kwargs
+    assert list(call_kwargs["image_context"].language_hints) == ["es", "en"]
+
+
+def test_extract_text_vision_sin_hints_no_pasa_image_context(tmp_path):
+    """Sin language_hints NO se pasa image_context a Cloud Vision."""
+    pdf_path = tmp_path / "test.pdf"
+    doc = fitz.open()
+    doc.new_page()
+    doc.save(str(pdf_path))
+    doc.close()
+
+    mock_response = MagicMock()
+    mock_response.error.message = ""
+    mock_response.full_text_annotation.text = "Texto OCR"
+
+    with patch("app.services.text_extraction.vision.ImageAnnotatorClient") as mock_cls:
+        mock_client = MagicMock()
+        mock_client.document_text_detection.return_value = mock_response
+        mock_cls.return_value = mock_client
+
+        extract_text_vision(str(pdf_path))
+
+    call_kwargs = mock_client.document_text_detection.call_args.kwargs
+    assert "image_context" not in call_kwargs
+
+
+# ---------------------------------------------------------------------------
+# Tests: process_pdf_document propaga language_hints al OCR
+# ---------------------------------------------------------------------------
+
+
+def test_process_pdf_document_propaga_hints_al_ocr():
+    """language_hints se pasan a extract_text_vision cuando el PDF es escaneado."""
+    with (
+        patch("app.services.text_extraction.download_file_from_storage", return_value=b"%PDF"),
+        patch("app.services.text_extraction.update_document_status"),
+        patch("app.services.text_extraction.save_document_text"),
+        patch("app.services.text_extraction.detect_file_type", return_value="pdf_scanned"),
+        patch("app.services.text_extraction.extract_text_vision") as mock_vision,
+        patch(
+            "app.services.text_extraction.tempfile.NamedTemporaryFile"
+        ) as mock_ntf,
+        patch("app.services.text_extraction.os.unlink"),
+    ):
+        mock_tmp = MagicMock()
+        mock_tmp.name = "/tmp/scanned.pdf"
+        mock_ntf.return_value.__enter__.return_value = mock_tmp
+        mock_vision.return_value = "texto ocr"
+
+        result = process_pdf_document(
+            "doc-1", "user-1", "col-1", "col-1/doc-1.pdf",
+            language_hints=["es", "en"],
+        )
+
+    assert result["status"] == "ok"
+    mock_vision.assert_called_once_with("/tmp/scanned.pdf", language_hints=["es", "en"])
 
 
 class TestProcessTxtDocument:

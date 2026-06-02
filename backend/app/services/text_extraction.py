@@ -27,6 +27,7 @@ def process_txt_document(
     user_id: str,
     collection_id: str,
     storage_path: str,
+    language_hints: list[str] | None = None,  # ignorado para TXT, sólo por consistencia de firma
 ) -> dict:
     """
     Pipeline completo para un archivo TXT:
@@ -81,15 +82,35 @@ def extract_text_pymupdf(file_path: str) -> str:
     return "\n\n".join(pages)
 
 
-def extract_text_vision(file_path: str) -> str:
+def _build_image_context(language_hints: list[str] | None) -> vision.ImageContext | None:
+    """Construye un ImageContext con language_hints para Cloud Vision.
+
+    Devuelve None cuando no hay hints para evitar enviar un objeto vacío.
+    Los códigos siguen el estándar BCP-47 (ej. 'es', 'en', 'pt').
+    """
+    if not language_hints:
+        return None
+    return vision.ImageContext(language_hints=language_hints)
+
+
+def extract_text_vision(
+    file_path: str,
+    language_hints: list[str] | None = None,
+) -> str:
     """
     Extrae texto de un PDF escaneado usando Google Cloud Vision API.
     Estrategia: página por página como imagen PNG.
+
+    ``language_hints`` es una lista de códigos BCP-47 (ej. ['es', 'en'])
+    que se pasan a Cloud Vision para mejorar el reconocimiento. Si es None
+    o lista vacía, Vision elige el idioma automáticamente.
+
     Si cualquier página falla, se lanza la excepción (fallo total del documento).
     El llamador es responsable de marcar el documento como 'error'.
     """
     client = vision.ImageAnnotatorClient()
     doc = fitz.open(file_path)
+    image_context = _build_image_context(language_hints)
     pages_text = []
 
     try:
@@ -99,7 +120,11 @@ def extract_text_vision(file_path: str) -> str:
             image_bytes = pix.tobytes("png")
 
             image = vision.Image(content=image_bytes)
-            response = client.document_text_detection(image=image)
+
+            if image_context is not None:
+                response = client.document_text_detection(image=image, image_context=image_context)
+            else:
+                response = client.document_text_detection(image=image)
 
             if response.error.message:
                 raise RuntimeError(
@@ -118,6 +143,7 @@ def process_pdf_document(
     user_id: str,
     collection_id: str,
     storage_path: str,
+    language_hints: list[str] | None = None,
 ) -> dict:
     """
     Pipeline completo para un archivo PDF digital:
@@ -125,11 +151,12 @@ def process_pdf_document(
     2. Descarga el archivo desde Supabase Storage
     3. Escribe los bytes en un archivo temporal
     4. Detecta si es PDF digital o escaneado
-    5. Extrae el texto con PyMuPDF
+    5. Extrae el texto con PyMuPDF (digital) o Cloud Vision con language_hints (escaneado)
     6. Guarda el texto en la tabla document_texts
     7. Marca el documento como 'text_extracted'
 
-    Si el PDF es escaneado, extrae el texto con Google Cloud Vision API (OCR).
+    ``language_hints`` se propaga a Cloud Vision solo cuando el PDF es escaneado.
+    Para PDFs digitales (PyMuPDF) el parámetro se ignora.
     Si algo falla, marca el documento como 'error' con el mensaje.
     """
     tmp_path = None
@@ -145,7 +172,7 @@ def process_pdf_document(
         file_type = detect_file_type(tmp_path)
 
         if file_type == "pdf_scanned":
-            extracted_text = extract_text_vision(tmp_path)
+            extracted_text = extract_text_vision(tmp_path, language_hints=language_hints)
             save_document_text(
                 document_id=document_id,
                 user_id=user_id,

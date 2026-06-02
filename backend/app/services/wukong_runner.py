@@ -34,7 +34,7 @@ import tempfile # para crear un directorio temporal para el workdir de Wukong
 from datetime import datetime, timezone # para manejar fechas y horas en UTC
 from pathlib import Path # para manejar rutas de archivos   
 
-from app.config import settings
+from app.config import language_to_ocr_hints, settings
 # importamos el cliente de Supabase para interactuar con la base de datos
 from app.services import supabase_client
 from app.services.qm_storage import export_qm_to_supabase
@@ -142,10 +142,19 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
             )
             return
 
+        collection_language = collection.get("language") or "es"
+        ocr_hints = language_to_ocr_hints(collection_language)
+        logger.info(
+            "Colección %s: idioma='%s', OCR hints=%s",
+            collection_id,
+            collection_language,
+            ocr_hints,
+        )
+
         try:
             _check_cancelled(collection_id)
             n_extracted, n_errored, failed_doc_labels = _extract_texts(
-                documents, collection_id
+                documents, collection_id, language_hints=ocr_hints
             )
         except ProcessingCancelled:
             logger.info("Extracción interrumpida por cancelación: %s", collection_id)
@@ -348,15 +357,19 @@ def _doc_display_name(doc: dict) -> str:
 
 
 def _extract_texts(
-    documents: list[dict], collection_id: str | None = None
+    documents: list[dict],
+    collection_id: str | None = None,
+    language_hints: list[str] | None = None,
 ) -> tuple[int, int, list[str]]:
     """
     Pipeline 1. Itera los documentos y extrae el texto de cada uno
     según su tipo. Devuelve (n_extracted_ok, n_errored, failed_display_names).
 
     Un fallo en un documento NO interrumpe el resto: queda con
-    status='error' y se sigue con el siguiente. PDFs escaneados quedan
-    como error hasta que se implemente OCR (PDT10-116).
+    status='error' y se sigue con el siguiente.
+
+    ``language_hints`` son códigos BCP-47 que se pasan a Cloud Vision cuando
+    el documento es un PDF escaneado. Si es None, Vision elige el idioma.
 
     Si ``collection_id`` está definido, se consulta cancelación entre documentos.
     """
@@ -394,6 +407,7 @@ def _extract_texts(
                     user_id=doc["user_id"],
                     collection_id=doc["collection_id"],
                     storage_path=doc["storage_path"],
+                    language_hints=language_hints,
                 )
             elif doc["file_type"] == "pdf":
                 result = process_pdf_document(
@@ -401,6 +415,7 @@ def _extract_texts(
                     user_id=doc["user_id"],
                     collection_id=doc["collection_id"],
                     storage_path=doc["storage_path"],
+                    language_hints=language_hints,
                 )
             else:
                 raise ValueError(f"file_type desconocido: {doc['file_type']!r}")
