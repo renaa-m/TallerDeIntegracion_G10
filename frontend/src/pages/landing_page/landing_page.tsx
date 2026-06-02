@@ -25,7 +25,7 @@ interface Collection {
 }
 
 const API_BASE =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:8080'
+  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 
 function LandingPage() {
   const { id_usuario } = useParams<{ id_usuario: string }>() // Captura el parámetro de la URL

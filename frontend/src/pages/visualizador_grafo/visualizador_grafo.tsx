@@ -22,7 +22,7 @@ import {
 } from '../../lib/collection_processing'
 import './visualizador_grafo.css'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface CytoscapeElement {
   data: Record<string, unknown>
