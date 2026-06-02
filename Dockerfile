@@ -36,6 +36,10 @@ WORKDIR /app
 
 COPY --from=backend /install /usr/local
 COPY backend/app ./app
+# wukong_runner.py busca la config en <app_root>/wukong-engine/config/default.toml.
+# El paquete Python se instala vía pip en /install, pero el TOML no es parte del
+# paquete instalado, por eso hay que copiarlo explícitamente desde el stage backend.
+COPY --from=backend /app/wukong-engine/config ./wukong-engine/config
 # Las credenciales de Cloud Vision se escriben en el runner de CI justo antes del build.
 # Se copian a /app/gcp-vision-key.json para coincidir con la ruta que main.py
 # construye a partir de GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json.
