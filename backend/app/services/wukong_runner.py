@@ -34,7 +34,7 @@ import tempfile # para crear un directorio temporal para el workdir de Wukong
 from datetime import datetime, timezone # para manejar fechas y horas en UTC
 from pathlib import Path # para manejar rutas de archivos   
 
-from app.config import language_to_ocr_hints, settings
+from app.config import language_to_ocr_hints, language_to_wukong_name, settings
 # importamos el cliente de Supabase para interactuar con la base de datos
 from app.services import supabase_client
 from app.services.qm_storage import export_qm_to_supabase
@@ -237,9 +237,15 @@ def process_graph_collection(collection_id: str, custom_data_model: dict | None 
             graph_failed_documents=[],
         )
 
+        collection_language = collection.get("language") or "es"
         with tempfile.TemporaryDirectory(prefix=f"wukong-{collection_id}-") as tmp:
             workdir = Path(tmp)
-            _build_wukong_workdir(workdir, collection_id, custom_data_model=custom_data_model)
+            _build_wukong_workdir(
+                workdir,
+                collection_id,
+                custom_data_model=custom_data_model,
+                collection_language=collection_language,
+            )
 
             try:
                 _check_cancelled(collection_id)
@@ -478,6 +484,7 @@ def _build_wukong_workdir(
     collection_id: str,
     *,
     custom_data_model: dict | None = None,
+    collection_language: str | None = None,
 ) -> int:
     """
     Arma la estructura que espera Wukong:
@@ -489,6 +496,11 @@ def _build_wukong_workdir(
     Si se provee ``custom_data_model``, se usa ese dict en lugar del default.
     En ambos casos se sobreescribe ``parameters.included_documents`` para que
     coincida con WUKONG_DOCUMENT_SET y evitar desincronización con el workdir.
+
+    ``collection_language`` es un código BCP-47 (ej. 'en', 'es').
+    Cuando se usa el data_model por defecto y no hay ``custom_data_model``,
+    se parchean ``input_language`` y ``output_language`` con el idioma de la
+    colección para que Wukong procese el texto en el idioma correcto.
     """
     text_dir = workdir / "docs" / "text" / WUKONG_DOCUMENT_SET
     text_dir.mkdir(parents=True, exist_ok=True)
@@ -504,8 +516,21 @@ def _build_wukong_workdir(
     data_model = (
         copy.deepcopy(custom_data_model)
         if custom_data_model is not None
-        else _DEFAULT_DATA_MODEL
+        else copy.deepcopy(_DEFAULT_DATA_MODEL)
     )
+
+    # Parchar el idioma solo cuando se usa el data_model por defecto
+    # (si el usuario pasó uno custom, respetamos sus settings).
+    if custom_data_model is None and collection_language:
+        wukong_lang = language_to_wukong_name(collection_language)
+        data_model["input_language"] = wukong_lang
+        data_model["output_language"] = wukong_lang
+        logger.info(
+            "Wukong data_model: idioma seteado a '%s' (BCP-47: '%s')",
+            wukong_lang,
+            collection_language,
+        )
+
     # Garantiza que Wukong lea desde la misma carpeta que acabamos de poblar.
     data_model.setdefault("parameters", {})["included_documents"] = [WUKONG_DOCUMENT_SET]
 

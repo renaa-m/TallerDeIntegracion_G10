@@ -2,7 +2,7 @@ import fitz
 import pytest
 from unittest.mock import MagicMock, call, patch
 
-from app.config import language_to_ocr_hints
+from app.config import language_to_ocr_hints, language_to_wukong_name
 from app.services.text_extraction import (
     _build_image_context,
     detect_file_type,
@@ -251,6 +251,23 @@ class TestLanguageToOcrHints:
 # ---------------------------------------------------------------------------
 # Tests: _build_image_context
 # ---------------------------------------------------------------------------
+
+
+class TestLanguageToWukongName:
+    def test_espanol(self):
+        assert language_to_wukong_name("es") == "spanish"
+
+    def test_ingles(self):
+        assert language_to_wukong_name("en") == "english"
+
+    def test_portugues(self):
+        assert language_to_wukong_name("pt") == "portuguese"
+
+    def test_idioma_no_mapeado_devuelve_spanish(self):
+        assert language_to_wukong_name("xx") == "spanish"
+
+    def test_none_devuelve_spanish(self):
+        assert language_to_wukong_name(None) == "spanish"
 
 
 class TestBuildImageContext:

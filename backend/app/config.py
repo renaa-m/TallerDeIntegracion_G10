@@ -57,6 +57,34 @@ OCR_SUPPORTED_LANGUAGES: frozenset[str] = frozenset(
 DEFAULT_COLLECTION_LANGUAGE = "es"
 
 
+# Mapeo de códigos BCP-47 → nombres de idioma que entiende Wukong en data_model.json.
+# Wukong usa nombres completos en inglés ("spanish", "english", …).
+WUKONG_LANGUAGE_MAP: dict[str, str] = {
+    "es": "spanish",
+    "en": "english",
+    "fr": "french",
+    "pt": "portuguese",
+    "de": "german",
+    "it": "italian",
+    "zh": "chinese",
+    "ar": "arabic",
+    "ja": "japanese",
+    "ko": "korean",
+    "ru": "russian",
+}
+
+
+def language_to_wukong_name(language: str | None) -> str:
+    """Convierte un código BCP-47 al nombre de idioma que usa Wukong.
+
+    Si el código no está en el mapa, devuelve 'spanish' como fallback
+    (comportamiento previo al HU-09).
+    """
+    if not language:
+        return "spanish"
+    return WUKONG_LANGUAGE_MAP.get(language, "spanish")
+
+
 def language_to_ocr_hints(language: str | None) -> list[str]:
     """Convierte el código de idioma de una colección a hints para Cloud Vision.
 
