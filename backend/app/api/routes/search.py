@@ -1,4 +1,5 @@
 import asyncio
+from math import ceil
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -10,6 +11,7 @@ from app.services.embeddings_service import generate_embedding
 router = APIRouter(prefix="/api", tags=["search"])
 
 _READY_STATUSES = {"graph_ready", "partial_error"}
+_PAGE_SIZE = 10
 
 
 @router.post("/search", response_model=SearchResponse)
@@ -19,10 +21,11 @@ async def search(
 ):
     """Búsqueda semántica sobre los chunks de una colección procesada.
 
-    Transforma la consulta a embedding, busca por similitud coseno en Supabase
-    y aplica filtros opcionales de tipo de entidad y rango de años.
+    Devuelve resultados paginados (10 por página). El total refleja todos los
+    chunks que superan el umbral de similitud, independiente de la página actual.
+    Los resultados incluyen storage_path; para obtener una URL abierta del
+    documento, usar GET /api/documentos/signed-url?path=<storage_path>.
     """
-    # Validar que la colección existe y pertenece al usuario
     collection = supabase_client.get_collection_by_id(str(request.coleccion_id))
     if not collection or collection["user_id"] != user_id:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
@@ -31,6 +34,8 @@ async def search(
         return SearchResponse(
             resultados=[],
             total=0,
+            page=1,
+            total_pages=0,
             ready=False,
             message=(
                 "Aún no hay grafo generado. "
@@ -38,7 +43,6 @@ async def search(
             ),
         )
 
-    # Generar embedding de la consulta
     try:
         query_embedding: list[float] = await asyncio.to_thread(generate_embedding, request.query)
     except Exception as exc:
@@ -47,42 +51,42 @@ async def search(
             detail=f"Error al generar el embedding de la consulta: {exc}",
         ) from exc
 
-    # Extraer filtros
     filtros = request.filtros
     rango = filtros.rango_años if filtros else None
     year_min = rango[0] if rango and len(rango) >= 1 else None
     year_max = rango[1] if rango and len(rango) >= 2 else None
     entity_types = [filtros.tipo_entidad] if filtros and filtros.tipo_entidad else None
 
-    # Buscar en Supabase pgvector
     raw = await asyncio.to_thread(
         supabase_client.search_chunks,
         query_embedding,
         str(request.coleccion_id),
-        request.limit,
+        10_000,
         entity_types,
         year_min,
         year_max,
     )
 
-    resultados = []
-    for r in raw:
-        if float(r["similarity"]) < request.min_score:
-            continue
-        try:
-            enlace = await asyncio.to_thread(
-                supabase_client.create_signed_url, r["storage_path"]
-            )
-        except Exception:
-            enlace = r["storage_path"]  # fallback: path interno si falla la URL firmada
-        resultados.append(
-            SearchResult(
-                titulo=r["document_name"],
-                fragmento=r["chunk_text"],
-                id_chunk=r["chunk_id"],
-                enlace=enlace,
-                score=round(float(r["similarity"]), 4),
-            )
-        )
+    filtered = [r for r in raw if float(r["similarity"]) >= request.min_score]
+    total = len(filtered)
 
-    return SearchResponse(resultados=resultados, total=len(resultados))
+    offset = (request.page - 1) * _PAGE_SIZE
+    page_results = filtered[offset : offset + _PAGE_SIZE]
+
+    resultados = [
+        SearchResult(
+            titulo=r["document_name"],
+            fragmento=r["chunk_text"],
+            id_chunk=r["chunk_id"],
+            storage_path=r["storage_path"],
+            score=round(float(r["similarity"]), 4),
+        )
+        for r in page_results
+    ]
+
+    return SearchResponse(
+        resultados=resultados,
+        total=total,
+        page=request.page,
+        total_pages=ceil(total / _PAGE_SIZE) if total else 0,
+    )
