@@ -46,6 +46,14 @@ COPY --from=backend /app/wukong-engine/config ./wukong-engine/config
 COPY backend/gcp-vision-key.json .
 COPY --from=frontend /frontend/dist ./static
 
+# Pre-descarga el modelo de embeddings semánticos (~470 MB) en tiempo de build.
+# Sin esto, cada cold start de Cloud Run intenta descargar el modelo desde
+# HuggingFace en tiempo de ejecución, lo que es lento o puede fallar.
+# El modelo queda cacheado en /root/.cache/huggingface/hub/ dentro de la imagen.
+RUN python -c "\
+from sentence_transformers import SentenceTransformer; \
+SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
+
 EXPOSE 8080
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
