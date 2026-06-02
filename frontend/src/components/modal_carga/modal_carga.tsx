@@ -145,8 +145,7 @@ function getCancellingMessage(
   return 'Eliminando colección y volviendo al inicio…'
 }
 
-const API_BASE =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || 'http://localhost:8080'
+const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 
 const ModalCarga = ({
   isOpen,
