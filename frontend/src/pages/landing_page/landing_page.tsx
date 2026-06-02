@@ -24,8 +24,7 @@ interface Collection {
   created_at: string
 }
 
-const API_BASE =
-  import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
+const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 
 function LandingPage() {
   const { id_usuario } = useParams<{ id_usuario: string }>() // Captura el parámetro de la URL
