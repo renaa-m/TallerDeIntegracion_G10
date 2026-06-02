@@ -17,7 +17,12 @@ interface ModalProps {
   darkMode?: boolean
 }
 
-const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onClose, darkMode }) => {
+const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
+  isOpen,
+  fuentes,
+  onClose,
+  darkMode,
+}) => {
   if (!isOpen) return null
 
   // Función simplificada usando el enlace directo
@@ -32,7 +37,10 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
   }
 
   return (
-    <div className={`mdd-overlay ${darkMode ? 'bc-dark' : ''}`} onClick={onClose}>
+    <div
+      className={`mdd-overlay ${darkMode ? 'bc-dark' : ''}`}
+      onClick={onClose}
+    >
       <div className="mdd-panel" onClick={(e) => e.stopPropagation()}>
         <header className="mdd-header">
           <div className="mdd-header-left">
@@ -52,9 +60,9 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
               <div className="mdd-empty">No hay documentos cargados.</div>
             ) : (
               fuentes.map((f) => (
-                <div 
-                  key={f.id} 
-                  className="mdd-card" 
+                <div
+                  key={f.id}
+                  className="mdd-card"
                   onClick={() => console.log('Seleccionado:', f.id)}
                 >
                   <div className="mdd-card-icon">
@@ -64,7 +72,7 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
                       <FileText size={20} />
                     )}
                   </div>
-                  
+
                   <div className="mdd-card-content">
                     <span className="mdd-card-title">{f.filename}</span>
                   </div>
@@ -75,8 +83,10 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({ isOpen, fuentes, onC
                     className="mdd-access-btn"
                     onClick={(e) => handleAccessDocument(e, f.url)}
                     disabled={!f.url || f.status === 'processing'}
-                    title={f.url ? "Acceder al documento" : "URL no disponible"}
-                    aria-label={f.url ? "Acceder al documento" : "URL no disponible"}
+                    title={f.url ? 'Acceder al documento' : 'URL no disponible'}
+                    aria-label={
+                      f.url ? 'Acceder al documento' : 'URL no disponible'
+                    }
                   >
                     <ExternalLink size={16} />
                   </button>

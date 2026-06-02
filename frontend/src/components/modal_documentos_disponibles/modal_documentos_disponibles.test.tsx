@@ -71,7 +71,10 @@ describe('ModalDocumentosDisponibles', () => {
     expect(accessButton).not.toBeDisabled()
 
     await user.click(accessButton)
-    expect(window.open).toHaveBeenCalledWith('https://example.com/a.pdf', '_blank')
+    expect(window.open).toHaveBeenCalledWith(
+      'https://example.com/a.pdf',
+      '_blank',
+    )
 
     await user.click(container.querySelector('.mdd-close') as HTMLElement)
     expect(onClose).toHaveBeenCalled()
