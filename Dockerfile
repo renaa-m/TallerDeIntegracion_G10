@@ -36,11 +36,23 @@ WORKDIR /app
 
 COPY --from=backend /install /usr/local
 COPY backend/app ./app
+# wukong_runner.py busca la config en <app_root>/wukong-engine/config/default.toml.
+# El paquete Python se instala vía pip en /install, pero el TOML no es parte del
+# paquete instalado, por eso hay que copiarlo explícitamente desde el stage backend.
+COPY --from=backend /app/wukong-engine/config ./wukong-engine/config
 # Las credenciales de Cloud Vision se escriben en el runner de CI justo antes del build.
 # Se copian a /app/gcp-vision-key.json para coincidir con la ruta que main.py
 # construye a partir de GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json.
 COPY backend/gcp-vision-key.json .
 COPY --from=frontend /frontend/dist ./static
+
+# Pre-descarga el modelo de embeddings semánticos (~470 MB) en tiempo de build.
+# Sin esto, cada cold start de Cloud Run intenta descargar el modelo desde
+# HuggingFace en tiempo de ejecución, lo que es lento o puede fallar.
+# El modelo queda cacheado en /root/.cache/huggingface/hub/ dentro de la imagen.
+RUN python -c "\
+from sentence_transformers import SentenceTransformer; \
+SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')"
 
 EXPOSE 8080
 
