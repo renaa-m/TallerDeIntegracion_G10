@@ -117,13 +117,21 @@ function App() {
           <Route
             path="/landing-page/:id_usuario"
             element={
-              isAuthenticated ? <LandingPage /> : <Navigate to="/login" replace />
+              isAuthenticated ? (
+                <LandingPage />
+              ) : (
+                <Navigate to="/login" replace />
+              )
             }
           />
           <Route
             path="/login"
             element={
-              !isAuthenticated ? <LoginPage /> : <Navigate to="/login" replace />
+              !isAuthenticated ? (
+                <LoginPage />
+              ) : (
+                <Navigate to="/login" replace />
+              )
             }
           />
           <Route path="*" element={<Navigate to="/login" replace />} />

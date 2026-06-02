@@ -29,8 +29,9 @@ const API_BASE =
 
 function LandingPage() {
   const { id_usuario } = useParams<{ id_usuario: string }>() // Captura el parámetro de la URL
-  const { user, getAccessTokenSilently, isAuthenticated, isLoading } = useAuth0() // Obtenemos la info del usuario logueado
-  
+  const { user, getAccessTokenSilently, isAuthenticated, isLoading } =
+    useAuth0() // Obtenemos la info del usuario logueado
+
   const [estado, setEstado] = useState<
     'idle' | 'loading' | 'success' | 'error'
   >('idle')
