@@ -374,11 +374,19 @@ const ModalCarga = ({
 
     const collectionId = uploadCollectionIdRef.current ?? resolvedCollectionId
 
-    if (
-      scopeCollectionId === 'nueva' &&
-      !collectionId &&
-      resolvedEtapa === 'subida'
-    ) {
+    // Cerrar en etapa de subida para colección nueva: borrar colección si se
+    // alcanzó a crear y volver al landing, sin dejar colecciones vacías huérfanas.
+    if (scopeCollectionId === 'nueva' && resolvedEtapa === 'subida') {
+      if (collectionId) {
+        getAccessTokenSilently()
+          .then((token) =>
+            fetch(`${API_BASE}/api/collections/${collectionId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+          )
+          .catch(() => {})
+      }
       clearActiveCollectionStorage()
       onClose()
       if (landingUserId) {
@@ -428,6 +436,7 @@ const ModalCarga = ({
     persistBackgroundProcessing,
     pipelineStatus,
     scopeCollectionId,
+    getAccessTokenSilently,
   ])
 
   /** Cancelar: elimina la colección y redirige al landing. */
@@ -616,13 +625,17 @@ const ModalCarga = ({
           description: '',
         }),
       })
-      if (!res.ok) throw new Error('Error al crear colección')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.detail ?? 'Error al crear colección')
+      }
       const collection = await res.json()
 
       uploadCollectionIdRef.current = collection.id
       setActiveCollectionId(collection.id)
 
       let uploaded = 0
+      const uploadErrors: string[] = []
       for (const file of files) {
         const controller = new AbortController()
         abortControllersRef.current.push(controller)
@@ -641,10 +654,22 @@ const ModalCarga = ({
         if (upRes.ok || upRes.status === 409) {
           uploaded++
           setUploadedCount(uploaded)
+        } else {
+          try {
+            const body = await upRes.json()
+            const msg = body?.detail ?? `Error al subir "${file.name}"`
+            uploadErrors.push(msg)
+          } catch {
+            uploadErrors.push(`Error al subir "${file.name}"`)
+          }
         }
       }
 
-      if (uploaded === 0) throw new Error('No se subieron archivos.')
+      if (uploaded === 0) {
+        const reason =
+          uploadErrors.length > 0 ? uploadErrors[0] : 'No se subieron archivos.'
+        throw new Error(reason)
+      }
 
       setEtapa('pipeline')
       if (onUploadSuccess) onUploadSuccess()
@@ -880,7 +905,7 @@ const ModalCarga = ({
                   ? 'Suelta los archivos'
                   : 'Arrastra tus archivos aquí'}
               </p>
-              <p className="mc-drop-sub">PDF o TXT · Máx. 50 MB</p>
+              <p className="mc-drop-sub">PDF o TXT · Máx. 30 MB</p>
             </div>
 
             {files.length > 0 && (

@@ -44,13 +44,17 @@ jobs:
 
       - name: Descargar modelo de embeddings (si no está en caché)
         if: steps.hf-cache.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           pip install huggingface_hub
           python -c "
+          import os
           from huggingface_hub import snapshot_download
           snapshot_download(
               repo_id='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
               local_dir='hf-model',
+              token=os.environ.get('HF_TOKEN') or None,
           )
           "
 
@@ -77,7 +81,11 @@ jobs:
           service: imfd-backend
           region: ${{ secrets.GCP_REGION }}
           image: ${{ env.IMAGE }}
-          flags: --allow-unauthenticated --memory=2Gi --cpu=2
+          # --no-cpu-throttling: la CPU no se limita entre requests.
+          # Es obligatorio porque el procesamiento de documentos corre en hilos
+          # daemon que siguen activos después de devolver el 202 HTTP.
+          # Sin esto Cloud Run suspende la CPU y Wukong/OCR quedan colgados.
+          flags: --allow-unauthenticated --memory=2Gi --cpu=2 --no-cpu-throttling --min-instances=1
           env_vars: |
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
