@@ -135,14 +135,14 @@ class TestUploadDocumento:
         assert "sin extensión" in response.json()["detail"]
 
     def test_upload_archivo_supera_50mb(self, client):
-        contenido_grande = b"x" * (51 * 1024 * 1024)
+        contenido_grande = b"x" * (31 * 1024 * 1024)
         response = client.post(
             f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
             files={"file": ("grande.pdf", contenido_grande, "application/pdf")},
         )
 
         assert response.status_code == 422
-        assert "50 MB" in response.json()["detail"]
+        assert "30 MB" in response.json()["detail"]
 
     def test_upload_sin_autenticacion_retorna_403(self, client_sin_auth):
         response = client_sin_auth.post(
