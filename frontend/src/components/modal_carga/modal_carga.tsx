@@ -581,7 +581,23 @@ const ModalCarga = ({
     onClose,
     resetUploadForm,
   ])
+  const isAllowedFile = (file: File) => {
+    const fileName = file.name.toLowerCase()
+    return fileName.endsWith('.pdf') || fileName.endsWith('.txt')
+  }
 
+  const filterAllowedFiles = (incomingFiles: File[]) => {
+    const validFiles = incomingFiles.filter(isAllowedFile)
+    const invalidFiles = incomingFiles.filter((file) => !isAllowedFile(file))
+
+    if (invalidFiles.length > 0) {
+      setError('Solo se permiten archivos PDF o TXT.')
+    } else {
+      setError('')
+    }
+
+    return validFiles
+  }
   const handleUpload = async () => {
     if (files.length === 0) return
     setIsUploading(true)
@@ -831,8 +847,11 @@ const ModalCarga = ({
               onDrop={(e) => {
                 e.preventDefault()
                 setIsDragging(false)
-                if (!isUploadingLocked)
-                  setFiles(Array.from(e.dataTransfer.files))
+                if (isUploadingLocked) return
+                const droppedFiles = Array.from(e.dataTransfer.files)
+                const validFiles = filterAllowedFiles(droppedFiles)
+                if (validFiles.length === 0) return
+                setFiles((prev) => [...prev, ...validFiles])
               }}
               onClick={() => {
                 if (!isUploadingLocked) fileInputRef.current?.click()
@@ -844,7 +863,13 @@ const ModalCarga = ({
                 hidden
                 ref={fileInputRef}
                 accept=".pdf,.txt"
-                onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                onChange={(e) => {
+                  const selectedFiles = Array.from(e.target.files || [])
+                  const validFiles = filterAllowedFiles(selectedFiles)
+                  if (validFiles.length === 0) return
+                  setFiles((prev) => [...prev, ...validFiles])
+                  e.target.value = ''
+                }}
                 disabled={isUploadingLocked}
               />
               <div className="mc-drop-icon">
