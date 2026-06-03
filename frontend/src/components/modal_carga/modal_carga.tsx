@@ -623,6 +623,7 @@ const ModalCarga = ({
       setActiveCollectionId(collection.id)
 
       let uploaded = 0
+      const uploadErrors: string[] = []
       for (const file of files) {
         const controller = new AbortController()
         abortControllersRef.current.push(controller)
@@ -641,10 +642,22 @@ const ModalCarga = ({
         if (upRes.ok || upRes.status === 409) {
           uploaded++
           setUploadedCount(uploaded)
+        } else {
+          try {
+            const body = await upRes.json()
+            const msg = body?.detail ?? `Error al subir "${file.name}"`
+            uploadErrors.push(msg)
+          } catch {
+            uploadErrors.push(`Error al subir "${file.name}"`)
+          }
         }
       }
 
-      if (uploaded === 0) throw new Error('No se subieron archivos.')
+      if (uploaded === 0) {
+        const reason =
+          uploadErrors.length > 0 ? uploadErrors[0] : 'No se subieron archivos.'
+        throw new Error(reason)
+      }
 
       setEtapa('pipeline')
       if (onUploadSuccess) onUploadSuccess()
