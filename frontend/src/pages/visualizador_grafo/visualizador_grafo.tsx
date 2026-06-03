@@ -8,6 +8,11 @@ import cytoscape, {
   type LayoutOptions,
 } from 'cytoscape'
 import {
+  formatDateValue,
+  isProbablyDateKey,
+  isProbablyDateValue,
+} from '@/utils/dateFormatter'
+import {
   Loader2,
   ZoomIn,
   ZoomOut,
@@ -190,11 +195,18 @@ const GraphViewer = () => {
 
   const filteredMetadata = useMemo(() => {
     if (!selectedData) return []
-    const blacklist = ['id', 'source', 'target', 'label', 'tipo']
+
+    if (selectedType === 'edge') {
+      return Object.entries(selectedData).filter(
+        ([key, value]) => key === 'chunk_text' && value != null,
+      )
+    }
+
+    const blacklist = ['id', 'source', 'target', 'label', 'tipo', 'chunk_text', 'extracted_from']
     return Object.entries(selectedData).filter(
       ([key]) => !blacklist.includes(key),
     )
-  }, [selectedData])
+  }, [selectedData, selectedType])
 
   if (loading)
     return (
@@ -258,8 +270,18 @@ const GraphViewer = () => {
             </p>
             {filteredMetadata.map(([k, v]) => (
               <div key={k} className="gv-metadata-row">
-                <span className="gv-metadata-key">{k}</span>
-                <span className="gv-metadata-val">{String(v)}</span>
+                <span className="gv-metadata-key">
+                  {k === 'chunk_text' ? 'Descripción' : k}
+                </span>
+                <span className="gv-metadata-val">
+                  {String(
+                    isProbablyDateKey(k) || isProbablyDateValue(v)
+                      ? formatDateValue(v)
+                      : v == null
+                      ? ''
+                      : v,
+                  )}
+                </span>
               </div>
             ))}
           </div>
