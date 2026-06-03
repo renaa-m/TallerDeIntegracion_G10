@@ -271,7 +271,7 @@ const GraphViewer = () => {
             {filteredMetadata.map(([k, v]) => (
               <div key={k} className="gv-metadata-row">
                 <span className="gv-metadata-key">
-                  {k === 'chunk_text' ? 'Descripción' : k}
+                  {k === 'chunk_text' ? 'Descripción' : k === 'type' ? 'Tipo' : k == 'nombre' ? 'Nombre' : k === 'descripcion' ? 'Descripción' : k == 'fecha' ? 'Fecha' : k == 'rol' ? 'Rol' : k}
                 </span>
                 <span className="gv-metadata-val">
                   {String(
