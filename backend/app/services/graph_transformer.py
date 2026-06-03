@@ -36,11 +36,28 @@ def qm_to_cytoscape(qm_text: str) -> dict[str, Any]:
     """Parsea el texto .qm y devuelve un dict compatible con Cytoscape.js.
 
     Filtra los nodos de tipo Document/Chunk y las relaciones ChunkOf/ExtractedFrom.
+    Incluye el texto del chunk en las aristas que lo referencian.
     """
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
     node_ids: set[str] = set()
+    chunk_texts: dict[str, str] = {}  # Mapa de chunk_id -> texto
 
+    # Primera pasada: recolectar chunks (antes de filtrarlos)
+    for line in qm_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+
+        node_m = _NODE_RE.match(line)
+        if node_m:
+            node_id, entity_type, props_raw = node_m.groups()
+            if entity_type == "Chunk":
+                props = _parse_props(props_raw)
+                if "text" in props:
+                    chunk_texts[node_id] = props["text"]
+
+    # Segunda pasada: procesar nodos y aristas
     for line in qm_text.splitlines():
         line = line.strip()
         if not line:
@@ -52,17 +69,28 @@ def qm_to_cytoscape(qm_text: str) -> dict[str, Any]:
             if rel_type in _SYSTEM_EDGE_TYPES:
                 continue
             props = _parse_props(props_raw)
-            edges.append(
-                {
-                    "data": {
-                        "id": f"{source}->{target}:{rel_type}",
-                        "source": source,
-                        "target": target,
-                        "label": rel_type,
-                        **props,
-                    }
-                }
-            )
+            
+            # Extraer el ID del chunk si existe en extracted_from
+            chunk_text = None
+            if "extracted_from" in props:
+                extracted_str = props["extracted_from"].strip("[]'\"")
+                # Puede ser algo como "Chunk_1_1" o "'Chunk_1_1'"
+                chunk_id = extracted_str.split(",")[0].strip("'\"")
+                if chunk_id in chunk_texts:
+                    chunk_text = chunk_texts[chunk_id]
+            
+            edge_data = {
+                "id": f"{source}->{target}:{rel_type}",
+                "source": source,
+                "target": target,
+                "label": rel_type,
+                **props,
+            }
+            
+            if chunk_text:
+                edge_data["chunk_text"] = chunk_text
+            
+            edges.append({"data": edge_data})
             continue
 
         node_m = _NODE_RE.match(line)
