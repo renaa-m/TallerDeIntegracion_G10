@@ -625,7 +625,10 @@ const ModalCarga = ({
           description: '',
         }),
       })
-      if (!res.ok) throw new Error('Error al crear colección')
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error(body?.detail ?? 'Error al crear colección')
+      }
       const collection = await res.json()
 
       uploadCollectionIdRef.current = collection.id
