@@ -202,7 +202,15 @@ const GraphViewer = () => {
       )
     }
 
-    const blacklist = ['id', 'source', 'target', 'label', 'tipo', 'chunk_text', 'extracted_from']
+    const blacklist = [
+      'id',
+      'source',
+      'target',
+      'label',
+      'tipo',
+      'chunk_text',
+      'extracted_from',
+    ]
     return Object.entries(selectedData).filter(
       ([key]) => !blacklist.includes(key),
     )
@@ -271,15 +279,27 @@ const GraphViewer = () => {
             {filteredMetadata.map(([k, v]) => (
               <div key={k} className="gv-metadata-row">
                 <span className="gv-metadata-key">
-                  {k === 'chunk_text' ? 'Descripción' : k === 'type' ? 'Tipo' : k == 'nombre' ? 'Nombre' : k === 'descripcion' ? 'Descripción' : k == 'fecha' ? 'Fecha' : k == 'rol' ? 'Rol' : k}
+                  {k === 'chunk_text'
+                    ? 'Descripción'
+                    : k === 'type'
+                      ? 'Tipo'
+                      : k == 'nombre'
+                        ? 'Nombre'
+                        : k === 'descripcion'
+                          ? 'Descripción'
+                          : k == 'fecha'
+                            ? 'Fecha'
+                            : k == 'rol'
+                              ? 'Rol'
+                              : k}
                 </span>
                 <span className="gv-metadata-val">
                   {String(
                     isProbablyDateKey(k) || isProbablyDateValue(v)
                       ? formatDateValue(v)
                       : v == null
-                      ? ''
-                      : v,
+                        ? ''
+                        : v,
                   )}
                 </span>
               </div>

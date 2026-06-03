@@ -70,9 +70,7 @@ export function isProbablyDateKey(key: string): boolean {
     'año_inicio',
     'año_fin',
   ]
-  return dateKeywords.some((keyword) =>
-    key.toLowerCase().includes(keyword),
-  )
+  return dateKeywords.some((keyword) => key.toLowerCase().includes(keyword))
 }
 
 /**
