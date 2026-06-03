@@ -91,7 +91,7 @@ def purge_complete_user(user_id: str):
         logger.info("Purga completa exitosa para el usuario: %s", user_id)
         return {"status": "success", "user_id": user_id}
 
-    except Exception as e:
+    except Exception:
         logger.error("Error durante la purga del usuario %s:", user_id)
         traceback.print_exc()
         raise
