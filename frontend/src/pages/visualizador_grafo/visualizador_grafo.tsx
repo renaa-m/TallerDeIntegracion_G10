@@ -70,17 +70,22 @@ const GraphViewer = () => {
   }
 
   const runLayout = useCallback((cyInstance: Core | null) => {
-    if (!cyInstance) return
-    const layoutOptions: LayoutOptions = {
-      name: 'cose',
-      animate: true,
-      animationDuration: 500,
-      fit: true,
-      padding: 50,
-      componentSpacing: 180,
-    } as LayoutOptions & Record<string, unknown>
-    cyInstance.layout(layoutOptions).run()
-  }, [])
+  if (!cyInstance) return
+
+  const layoutOptions: LayoutOptions = {
+    name: 'breadthfirst',
+    animate: true,
+    animationDuration: 1000,
+    fit: true,
+    padding: 50,
+    directed: true,      // Ordena de "origen" a "destino"
+    grid: false,         // Si lo pones en true, los ordena en una cuadrícula rígida
+    circle: false,       // Evita que se pongan en círculo
+    spacingFactor: 2.5,  // Aumenta este número para más espacio entre niveles
+  } as LayoutOptions & Record<string, unknown>
+
+  cyInstance.layout(layoutOptions).run()
+}, [])
 
   const openSourceDocument = useCallback(async () => {
     const docId = (selectedData as Record<string, unknown>)?.source_document_id
