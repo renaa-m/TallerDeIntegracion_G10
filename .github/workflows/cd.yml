@@ -77,7 +77,11 @@ jobs:
           service: imfd-backend
           region: ${{ secrets.GCP_REGION }}
           image: ${{ env.IMAGE }}
-          flags: --allow-unauthenticated --memory=2Gi --cpu=2
+          # --no-cpu-throttling: la CPU no se limita entre requests.
+          # Es obligatorio porque el procesamiento de documentos corre en hilos
+          # daemon que siguen activos después de devolver el 202 HTTP.
+          # Sin esto Cloud Run suspende la CPU y Wukong/OCR quedan colgados.
+          flags: --allow-unauthenticated --memory=2Gi --cpu=2 --no-cpu-throttling --min-instances=1
           env_vars: |
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
