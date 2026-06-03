@@ -344,9 +344,7 @@ describe('ModalCarga', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
 
-    expect(
-      await screen.findByText('Falló upload'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('Falló upload')).toBeInTheDocument()
     expect(screen.getByText('Añadir fuentes')).toBeInTheDocument()
   })
 
