@@ -462,9 +462,15 @@
   border-color: rgba(167, 139, 250, 0.15);
 }
 
-.gv-dark .gv-source-ref-name { color: #a78bfa; }
-.gv-dark .gv-source-ref-label { color: #475569; }
-.gv-dark .gv-source-ref-text  { color: #475569; }
+.gv-dark .gv-source-ref-name {
+  color: #a78bfa;
+}
+.gv-dark .gv-source-ref-label {
+  color: #475569;
+}
+.gv-dark .gv-source-ref-text {
+  color: #475569;
+}
 
 .gv-source-ref-btn {
   flex-shrink: 0;

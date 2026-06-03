@@ -36,6 +36,13 @@ interface GraphResponse {
   }
 }
 
+interface GraphData {
+  label?: string
+  source_document_id?: string | number
+  source_document_name?: string
+  [key: string]: unknown // Permite otras propiedades dinámicas
+}
+
 const GraphViewer = () => {
   const { id_coleccion } = useParams<{ id_coleccion: string }>()
   const { getAccessTokenSilently } = useAuth0()
@@ -44,18 +51,21 @@ const GraphViewer = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [cyRef, setCyRef] = useState<Core | null>(null)
-  const [selectedData, setSelectedData] = useState<Record<string, unknown> | null>(null)
+  // En tu componente:
+  const [selectedData, setSelectedData] = useState<GraphData | null>(null)
   const [selectedType, setSelectedType] = useState<'node' | 'edge' | null>(null)
   const [openingDocument, setOpeningDocument] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const darkMode = useMemo(() => document.documentElement.classList.contains('dark'), [])
+  const darkMode = useMemo(
+    () => document.documentElement.classList.contains('dark'),
+    [],
+  )
 
   const renderValue = (k: string, v: unknown): string => {
     if (v == null) return ''
-    const formatted = isProbablyDateKey(k) || isProbablyDateValue(v) 
-      ? formatDateValue(v) 
-      : v
+    const formatted =
+      isProbablyDateKey(k) || isProbablyDateValue(v) ? formatDateValue(v) : v
     return String(formatted)
   }
 
@@ -68,20 +78,23 @@ const GraphViewer = () => {
       fit: true,
       padding: 50,
       componentSpacing: 180,
-    } as any
+    } as LayoutOptions & Record<string, unknown>
     cyInstance.layout(layoutOptions).run()
   }, [])
 
   const openSourceDocument = useCallback(async () => {
-    const docId = (selectedData as any)?.source_document_id
+    const docId = (selectedData as Record<string, unknown>)?.source_document_id
     if (!docId) return
 
     setOpeningDocument(true)
     try {
       const token = await getAccessTokenSilently()
-      const res = await fetch(`${API_URL}/api/documentos/${String(docId)}/signed-url`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetch(
+        `${API_URL}/api/documentos/${String(docId)}/signed-url`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
 
       if (!res.ok) throw new Error('No se pudo obtener la URL del documento.')
 
@@ -106,14 +119,20 @@ const GraphViewer = () => {
     setError(null)
     try {
       const token = await getAccessTokenSilently()
-      const res = await fetch(`${API_URL}/api/collections/${id_coleccion}/graph`, {
-        headers: { Authorization: 'Bearer ' + token },
-      })
+      const res = await fetch(
+        `${API_URL}/api/collections/${id_coleccion}/graph`,
+        {
+          headers: { Authorization: 'Bearer ' + token },
+        },
+      )
 
       if (!res.ok) throw new Error(`Error al cargar el grafo`)
 
       const data: GraphResponse = await res.json()
-      if (!data.elements || (data.elements.nodes.length === 0 && data.elements.edges.length === 0)) {
+      if (
+        !data.elements ||
+        (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
+      ) {
         throw new Error('No hay datos disponibles para visualizar.')
       }
 
@@ -121,15 +140,17 @@ const GraphViewer = () => {
         data: { ...n.data, id: String(n.data.id) },
       }))
 
-      const edges: ElementDefinition[] = data.elements.edges.map((e, index) => ({
-        data: {
-          ...e.data,
-          id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
-          source: String(e.data.source ?? e.data.from),
-          target: String(e.data.target ?? e.data.to),
-          label: e.data.label || '',
-        },
-      }))
+      const edges: ElementDefinition[] = data.elements.edges.map(
+        (e, index) => ({
+          data: {
+            ...e.data,
+            id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
+            source: String(e.data.source ?? e.data.from),
+            target: String(e.data.target ?? e.data.to),
+            label: e.data.label || '',
+          },
+        }),
+      )
 
       setElements([...nodes, ...edges])
     } catch (err) {
@@ -139,19 +160,26 @@ const GraphViewer = () => {
     }
   }, [id_coleccion, getAccessTokenSilently])
 
+  // Reemplaza tu bloque useEffect actual (líneas 158-162) por este:
   useEffect(() => {
-    let isMounted = true
-    fetchGraph().then(() => isMounted && null)
-    return () => { isMounted = false }
-  }, [fetchGraph])
+    const loadData = async () => {
+      if (!id_coleccion) return
+      await fetchGraph()
+    }
+
+    loadData()
+  }, [id_coleccion, fetchGraph]) // fetchGraph ya está envuelto en useCallback
 
   useEffect(() => {
     if (!cyRef) return
-    const handleSelect = (evt: any, type: 'node' | 'edge') => {
+    const handleSelect = (
+      evt: cytoscape.EventObject,
+      type: 'node' | 'edge',
+    ) => {
       setSelectedData(evt.target.data())
       setSelectedType(type)
     }
-    const handleUnselect = (evt: any) => {
+    const handleUnselect = (evt: cytoscape.EventObject) => {
       if (evt.target === cyRef) {
         setSelectedData(null)
         setSelectedType(null)
@@ -167,48 +195,85 @@ const GraphViewer = () => {
     }
   }, [cyRef])
 
-  const graphStylesheet: StylesheetStyle[] = useMemo(() => [
-    {
-      selector: 'node',
-      style: {
-        'background-color': '#8b5cf6',
-        label: 'data(label)',
-        color: darkMode ? '#e2e8f0' : '#1e293b',
-      } as any,
-    },
-    {
-      selector: 'edge',
-      style: {
-        width: 4,
-        'line-color': darkMode ? '#94a3b8' : '#64748b',
-        'curve-style': 'bezier',
-        label: 'data(label)',
-        'font-size': '10px',
-        'text-background-opacity': 1,
-        'text-background-color': '#ffffff',
-        'text-background-padding': '2px',
-      } as any,
-    },
-  ], [darkMode])
+  const graphStylesheet: StylesheetStyle[] = useMemo(
+    () => [
+      {
+        selector: 'node',
+        style: {
+          'background-color': '#8b5cf6',
+          label: 'data(label)',
+          color: darkMode ? '#e2e8f0' : '#1e293b',
+        } as cytoscape.Css.Node,
+      },
+      {
+        selector: 'edge',
+        style: {
+          width: 4,
+          'line-color': darkMode ? '#94a3b8' : '#64748b',
+          'curve-style': 'bezier',
+          label: 'data(label)',
+          'font-size': '10px',
+          'text-background-opacity': 1,
+          'text-background-color': '#ffffff',
+          'text-background-padding': '2px',
+        } as cytoscape.Css.Edge,
+      },
+    ],
+    [darkMode],
+  )
 
   const filteredMetadata = useMemo(() => {
     if (!selectedData) return []
     if (selectedType === 'edge') {
-      return Object.entries(selectedData).filter(([key, value]) => key === 'chunk_text' && value != null)
+      return Object.entries(selectedData).filter(
+        ([key, value]) => key === 'chunk_text' && value != null,
+      )
     }
-    const blacklist = ['id', 'source', 'target', 'label', 'chunk_text', 'extracted_from', 'source_document_id', 'source_document_name']
-    return Object.entries(selectedData).filter(([key]) => !blacklist.includes(key))
+    const blacklist = [
+      'id',
+      'source',
+      'target',
+      'label',
+      'chunk_text',
+      'extracted_from',
+      'source_document_id',
+      'source_document_name',
+    ]
+    return Object.entries(selectedData).filter(
+      ([key]) => !blacklist.includes(key),
+    )
   }, [selectedData, selectedType])
 
-  if (loading) return <div className="gv-outer-wrapper gv-loading-container"><Loader2 className="gv-spin-loader animate-spin" size={48} /><p>Cargando grafo...</p></div>
-  if (error) return <div className="gv-outer-wrapper gv-error-container"><AlertCircle size={48} className="text-red-500" /><p>{error}</p><button onClick={() => fetchGraph()} className="gv-retry-button">Reintentar</button></div>
+  if (loading)
+    return (
+      <div className="gv-outer-wrapper gv-loading-container">
+        <Loader2 className="gv-spin-loader animate-spin" size={48} />
+        <p>Cargando grafo...</p>
+      </div>
+    )
+  if (error)
+    return (
+      <div className="gv-outer-wrapper gv-error-container">
+        <AlertCircle size={48} className="text-red-500" />
+        <p>{error}</p>
+        <button onClick={() => fetchGraph()} className="gv-retry-button">
+          Reintentar
+        </button>
+      </div>
+    )
 
   return (
     <div ref={containerRef} className="gv-outer-wrapper">
       <div className="gv-floating-toolbar">
-        <button onClick={() => cyRef?.zoom(cyRef.zoom() + 0.2)}><ZoomIn size={16} /></button>
-        <button onClick={() => cyRef?.zoom(Math.max(0.1, cyRef.zoom() - 0.2))}><ZoomOut size={16} /></button>
-        <button onClick={() => runLayout(cyRef)}><RefreshCw size={16} /></button>
+        <button onClick={() => cyRef?.zoom(cyRef.zoom() + 0.2)}>
+          <ZoomIn size={16} />
+        </button>
+        <button onClick={() => cyRef?.zoom(Math.max(0.1, cyRef.zoom() - 0.2))}>
+          <ZoomOut size={16} />
+        </button>
+        <button onClick={() => runLayout(cyRef)}>
+          <RefreshCw size={16} />
+        </button>
       </div>
 
       <div className="gv-canvas-viewport">
@@ -225,18 +290,26 @@ const GraphViewer = () => {
         <div className="gv-inspector-panel">
           <div className="gv-inspector-header">
             <span>{selectedType === 'node' ? 'Entidad' : 'Relación'}</span>
-            <button onClick={() => { setSelectedData(null); cyRef?.elements().unselect() }}><X size={15} /></button>
+            <button
+              onClick={() => {
+                setSelectedData(null)
+                cyRef?.elements().unselect()
+              }}
+            >
+              <X size={15} />
+            </button>
           </div>
           <div className="gv-inspector-body">
-            <p className="gv-main-label">{String(selectedData.label || 'Sin etiqueta')}</p>
+            <p className="gv-main-label">
+              {String(selectedData.label || 'Sin etiqueta')}
+            </p>
             <br />
-            {(selectedData as any)?.source_document_id && (
+            {selectedData?.source_document_id && (
               <div className="gv-source-ref">
                 <span className="gv-source-ref-text">
-                  <span className="gv-source-ref-label">Referencia:</span>
-                  {' '}
+                  <span className="gv-source-ref-label">Referencia:</span>{' '}
                   <span className="gv-source-ref-name">
-                    {String((selectedData as any)?.source_document_name || 'Documento')}
+                    {String(selectedData.source_document_name || 'Documento')}
                   </span>
                 </span>
                 <button
@@ -250,14 +323,29 @@ const GraphViewer = () => {
                 </button>
               </div>
             )}
-                        
+
             {filteredMetadata.map(([k, v]) => (
               <div key={k} className="gv-metadata-row">
-                <span className="gv-metadata-key">{k === 'chunk_text' ? 'Descripción' : k === 'type' ? 'Tipo' : k === 'nombre' ? 'Nombre' : k === 'descripcion' ? 'Descripción' : k === 'fecha' ? 'Fecha' : k === 'rol' ? 'Rol' : k === 'tipo' ? 'Subtipo' : k}</span>
+                <span className="gv-metadata-key">
+                  {k === 'chunk_text'
+                    ? 'Descripción'
+                    : k === 'type'
+                      ? 'Tipo'
+                      : k === 'nombre'
+                        ? 'Nombre'
+                        : k === 'descripcion'
+                          ? 'Descripción'
+                          : k === 'fecha'
+                            ? 'Fecha'
+                            : k === 'rol'
+                              ? 'Rol'
+                              : k === 'tipo'
+                                ? 'Subtipo'
+                                : k}
+                </span>
                 <span className="gv-metadata-val">{renderValue(k, v)}</span>
               </div>
             ))}
-  
           </div>
         </div>
       )}
