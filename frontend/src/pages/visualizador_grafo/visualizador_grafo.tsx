@@ -229,32 +229,35 @@ const GraphViewer = () => {
           </div>
           <div className="gv-inspector-body">
             <p className="gv-main-label">{String(selectedData.label || 'Sin etiqueta')}</p>
-            
+            <br />
             {(selectedData as any)?.source_document_id && (
-              <div className="gv-source-document-box">
-                <div className="gv-source-document-meta">
-                  <span className="gv-source-document-label">Documento fuente</span>
-                  <span className="gv-source-document-name">
+              <div className="gv-source-ref">
+                <span className="gv-source-ref-text">
+                  <span className="gv-source-ref-label">Referencia:</span>
+                  {' '}
+                  <span className="gv-source-ref-name">
                     {String((selectedData as any)?.source_document_name || 'Documento')}
                   </span>
-                </div>
-                <button 
-                  className="gv-open-document-button" 
-                  onClick={openSourceDocument} 
-                  disabled={openingDocument} 
+                </span>
+                <button
+                  className="gv-source-ref-btn"
+                  onClick={openSourceDocument}
+                  disabled={openingDocument}
                   type="button"
+                  title="Abrir documento fuente"
                 >
-                  {openingDocument ? 'Abriendo...' : 'Abrir documento'}
+                  {openingDocument ? '...' : '↗'}
                 </button>
               </div>
             )}
-            
+                        
             {filteredMetadata.map(([k, v]) => (
               <div key={k} className="gv-metadata-row">
-                <span className="gv-metadata-key">{k === 'chunk_text' ? 'Descripción' : k === 'type' ? 'Tipo' : k === 'nombre' ? 'Nombre' : k === 'descripcion' ? 'Descripción' : k === 'fecha' ? 'Fecha' : k === 'rol' ? 'Rol' : k}</span>
+                <span className="gv-metadata-key">{k === 'chunk_text' ? 'Descripción' : k === 'type' ? 'Tipo' : k === 'nombre' ? 'Nombre' : k === 'descripcion' ? 'Descripción' : k === 'fecha' ? 'Fecha' : k === 'rol' ? 'Rol' : k === 'tipo' ? 'Subtipo' : k}</span>
                 <span className="gv-metadata-val">{renderValue(k, v)}</span>
               </div>
             ))}
+  
           </div>
         </div>
       )}

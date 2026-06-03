@@ -424,3 +424,82 @@
     transform: rotate(360deg);
   }
 }
+
+/* ── REFERENCIA DOCUMENTO FUENTE ─────────────────────────────────────────── */
+.gv-source-ref {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(109, 90, 205, 0.06);
+  border: 1px solid rgba(109, 90, 205, 0.15);
+}
+
+.gv-source-ref-text {
+  font-size: 11px;
+  color: #64748b;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gv-source-ref-label {
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: none;
+}
+
+.gv-source-ref-name {
+  color: #6d5acd;
+  font-style: italic;
+}
+
+.gv-dark .gv-source-ref {
+  background: rgba(167, 139, 250, 0.06);
+  border-color: rgba(167, 139, 250, 0.15);
+}
+
+.gv-dark .gv-source-ref-name { color: #a78bfa; }
+.gv-dark .gv-source-ref-label { color: #475569; }
+.gv-dark .gv-source-ref-text  { color: #475569; }
+
+.gv-source-ref-btn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(109, 90, 205, 0.25);
+  background: transparent;
+  color: #6d5acd;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.gv-source-ref-btn:hover:not(:disabled) {
+  background: #6d5acd;
+  color: #fff;
+  border-color: #6d5acd;
+}
+
+.gv-source-ref-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.gv-dark .gv-source-ref-btn {
+  color: #a78bfa;
+  border-color: rgba(167, 139, 250, 0.25);
+}
+
+.gv-dark .gv-source-ref-btn:hover:not(:disabled) {
+  background: #a78bfa;
+  color: #0f172a;
+}
