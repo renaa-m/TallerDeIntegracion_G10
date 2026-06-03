@@ -28,7 +28,8 @@ const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 
 function LandingPage() {
   const { id_usuario } = useParams<{ id_usuario: string }>() // Captura el parámetro de la URL
-  const { user, getAccessTokenSilently } = useAuth0() // Obtenemos la info del usuario logueado
+  const { user, getAccessTokenSilently, isAuthenticated, isLoading } =
+    useAuth0() // Obtenemos la info del usuario logueado
 
   const [estado, setEstado] = useState<
     'idle' | 'loading' | 'success' | 'error'
@@ -49,6 +50,12 @@ function LandingPage() {
   useEffect(() => {
     coleccionesRef.current = colecciones
   }, [colecciones])
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate('/login', { replace: true })
+    }
+  }, [isLoading, isAuthenticated, navigate])
 
   const refreshColecciones = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -223,6 +230,15 @@ function LandingPage() {
     setMensaje('')
   }
 
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      navigate('/login', { replace: true })
+    }
+  }, [isLoading, isAuthenticated, navigate])
+
+  if (isLoading || !isAuthenticated || !user) {
+    return <p>Cargando sesión...</p>
+  }
   // Si alguien intenta entrar a un ID que no es el suyo, podrías bloquearlo aquí
   if (id_usuario !== currentUserId) {
     return (
