@@ -39,23 +39,21 @@ body {
 }
 
 .container {
-  min-height: 100vh;
+  height: 100vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  /* Eliminamos el justify-content para que el contenido fluya */
   gap: 56px;
-  padding: 48px 20px 56px;
-  padding-bottom: 2rem;
-  box-sizing: border-box;
+  /* El padding-bottom extra asegura que la última fila tenga espacio al hacer scroll */
+  padding: 48px 20px 100px; 
   width: 100%;
   margin: 0;
   background: var(--bg-gradient);
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 #f1f5f9;
-  overflow-x: hidden;
-  overflow-y: auto;
 }
+
 
 .welcome {
   display: flex;
