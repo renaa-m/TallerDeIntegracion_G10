@@ -35,6 +35,7 @@ async def create_collection(
             user_id=user_id,
             name=body.name,
             description=body.description,
+            included_entities=body.included_entities,
         )
         return collection
 

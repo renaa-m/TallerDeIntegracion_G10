@@ -376,6 +376,68 @@
   flex-direction: column;
 }
 
+.mc-entity-options {
+  width: calc(100% - 80px);
+  margin: 16px 40px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mc-entity-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--mc-text-1);
+}
+
+.mc-entity-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mc-entity-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--mc-border);
+  border-radius: 12px;
+  background: var(--mc-surface-2);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    transform 0.15s;
+}
+
+.mc-entity-option:hover {
+  border-color: #a8a3f6;
+  background: rgba(168, 163, 246, 0.08);
+}
+
+.mc-entity-option input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: #243166;
+  cursor: pointer;
+}
+
+.mc-entity-option span {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--mc-text-1);
+}
+
+.mc-panel.dark .mc-entity-option {
+  background: var(--mc-surface-2);
+}
+
+.mc-panel.dark .mc-entity-option:hover {
+  background: rgba(168, 163, 246, 0.12);
+}
+
 .mc-label {
   font-size: 14px;
   color: #4b5563;

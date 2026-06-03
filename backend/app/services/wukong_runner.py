@@ -514,10 +514,25 @@ def _build_wukong_workdir(
     data_model = (
         copy.deepcopy(custom_data_model)
         if custom_data_model is not None
-        else _DEFAULT_DATA_MODEL
+        else copy.deepcopy(_DEFAULT_DATA_MODEL)
     )
     # Garantiza que Wukong lea desde la misma carpeta que acabamos de poblar.
     data_model.setdefault("parameters", {})["included_documents"] = [WUKONG_DOCUMENT_SET]
+
+    collection = supabase_client.get_collection_by_id(collection_id)
+    included_entities = (
+        collection.get("included_entities")
+        if collection is not None
+        else None
+    )
+
+    if included_entities:
+        data_model["parameters"]["included_entities"] = included_entities
+        data_model["entities"] = {
+            name: entity
+            for name, entity in data_model.get("entities", {}).items()
+            if name in included_entities
+        }
 
     (workdir / "data_model.json").write_text(
         json.dumps(data_model, indent=2),

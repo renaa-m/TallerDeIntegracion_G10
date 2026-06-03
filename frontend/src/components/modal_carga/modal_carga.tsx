@@ -147,6 +147,13 @@ function getCancellingMessage(
 
 const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 
+const ENTITY_OPTIONS = [
+  'Persona',
+  'Organizacion',
+  'Lugar',
+  'Evento',
+] as const
+
 const ModalCarga = ({
   isOpen,
   onClose,
@@ -168,6 +175,12 @@ const ModalCarga = ({
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedCount, setUploadedCount] = useState(0)
   const [nombreColeccion, setNombreColeccion] = useState('')
+  const [selectedEntities, setSelectedEntities] = useState<string[]>([
+  'Persona',
+  'Organizacion',
+  'Lugar',
+  'Evento',
+])
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** ID de colección en creación/subida (sincrónico; el state puede ir retrasado). */
@@ -215,6 +228,12 @@ const ModalCarga = ({
   const resetUploadForm = useCallback(() => {
     setFiles([])
     setNombreColeccion('')
+    setSelectedEntities([
+      'Persona',
+      'Organizacion',
+      'Lugar',
+      'Evento',
+    ])
     setError('')
     setEtapa('subida')
     setPipelineStatus('idle')
@@ -598,6 +617,7 @@ const ModalCarga = ({
         body: JSON.stringify({
           name: nombreColeccion || 'Nueva colección',
           description: '',
+          included_entities: selectedEntities,
         }),
       })
       if (!res.ok) throw new Error('Error al crear colección')
@@ -900,6 +920,32 @@ const ModalCarga = ({
               />
             </div>
 
+            <div className="mc-entity-options">
+              <p className="mc-entity-title">Entidades a extraer</p>
+
+              <div className="mc-entity-grid">
+                {ENTITY_OPTIONS.map((entity) => (
+                  <label key={entity} className="mc-entity-option">
+                    <input
+                      type="checkbox"
+                      checked={selectedEntities.includes(entity)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedEntities((prev) => [...prev, entity])
+                        } else {
+                          setSelectedEntities((prev) =>
+                            prev.filter((item) => item !== entity),
+                          )
+                        }
+                      }}
+                      disabled={isUploadingLocked}
+                    />
+                    <span>{entity}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <div className="mc-footer">
               <button
                 className="mc-btn-cancel"
@@ -915,7 +961,8 @@ const ModalCarga = ({
                 disabled={
                   files.length === 0 ||
                   isUploadingLocked ||
-                  !nombreColeccion.trim()
+                  !nombreColeccion.trim() ||
+                  selectedEntities.length === 0
                 }
               >
                 {isUploading ? 'Subiendo...' : 'Añadir archivos'}
