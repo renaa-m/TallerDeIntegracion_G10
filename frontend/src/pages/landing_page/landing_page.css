@@ -40,14 +40,21 @@ body {
 
 .container {
   min-height: 100vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 56px;
   padding: 48px 20px 56px;
+  padding-bottom: 2rem;
+  box-sizing: border-box;
   width: 100%;
   margin: 0;
   background: var(--bg-gradient);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .welcome {
@@ -112,9 +119,11 @@ body {
 }
 
 .collections {
+  margin-bottom: auto; /* Mantiene el balance */
   width: 100%;
   max-width: 1200px;
-  margin: 0 auto;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .collections-title {
