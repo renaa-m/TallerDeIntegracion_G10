@@ -2,6 +2,7 @@
 
 import logging
 from functools import lru_cache
+from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
@@ -10,12 +11,17 @@ logger = logging.getLogger(__name__)
 MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 EMBEDDING_DIM = 384
 
+# En producción el modelo se copia al imagen en /app/models/ (ver Dockerfile + cd.yml).
+# En desarrollo, si la ruta local no existe, se descarga desde HuggingFace.
+_LOCAL_MODEL_PATH = Path("/app/models") / MODEL_NAME
+
 
 @lru_cache(maxsize=1)
 def _get_model() -> SentenceTransformer:
-    """Carga el modelo una sola vez y lo reutiliza. Primera carga descarga ~470MB."""
-    logger.info("Cargando modelo de embeddings '%s'...", MODEL_NAME)
-    return SentenceTransformer(MODEL_NAME)
+    """Carga el modelo una sola vez y lo reutiliza."""
+    source = str(_LOCAL_MODEL_PATH) if _LOCAL_MODEL_PATH.is_dir() else MODEL_NAME
+    logger.info("Cargando modelo de embeddings desde '%s'...", source)
+    return SentenceTransformer(source)
 
 
 def generate_embedding(text: str) -> list[float]:
