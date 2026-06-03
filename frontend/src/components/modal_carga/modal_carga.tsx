@@ -374,11 +374,19 @@ const ModalCarga = ({
 
     const collectionId = uploadCollectionIdRef.current ?? resolvedCollectionId
 
-    if (
-      scopeCollectionId === 'nueva' &&
-      !collectionId &&
-      resolvedEtapa === 'subida'
-    ) {
+    // Cerrar en etapa de subida para colección nueva: borrar colección si se
+    // alcanzó a crear y volver al landing, sin dejar colecciones vacías huérfanas.
+    if (scopeCollectionId === 'nueva' && resolvedEtapa === 'subida') {
+      if (collectionId) {
+        getAccessTokenSilently()
+          .then((token) =>
+            fetch(`${API_BASE}/api/collections/${collectionId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` },
+            }),
+          )
+          .catch(() => {})
+      }
       clearActiveCollectionStorage()
       onClose()
       if (landingUserId) {
@@ -428,6 +436,7 @@ const ModalCarga = ({
     persistBackgroundProcessing,
     pipelineStatus,
     scopeCollectionId,
+    getAccessTokenSilently,
   ])
 
   /** Cancelar: elimina la colección y redirige al landing. */
