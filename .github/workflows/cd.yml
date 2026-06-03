@@ -44,13 +44,17 @@ jobs:
 
       - name: Descargar modelo de embeddings (si no está en caché)
         if: steps.hf-cache.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           pip install huggingface_hub
           python -c "
+          import os
           from huggingface_hub import snapshot_download
           snapshot_download(
               repo_id='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
               local_dir='hf-model',
+              token=os.environ.get('HF_TOKEN') or None,
           )
           "
 
