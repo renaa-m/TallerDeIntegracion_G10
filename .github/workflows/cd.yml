@@ -33,6 +33,27 @@ jobs:
       - name: Write GCP Vision credentials
         run: echo '${{ secrets.GCP_VISION_KEY }}' > backend/gcp-vision-key.json
 
+      # El modelo se descarga aquí (no en el Dockerfile) para evitar rate-limits
+      # de HuggingFace durante el docker build. Se guarda en caché entre runs.
+      - name: Cache modelo de embeddings
+        id: hf-cache
+        uses: actions/cache@v4
+        with:
+          path: hf-model
+          key: hf-paraphrase-multilingual-MiniLM-L12-v2-v1
+
+      - name: Descargar modelo de embeddings (si no está en caché)
+        if: steps.hf-cache.outputs.cache-hit != 'true'
+        run: |
+          pip install huggingface_hub
+          python -c "
+          from huggingface_hub import snapshot_download
+          snapshot_download(
+              repo_id='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+              local_dir='hf-model',
+          )
+          "
+
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
