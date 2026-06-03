@@ -719,7 +719,7 @@ const BuscadorColeccion = () => {
               className="bc-delete-collection-btn"
               onClick={() => setIsEliminarModalOpen(true)}
             >
-              <Trash2 size={14} /> <span>Borrar colección</span>
+              <Trash2 size={14} /> <span>Borrar Colección</span>
             </button>
           </div>
         </aside>
