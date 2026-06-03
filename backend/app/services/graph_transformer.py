@@ -32,11 +32,15 @@ def _first_meaningful_value(props: dict[str, str], fallback: str) -> str:
     return fallback
 
 
-def qm_to_cytoscape(qm_text: str) -> dict[str, Any]:
+def qm_to_cytoscape(
+    qm_text: str,
+    chunk_sources: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
     """Parsea el texto .qm y devuelve un dict compatible con Cytoscape.js.
 
     Filtra los nodos de tipo Document/Chunk y las relaciones ChunkOf/ExtractedFrom.
-    Incluye el texto del chunk en las aristas que lo referencian.
+    Incluye el texto del chunk en las aristas que lo referencian y añade
+    metadatos de documento fuente cuando están disponibles.
     """
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
@@ -72,12 +76,15 @@ def qm_to_cytoscape(qm_text: str) -> dict[str, Any]:
             
             # Extraer el ID del chunk si existe en extracted_from
             chunk_text = None
+            edge_doc_info: dict[str, str] | None = None
             if "extracted_from" in props:
                 extracted_str = props["extracted_from"].strip("[]'\"")
                 # Puede ser algo como "Chunk_1_1" o "'Chunk_1_1'"
                 chunk_id = extracted_str.split(",")[0].strip("'\"")
                 if chunk_id in chunk_texts:
                     chunk_text = chunk_texts[chunk_id]
+                if chunk_sources and chunk_id in chunk_sources:
+                    edge_doc_info = chunk_sources[chunk_id]
             
             edge_data = {
                 "id": f"{source}->{target}:{rel_type}",
@@ -89,6 +96,9 @@ def qm_to_cytoscape(qm_text: str) -> dict[str, Any]:
             
             if chunk_text:
                 edge_data["chunk_text"] = chunk_text
+            if edge_doc_info is not None:
+                edge_data["source_document_id"] = edge_doc_info["document_id"]
+                edge_data["source_document_name"] = edge_doc_info["document_name"]
             
             edges.append({"data": edge_data})
             continue
@@ -118,5 +128,24 @@ def qm_to_cytoscape(qm_text: str) -> dict[str, Any]:
         for e in edges
         if e["data"]["source"] in node_ids and e["data"]["target"] in node_ids
     ]
+
+    # Propagar metadatos del documento fuente también a nodos relacionados
+    node_document_map: dict[str, dict[str, str]] = {}
+    for edge in valid_edges:
+        edge_data = edge["data"]
+        doc_id = edge_data.get("source_document_id")
+        doc_name = edge_data.get("source_document_name")
+        if doc_id and doc_name:
+            for node_id in (edge_data["source"], edge_data["target"]):
+                if node_id not in node_document_map:
+                    node_document_map[node_id] = {
+                        "source_document_id": doc_id,
+                        "source_document_name": doc_name,
+                    }
+
+    for node in nodes:
+        node_id = node["data"]["id"]
+        if node_id in node_document_map:
+            node["data"].update(node_document_map[node_id])
 
     return {"elements": {"nodes": nodes, "edges": valid_edges}}

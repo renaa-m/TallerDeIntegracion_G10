@@ -531,6 +531,26 @@ async def list_documents(user_id: str, collection_id: str | None = None) -> list
 async def get_document(doc_id: str, user_id: str) -> dict | None:
     return await asyncio.to_thread(_get_document_sync, doc_id, user_id)
 
+# ── Chunk Sources / Graph Helpers ──────────────────────────────────────────
+
+def get_chunk_sources_by_collection(collection_id: str) -> dict[str, dict[str, str]]:
+    client = _get_service_client()
+    response = (
+        client.table('chunk_embeddings')
+        .select('chunk_id, document_id, document_name')
+        .eq('collection_id', collection_id)
+        .execute()
+    )
+    rows = response.data or []
+    return {
+        row['chunk_id']: {
+            'document_id': row['document_id'],
+            'document_name': row['document_name'],
+        }
+        for row in rows
+        if row.get('chunk_id') and row.get('document_id')
+    }
+
 
 # ── Chunk Embeddings ───────────────────────────────────────────────────────────
 

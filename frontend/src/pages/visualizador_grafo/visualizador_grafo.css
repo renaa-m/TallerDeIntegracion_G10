@@ -340,14 +340,64 @@
   }
 }
 
-/* Contenedor que ocupa toda la pantalla */
-.gv-outer-wrapper {
-  position: relative;
-  width: 100%;
-  height: 100vh; /* O la altura que prefieras */
+.gv-source-document-box {
   display: flex;
-  justify-content: center;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.dark .gv-source-document-box {
+  background-color: #111827;
+  border-color: #334155;
+}
+
+.gv-source-document-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gv-source-document-label {
+  font-size: 11px;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.gv-source-document-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.dark .gv-source-document-name {
+  color: #f8fafc;
+}
+
+.gv-open-document-button {
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 8px;
+  background-color: #8b5cf6;
+  color: #ffffff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.gv-open-document-button:hover:not(:disabled) {
+  background-color: #7c3aed;
+}
+
+.gv-open-document-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 /* Contenedor específico para el estado de carga */
