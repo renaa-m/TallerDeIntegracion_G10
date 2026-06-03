@@ -905,7 +905,7 @@ const ModalCarga = ({
                   ? 'Suelta los archivos'
                   : 'Arrastra tus archivos aquí'}
               </p>
-              <p className="mc-drop-sub">PDF o TXT · Máx. 50 MB</p>
+              <p className="mc-drop-sub">PDF o TXT · Máx. 30 MB</p>
             </div>
 
             {files.length > 0 && (

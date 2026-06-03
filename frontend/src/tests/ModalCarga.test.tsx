@@ -122,7 +122,7 @@ describe('ModalCarga', () => {
     expect(screen.getByText('Añadir fuentes')).toBeInTheDocument()
     expect(screen.getByText('Sube documentos para indexar')).toBeInTheDocument()
     expect(screen.getByText('Arrastra tus archivos aquí')).toBeInTheDocument()
-    expect(screen.getByText('PDF o TXT · Máx. 50 MB')).toBeInTheDocument()
+    expect(screen.getByText('PDF o TXT · Máx. 30 MB')).toBeInTheDocument()
     expect(
       screen.getByPlaceholderText('Nombre de colección'),
     ).toBeInTheDocument()
@@ -322,7 +322,7 @@ describe('ModalCarga', () => {
     fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
 
     expect(
-      await screen.findByText('Error al crear colección'),
+      await screen.findByText('Error mock de colección'),
     ).toBeInTheDocument()
     expect(screen.getByText('Añadir fuentes')).toBeInTheDocument()
   })
@@ -345,7 +345,7 @@ describe('ModalCarga', () => {
     fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
 
     expect(
-      await screen.findByText('No se subieron archivos.'),
+      await screen.findByText('Falló upload'),
     ).toBeInTheDocument()
     expect(screen.getByText('Añadir fuentes')).toBeInTheDocument()
   })
