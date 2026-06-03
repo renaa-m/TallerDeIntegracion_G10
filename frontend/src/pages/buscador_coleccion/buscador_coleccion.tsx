@@ -28,10 +28,26 @@ import ModalCarga from '../../components/modal_carga/modal_carga'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
 import ModalDocumentosDisponibles from '../../components/modal_documentos_disponibles/modal_documentos_disponibles'
 
+import {
+  ACTIVE_COLLECTION_KEY,
+  MODAL_ETAPA_KEY,
+  type CollectionProcessingSnapshot,
+  clearActiveCollectionStorageIfMatch,
+  clearStaleActiveCollectionForPage,
+  getPendingGraphBannerView,
+  getProcessingBannerView,
+  isAwaitingGraphForCollection,
+  isAwaitingGraphGeneration,
+  isGraphViewable,
+  isPipelineInProgress,
+  isPipelineRunning,
+  snapshotFromCollectionApi,
+} from '../../lib/collection_processing'
+
 // Estilos
 import './buscador_coleccion.css'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface SearchResultItem {
   titulo: string
@@ -83,20 +99,36 @@ const BuscadorColeccion = () => {
 
   // --- ESTADOS ---
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
+  const [collectionProcessingStatus, setCollectionProcessingStatus] =
+    useState('idle')
   const [fuentes, setFuentes] = useState([])
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState('')
   const [loading, setLoading] = useState(false)
+  const [searchTime, setSearchTime] = useState<number>(0) // <-- NUEVO ESTADO
 
   const queryFromUrl = searchParams.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(queryFromUrl)
   const [busquedaEnviada, setBusquedaEnviada] = useState(queryFromUrl)
+  const [searchNotReadyMessage, setSearchNotReadyMessage] = useState<
+    string | null
+  >(null)
 
   // Modales
   const [modalCargaOpen, setModalCargaOpen] = useState(id_coleccion === 'nueva')
+  const [modalPipelineEtapa, setModalPipelineEtapa] = useState(false)
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
+  const [isDeletingCollection, setIsDeletingCollection] = useState(false)
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
+  const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
+  const [backgroundProcessingId, setBackgroundProcessingId] = useState<
+    string | null
+  >(null)
+  const [currentProcessingSnapshot, setCurrentProcessingSnapshot] =
+    useState<CollectionProcessingSnapshot | null>(null)
+  const [backgroundProcessingSnapshot, setBackgroundProcessingSnapshot] =
+    useState<CollectionProcessingSnapshot | null>(null)
 
   // Filtros
   const [filtroOpen, setFiltroOpen] = useState(false)
@@ -105,6 +137,50 @@ const BuscadorColeccion = () => {
   const [fechaHasta] = useState('')
 
   const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
+
+  const [scopedCollectionId, setScopedCollectionId] = useState(id_coleccion)
+  if (id_coleccion !== scopedCollectionId) {
+    setScopedCollectionId(id_coleccion)
+    setCurrentProcessingSnapshot(null)
+    setIsCollectionProcessing(false)
+    setCollectionProcessingStatus('idle')
+    setBackgroundProcessingId(null)
+    setBackgroundProcessingSnapshot(null)
+  }
+
+  useEffect(() => {
+    clearStaleActiveCollectionForPage(id_coleccion)
+  }, [id_coleccion])
+
+  useEffect(() => {
+    const state = location.state as { abrirModalCarga?: boolean } | null
+    if (!state?.abrirModalCarga) return
+
+    queueMicrotask(() => {
+      const isNueva = id_coleccion === 'nueva'
+      if (id_coleccion && !isNueva) {
+        localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+        localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+        setModalPipelineEtapa(true)
+      } else {
+        setModalPipelineEtapa(false)
+      }
+      setModalCargaOpen(true)
+      navigate(location.pathname, { replace: true, state: {} })
+    })
+  }, [location.pathname, location.state, navigate, id_coleccion])
+
+  const redirectIfCollectionMissing = useCallback(() => {
+    clearActiveCollectionStorageIfMatch(id_coleccion)
+    setIsCollectionProcessing(false)
+    setCurrentProcessingSnapshot(null)
+    setCollectionProcessingStatus('idle')
+    setBackgroundProcessingId(null)
+    setBackgroundProcessingSnapshot(null)
+    if (id_usuario) {
+      navigate(`/landing-page/${id_usuario}`, { replace: true })
+    }
+  }, [id_coleccion, id_usuario, navigate])
 
   // --- CARGA DE DATOS INICIALES ---
   const cargarDatos = useCallback(async () => {
@@ -118,11 +194,28 @@ const BuscadorColeccion = () => {
         `${API_URL}/api/collections/${id_coleccion}`,
         { headers },
       )
+      if (resColl.status === 404) {
+        redirectIfCollectionMissing()
+        return
+      }
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
         setTempNombre(data.name)
+        const status = data.processing_status ?? 'idle'
+        setCollectionProcessingStatus(status)
+        const processing = isPipelineInProgress(status)
+        setIsCollectionProcessing(processing)
+        if (processing) {
+          setCurrentProcessingSnapshot(
+            snapshotFromCollectionApi(data, id_coleccion),
+          )
+        } else {
+          setCurrentProcessingSnapshot(null)
+        }
       }
+
+      if (isGrafoView) return
 
       const resDocs = await fetch(
         `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
@@ -134,9 +227,270 @@ const BuscadorColeccion = () => {
     } catch (e) {
       console.error('Error cargando datos:', e)
     }
-  }, [id_coleccion, getAccessTokenSilently])
+  }, [
+    id_coleccion,
+    isGrafoView,
+    getAccessTokenSilently,
+    redirectIfCollectionMissing,
+  ])
 
-  // --- LÓGICA DE BÚSQUEDA SEMÁNTICA (POST) ---
+  const isNuevaColeccionPage = id_coleccion === 'nueva'
+  const shouldPollBackground = isNuevaColeccionPage && !modalCargaOpen
+
+  const currentPageInPipeline = isPipelineInProgress(collectionProcessingStatus)
+
+  // Polling ligero cuando el modal está cerrado y hay pipeline activo (solo en buscador).
+  useEffect(() => {
+    if (
+      modalCargaOpen ||
+      !id_coleccion ||
+      id_coleccion === 'nueva' ||
+      isGrafoView
+    ) {
+      return
+    }
+
+    let cancelled = false
+    let intervalId: number | undefined
+
+    const stopPolling = () => {
+      cancelled = true
+      if (intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
+    }
+
+    const pollCollection = async (): Promise<boolean> => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (cancelled) return false
+        if (res.status === 404) {
+          redirectIfCollectionMissing()
+          stopPolling()
+          return false
+        }
+        if (!res.ok) return false
+        const data = await res.json()
+        const processing = isPipelineInProgress(data.processing_status)
+        const esperandoGrafo = isAwaitingGraphForCollection(
+          id_coleccion,
+          data.processing_status,
+        )
+        setCollectionProcessingStatus(data.processing_status ?? 'idle')
+        setIsCollectionProcessing(processing)
+        if (processing) {
+          setCurrentProcessingSnapshot(
+            snapshotFromCollectionApi(data, id_coleccion),
+          )
+          if (isPipelineRunning(data.processing_status)) {
+            localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+            localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+          }
+        } else {
+          setCurrentProcessingSnapshot(null)
+        }
+        if (
+          !processing &&
+          localStorage.getItem(ACTIVE_COLLECTION_KEY) === id_coleccion &&
+          !esperandoGrafo
+        ) {
+          localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+          localStorage.removeItem(MODAL_ETAPA_KEY)
+        }
+        return processing || esperandoGrafo
+      } catch (e) {
+        console.error('Error polling colección:', e)
+        return false
+      }
+    }
+
+    void (async () => {
+      const keepPolling = await pollCollection()
+      if (cancelled || !keepPolling) return
+      intervalId = window.setInterval(async () => {
+        const stillActive = await pollCollection()
+        if (!stillActive) stopPolling()
+      }, 3000)
+    })()
+
+    return () => stopPolling()
+  }, [
+    id_coleccion,
+    modalCargaOpen,
+    isGrafoView,
+    getAccessTokenSilently,
+    redirectIfCollectionMissing,
+  ])
+
+  // Barra de otra colección: solo en /nueva (nunca en la página de una colección concreta).
+  useEffect(() => {
+    if (!shouldPollBackground) return
+
+    const trackedId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+    if (!trackedId) return
+
+    let cancelled = false
+    let intervalId: number | undefined
+
+    const stopPolling = () => {
+      cancelled = true
+      if (intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
+    }
+
+    const pollBackground = async () => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_URL}/api/collections/${trackedId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (cancelled) return
+        if (res.status === 404) {
+          clearActiveCollectionStorageIfMatch(trackedId)
+          setBackgroundProcessingId(null)
+          setBackgroundProcessingSnapshot(null)
+          stopPolling()
+          return
+        }
+        if (!res.ok) return
+        const data = await res.json()
+        if (isPipelineInProgress(data.processing_status)) {
+          setBackgroundProcessingId(trackedId)
+          setBackgroundProcessingSnapshot(
+            snapshotFromCollectionApi(data, trackedId),
+          )
+        } else if (
+          isAwaitingGraphGeneration(data.processing_status) &&
+          localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+        ) {
+          setBackgroundProcessingId(trackedId)
+          setBackgroundProcessingSnapshot(null)
+        } else {
+          localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+          localStorage.removeItem(MODAL_ETAPA_KEY)
+          setBackgroundProcessingId(null)
+          setBackgroundProcessingSnapshot(null)
+          stopPolling()
+        }
+      } catch (e) {
+        console.error('Error polling colección en background:', e)
+      }
+    }
+
+    void pollBackground()
+    intervalId = window.setInterval(pollBackground, 3000)
+    return () => stopPolling()
+  }, [shouldPollBackground, getAccessTokenSilently])
+
+  const visibleBackgroundProcessingId = shouldPollBackground
+    ? backgroundProcessingId
+    : null
+  const visibleBackgroundProcessingSnapshot = shouldPollBackground
+    ? backgroundProcessingSnapshot
+    : null
+
+  const currentPagePipelineSnapshot = useMemo(() => {
+    if (!id_coleccion || id_coleccion === 'nueva') return null
+    if (currentProcessingSnapshot?.collectionId === id_coleccion) {
+      return currentProcessingSnapshot
+    }
+    if (currentPageInPipeline) {
+      return snapshotFromCollectionApi(
+        {
+          name: nombreColeccion,
+          processing_status: collectionProcessingStatus,
+        },
+        id_coleccion,
+      )
+    }
+    return null
+  }, [
+    id_coleccion,
+    currentProcessingSnapshot,
+    currentPageInPipeline,
+    collectionProcessingStatus,
+    nombreColeccion,
+  ])
+
+  const currentPipelineBannerView = useMemo(() => {
+    if (!currentPagePipelineSnapshot) return null
+    return getProcessingBannerView(currentPagePipelineSnapshot)
+  }, [currentPagePipelineSnapshot])
+
+  const otherPipelineBannerView = useMemo(() => {
+    if (
+      !isNuevaColeccionPage ||
+      !visibleBackgroundProcessingSnapshot ||
+      visibleBackgroundProcessingId === id_coleccion
+    ) {
+      return null
+    }
+    return getProcessingBannerView(visibleBackgroundProcessingSnapshot, {
+      showCollectionName: true,
+    })
+  }, [
+    isNuevaColeccionPage,
+    visibleBackgroundProcessingSnapshot,
+    visibleBackgroundProcessingId,
+    id_coleccion,
+  ])
+
+  const openCollectionPipelineModal = () => {
+    if (id_coleccion && id_coleccion !== 'nueva') {
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    }
+    setModalPipelineEtapa(true)
+    setModalCargaOpen(true)
+  }
+
+  const handleOpenCurrentCollectionModal = () => {
+    openCollectionPipelineModal()
+  }
+
+  const handleOpenOtherCollection = () => {
+    if (visibleBackgroundProcessingId && id_usuario) {
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, visibleBackgroundProcessingId)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+      navigate(
+        `/${id_usuario}/colecciones/${visibleBackgroundProcessingId}/buscador`,
+        {
+          state: { abrirModalCarga: true },
+        },
+      )
+    }
+  }
+
+  const pendingGraphBannerView = useMemo(() => {
+    if (
+      modalCargaOpen ||
+      id_coleccion === 'nueva' ||
+      currentPageInPipeline ||
+      currentPipelineBannerView ||
+      !isAwaitingGraphGeneration(collectionProcessingStatus) ||
+      fuentes.length === 0 ||
+      isCollectionProcessing
+    ) {
+      return null
+    }
+    return getPendingGraphBannerView(nombreColeccion)
+  }, [
+    modalCargaOpen,
+    id_coleccion,
+    currentPageInPipeline,
+    currentPipelineBannerView,
+    collectionProcessingStatus,
+    fuentes.length,
+    isCollectionProcessing,
+    nombreColeccion,
+  ])
+
   const ejecutarBusqueda = useCallback(async () => {
     // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
     if (
@@ -150,6 +504,7 @@ const BuscadorColeccion = () => {
     }
 
     setLoading(true)
+    setSearchNotReadyMessage(null)
     try {
       const token = await getAccessTokenSilently()
 
@@ -170,6 +525,8 @@ const BuscadorColeccion = () => {
             : null,
       }
 
+      const startTime = performance.now() // <-- CAPTURAR TIEMPO INICIAL
+
       const res = await fetch(`${API_URL}/api/search`, {
         method: 'POST',
         headers: {
@@ -179,14 +536,30 @@ const BuscadorColeccion = () => {
         body: JSON.stringify(searchRequest),
       })
 
+      const endTime = performance.now() // <-- CAPTURAR TIEMPO FINAL
+      const durationSeconds = parseFloat(
+        ((endTime - startTime) / 1000).toFixed(2),
+      )
+
       if (res.ok) {
         const data = await res.json()
-        setResultados(data.resultados || [])
-      } else if (res.status === 422) {
+        if (data.ready === false) {
+          setResultados([])
+          setSearchNotReadyMessage(
+            data.message ??
+              'Aún no hay grafo generado. Genera el grafo para habilitar la búsqueda semántica.',
+          )
+        } else {
+          setResultados(data.resultados || [])
+          setSearchTime(durationSeconds) // <-- GUARDAR DURACIÓN EN SEGUNDOS
+        }
+      } else {
         setResultados([])
+        setSearchTime(0)
       }
     } catch (e) {
       console.error('Error en búsqueda semántica:', e)
+      setSearchTime(0)
     } finally {
       setLoading(false)
     }
@@ -200,7 +573,6 @@ const BuscadorColeccion = () => {
     getAccessTokenSilently,
   ])
 
-  // --- EFECTOS ---
   useEffect(() => {
     const iniciarCarga = async () => {
       await cargarDatos()
@@ -244,16 +616,32 @@ const BuscadorColeccion = () => {
   }
 
   const handleDelete = async () => {
-    if (!id_coleccion || id_coleccion === 'nueva') return
+    if (!id_coleccion || id_coleccion === 'nueva' || isDeletingCollection)
+      return
+    setIsDeletingCollection(true)
     try {
       const token = await getAccessTokenSilently()
       const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${token}` },
       })
-      if (res.ok) navigate(`/${id_usuario}/dashboard`)
+      if (res.status === 404 || res.ok) {
+        clearActiveCollectionStorageIfMatch(id_coleccion)
+        setIsCollectionProcessing(false)
+        setCurrentProcessingSnapshot(null)
+        setBackgroundProcessingId(null)
+        setBackgroundProcessingSnapshot(null)
+        setIsEliminarModalOpen(false)
+        if (id_usuario) {
+          navigate(`/landing-page/${id_usuario}`, { replace: true })
+        }
+        return
+      }
+      console.error('Error al eliminar colección:', res.status)
     } catch (e) {
       console.error(e)
+    } finally {
+      setIsDeletingCollection(false)
     }
   }
 
@@ -306,7 +694,7 @@ const BuscadorColeccion = () => {
                 <FileText size={15} />{' '}
                 <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
               </Link>
-            ) : (
+            ) : id_coleccion !== 'nueva' ? (
               <Link
                 to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`}
                 className="bc-add-btn"
@@ -319,7 +707,7 @@ const BuscadorColeccion = () => {
                 <Network size={15} />{' '}
                 <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
               </Link>
-            )}
+            ) : null}
 
             <button
               className="bc-add-btn"
@@ -337,6 +725,143 @@ const BuscadorColeccion = () => {
         </aside>
 
         <main className="bc-main">
+          {/* FIX 2: banner de progreso en segundo plano */}
+          {!modalCargaOpen && currentPipelineBannerView && (
+            <div
+              className="bc-alert-banner bc-processing-banner"
+              style={{ cursor: 'pointer' }}
+              onClick={handleOpenCurrentCollectionModal}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleOpenCurrentCollectionModal()
+                }
+              }}
+            >
+              <div className="bc-alert-content bc-processing-banner-main">
+                <div className="bc-alert-icon-wrap">
+                  <Loader2 size={14} className="bc-alert-icon bc-spin" />
+                </div>
+                <div className="bc-alert-text bc-processing-banner-text">
+                  <span className="bc-alert-title">
+                    {currentPipelineBannerView.title}
+                  </span>
+                  <p className="bc-alert-desc">
+                    {currentPipelineBannerView.subtitle}
+                  </p>
+                  <div className="bc-processing-banner-progress-row">
+                    <div
+                      className={`bc-processing-banner-track${currentPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`}
+                      aria-hidden
+                    >
+                      <div
+                        className="bc-processing-banner-fill"
+                        style={
+                          currentPipelineBannerView.progressPercent !== null
+                            ? {
+                                width: `${currentPipelineBannerView.progressPercent}%`,
+                              }
+                            : undefined
+                        }
+                      />
+                    </div>
+                    <span className="bc-processing-banner-percent">
+                      {currentPipelineBannerView.progressCaption}
+                    </span>
+                  </div>
+                  <span className="bc-processing-banner-action">
+                    Clic para ver detalle
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          {!modalCargaOpen && otherPipelineBannerView && (
+            <div
+              className="bc-alert-banner bc-processing-banner"
+              style={{ cursor: 'pointer' }}
+              onClick={handleOpenOtherCollection}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleOpenOtherCollection()
+                }
+              }}
+            >
+              <div className="bc-alert-content bc-processing-banner-main">
+                <div className="bc-alert-icon-wrap">
+                  <Loader2 size={14} className="bc-alert-icon bc-spin" />
+                </div>
+                <div className="bc-alert-text bc-processing-banner-text">
+                  <span className="bc-alert-title">
+                    {otherPipelineBannerView.title}
+                  </span>
+                  <p className="bc-alert-desc">
+                    {otherPipelineBannerView.subtitle}
+                  </p>
+                  <div className="bc-processing-banner-progress-row">
+                    <div
+                      className={`bc-processing-banner-track${otherPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`}
+                      aria-hidden
+                    >
+                      <div
+                        className="bc-processing-banner-fill"
+                        style={
+                          otherPipelineBannerView.progressPercent !== null
+                            ? {
+                                width: `${otherPipelineBannerView.progressPercent}%`,
+                              }
+                            : undefined
+                        }
+                      />
+                    </div>
+                    <span className="bc-processing-banner-percent">
+                      {otherPipelineBannerView.progressCaption}
+                    </span>
+                  </div>
+                  <span className="bc-processing-banner-action">
+                    Clic para ir a esa colección
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+          {!modalCargaOpen && pendingGraphBannerView && (
+            <div
+              className="bc-alert-banner bc-processing-banner bc-pending-graph-banner"
+              style={{ cursor: 'pointer' }}
+              onClick={handleOpenCurrentCollectionModal}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleOpenCurrentCollectionModal()
+                }
+              }}
+            >
+              <div className="bc-alert-content bc-processing-banner-main">
+                <div className="bc-alert-icon-wrap">
+                  <Network size={14} className="bc-alert-icon" />
+                </div>
+                <div className="bc-alert-text bc-processing-banner-text">
+                  <span className="bc-alert-title">
+                    {pendingGraphBannerView.title}
+                  </span>
+                  <p className="bc-alert-desc">
+                    {pendingGraphBannerView.subtitle}
+                  </p>
+                  <span className="bc-processing-banner-action">
+                    {pendingGraphBannerView.actionLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
           {/* 🚀 RENDERING CONDICIONAL CRÍTICO: Si la URL pide el grafo, renderiza la sub-ruta usando Outlet, sino muestra el buscador de texto tradicional */}
           {isGrafoView ? (
             <div
@@ -360,7 +885,8 @@ const BuscadorColeccion = () => {
                     className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
                     onClick={() => setFiltroOpen(!filtroOpen)}
                   >
-                    <SlidersHorizontal size={14} /> <span>Filtrar</span>
+                    <SlidersHorizontal size={14} />{' '}
+                    <span>Criterios de Búsqueda</span>
                   </button>
                 </div>
 
@@ -375,7 +901,7 @@ const BuscadorColeccion = () => {
                       </div>
                       <div className="bc-alert-text">
                         <span className="bc-alert-title">
-                          Próximamente: Filtros Avanzados
+                          Próximamente: Criterios de Búsqueda
                         </span>
                       </div>
                     </div>
@@ -396,75 +922,91 @@ const BuscadorColeccion = () => {
                     <p>Consultando el grafo de conocimiento...</p>
                   </div>
                 ) : resultados.length > 0 ? (
-                  <div className="bc-results-list">
-                    {resultados.map((r, idx) => (
-                      <article key={idx} className="bc-result-card">
-                        <div className="bc-card-header">
-                          <div className="bc-header-info">
-                            <div className="bc-title-row">
-                              <FileText size={14} className="bc-doc-icon" />
-                              <h3 className="bc-result-title">{r.titulo}</h3>
+                  <>
+                    <div className="bc-results-meta">
+                      <span className="bc-results-count">
+                        {resultados.length} resultado
+                        {resultados.length !== 1 ? 's' : ''} en{' '}
+                        {searchTime > 0 ? `${searchTime}s` : ''}
+                      </span>
+                    </div>
+                    <div className="bc-results-list">
+                      {resultados.map((r, idx) => (
+                        <article key={idx} className="bc-result-card">
+                          <div className="bc-card-header">
+                            <div className="bc-header-info">
+                              <div className="bc-title-row">
+                                <FileText size={14} className="bc-doc-icon" />
+                                <h3 className="bc-result-title">{r.titulo}</h3>
+                              </div>
+
+                              <div
+                                className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
+                              >
+                                <CheckCircle2
+                                  size={12}
+                                  className="bc-status-icon"
+                                />
+                                <span className="bc-score-value">
+                                  {(r.score * 100).toFixed(0)}% de coincidencia
+                                </span>
+                              </div>
                             </div>
 
-                            <div
-                              className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
-                            >
-                              <CheckCircle2
-                                size={12}
-                                className="bc-status-icon"
+                            {r.enlace && (
+                              <a
+                                href={r.enlace}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="bc-external-btn"
+                              >
+                                <ExternalLink size={13} />
+                                <span>Documento</span>
+                              </a>
+                            )}
+                          </div>
+
+                          <div className="bc-card-body">
+                            <p className="bc-result-excerpt">
+                              <Highlight
+                                text={r.fragmento}
+                                query={busquedaEnviada}
                               />
-                              <span className="bc-score-value">
-                                {(r.score * 100).toFixed(0)}% de coincidencia
-                              </span>
-                            </div>
+                            </p>
                           </div>
 
-                          {r.enlace && (
-                            <a
-                              href={r.enlace}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="bc-external-btn"
-                            >
-                              <ExternalLink size={13} />
-                              <span>Documento</span>
-                            </a>
-                          )}
-                        </div>
-
-                        <div className="bc-card-body">
-                          <p className="bc-result-excerpt">
-                            <Highlight
-                              text={r.fragmento}
-                              query={busquedaEnviada}
-                            />
-                          </p>
-                        </div>
-
-                        <div className="bc-card-footer">
-                          <div className="bc-footer-tag">
-                            <Network size={12} />
-                            <span>Grafo IMFD</span>
-                          </div>
-                          {r.pagina && (
+                          <div className="bc-card-footer">
                             <div className="bc-footer-tag">
-                              <span>Página {r.pagina}</span>
+                              <Network size={12} />
+                              <span>Grafo IMFD</span>
                             </div>
-                          )}
-                        </div>
-                      </article>
-                    ))}
-                  </div>
+                            {r.pagina && (
+                              <div className="bc-footer-tag">
+                                <span>Página {r.pagina}</span>
+                              </div>
+                            )}
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
                 ) : (
                   <div className="bc-empty">
                     <div className="bc-empty-icon">
                       <Search size={30} />
                     </div>
-                    <h3 className="bc-empty-title">Sin resultados todavía</h3>
+                    <h3 className="bc-empty-title">
+                      {searchNotReadyMessage
+                        ? 'Búsqueda no disponible aún'
+                        : 'Sin resultados todavía'}
+                    </h3>
                     <p className="bc-empty-sub">
-                      {busquedaEnviada
-                        ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
-                        : 'Haz una consulta para explorar los documentos de esta colección.'}
+                      {searchNotReadyMessage ??
+                        (busquedaEnviada
+                          ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
+                          : !isGraphViewable(collectionProcessingStatus)
+                            ? 'Genera el grafo de la colección para habilitar la búsqueda semántica.'
+                            : 'Haz una consulta para explorar los documentos de esta colección.')}
                     </p>
                   </div>
                 )}
@@ -475,17 +1017,36 @@ const BuscadorColeccion = () => {
       </div>
 
       <ModalCarga
+        key={
+          id_coleccion === 'nueva'
+            ? `nueva-${modalCargaOpen ? 'open' : 'closed'}`
+            : (id_coleccion ?? 'none')
+        }
         isOpen={modalCargaOpen}
-        onClose={() => setModalCargaOpen(false)}
+        scopeCollectionId={id_coleccion ?? null}
+        scopeUserId={id_usuario ?? null}
+        forcePipelineEtapa={modalPipelineEtapa}
+        onClose={() => {
+          setModalCargaOpen(false)
+          setModalPipelineEtapa(false)
+          if (isNuevaColeccionPage) {
+            const tracked = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+            setBackgroundProcessingId(tracked)
+          }
+        }}
+        onProcessingChange={setIsCollectionProcessing}
         onUploadSuccess={cargarDatos}
         darkMode={darkMode}
       />
 
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
-        onClose={() => setIsEliminarModalOpen(false)}
+        onClose={() => {
+          if (!isDeletingCollection) setIsEliminarModalOpen(false)
+        }}
         onConfirm={handleDelete}
         nombreColeccion={nombreColeccion}
+        isConfirming={isDeletingCollection}
       />
 
       <ModalDocumentosDisponibles

@@ -17,7 +17,9 @@ from app.services import supabase_client
 router = APIRouter(prefix="/api/documentos", tags=["documentos"])
 
 _FORMATOS_ACEPTADOS = {".pdf", ".txt"}
-_TAMANO_MAXIMO_MB = 50
+# Cloud Run rechaza cuerpos HTTP > ~32 MiB antes de que lleguen a FastAPI.
+# Limitar a 30 MB deja margen para headers y multipart overhead.
+_TAMANO_MAXIMO_MB = 30
 _TAMANO_MAXIMO_BYTES = _TAMANO_MAXIMO_MB * 1024 * 1024
 _CONTENT_TYPES = {".pdf": "application/pdf", ".txt": "text/plain"}
 

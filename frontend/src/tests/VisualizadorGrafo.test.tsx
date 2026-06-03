@@ -51,6 +51,8 @@ describe('VisualizadorGrafo Component Coverage', () => {
         ok: true,
         json: () =>
           Promise.resolve({
+            ready: true,
+            processing_status: 'graph_ready',
             elements: {
               nodes: [{ data: { id: '1', label: 'Nodo Test' } }],
               edges: [
@@ -86,6 +88,64 @@ describe('VisualizadorGrafo Component Coverage', () => {
     expect(screen.getByTestId('cytoscape-canvas')).toBeInTheDocument()
   })
 
+  it('muestra mensaje amigable cuando el grafo aún no existe (idle)', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            ready: false,
+            processing_status: 'idle',
+            message: 'Aún no hay grafo para visualizar.',
+            elements: { nodes: [], edges: [] },
+          }),
+      }),
+    ) as jest.Mock
+
+    render(
+      <MemoryRouter>
+        <GraphViewer />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('Aún no hay grafo para visualizar'),
+      ).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText(/Genera el grafo para poder explorarlo aquí/i),
+    ).toBeInTheDocument()
+  })
+
+  it('muestra mensaje de espera cuando el grafo se está generando', async () => {
+    global.fetch = jest.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            ready: false,
+            processing_status: 'processing_graph',
+            message: 'El grafo se está generando.',
+            elements: { nodes: [], edges: [] },
+          }),
+      }),
+    ) as jest.Mock
+
+    render(
+      <MemoryRouter>
+        <GraphViewer />
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByText('El grafo se está generando')).toBeInTheDocument()
+    })
+    expect(
+      screen.getByRole('button', { name: /comprobar de nuevo/i }),
+    ).toBeInTheDocument()
+  })
+
   it('debe mostrar error cuando la respuesta del servidor es fallida', async () => {
     global.fetch = jest.fn(() => Promise.resolve({ ok: false })) as jest.Mock
 
@@ -100,11 +160,16 @@ describe('VisualizadorGrafo Component Coverage', () => {
     })
   })
 
-  it('debe mostrar mensaje si no hay datos', async () => {
+  it('debe mostrar mensaje si el grafo está listo pero vacío', async () => {
     global.fetch = jest.fn(() =>
       Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ elements: { nodes: [], edges: [] } }),
+        json: () =>
+          Promise.resolve({
+            ready: true,
+            processing_status: 'graph_ready',
+            elements: { nodes: [], edges: [] },
+          }),
       }),
     ) as jest.Mock
 
@@ -116,7 +181,7 @@ describe('VisualizadorGrafo Component Coverage', () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/No hay datos disponibles para visualizar/i),
+        screen.getByText('Aún no hay grafo para visualizar'),
       ).toBeInTheDocument()
     })
   })

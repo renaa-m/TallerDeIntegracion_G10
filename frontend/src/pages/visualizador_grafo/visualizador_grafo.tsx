@@ -21,15 +21,22 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { useAuth0 } from '@auth0/auth0-react'
+import {
+  getGraphUnavailableView,
+  type GraphUnavailableView,
+} from '../../lib/collection_processing'
 import './visualizador_grafo.css'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface CytoscapeElement {
   data: Record<string, unknown>
 }
 
 interface GraphResponse {
+  ready: boolean
+  processing_status?: string
+  message?: string | null
   elements: {
     nodes: CytoscapeElement[]
     edges: CytoscapeElement[]
@@ -40,7 +47,7 @@ interface GraphData {
   label?: string
   source_document_id?: string | number
   source_document_name?: string
-  [key: string]: unknown // Permite otras propiedades dinámicas
+  [key: string]: unknown
 }
 
 const GraphViewer = () => {
@@ -50,8 +57,10 @@ const GraphViewer = () => {
   const [elements, setElements] = useState<ElementDefinition[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [unavailable, setUnavailable] = useState<GraphUnavailableView | null>(
+    null,
+  )
   const [cyRef, setCyRef] = useState<Core | null>(null)
-  // En tu componente:
   const [selectedData, setSelectedData] = useState<GraphData | null>(null)
   const [selectedType, setSelectedType] = useState<'node' | 'edge' | null>(null)
   const [openingDocument, setOpeningDocument] = useState(false)
@@ -70,25 +79,25 @@ const GraphViewer = () => {
   }
 
   const runLayout = useCallback((cyInstance: Core | null) => {
-  if (!cyInstance) return
+    if (!cyInstance) return
 
-  const layoutOptions: LayoutOptions = {
-    name: 'breadthfirst',
-    animate: true,
-    animationDuration: 1000,
-    fit: true,
-    padding: 50,
-    directed: true,      // Ordena de "origen" a "destino"
-    grid: false,         // Si lo pones en true, los ordena en una cuadrícula rígida
-    circle: false,       // Evita que se pongan en círculo
-    spacingFactor: 2.5,  // Aumenta este número para más espacio entre niveles
-  } as LayoutOptions & Record<string, unknown>
+    const layoutOptions: LayoutOptions = {
+      name: 'breadthfirst',
+      animate: true,
+      animationDuration: 1000,
+      fit: true,
+      padding: 50,
+      directed: true,
+      grid: false,
+      circle: false,
+      spacingFactor: 2.5,
+    } as LayoutOptions & Record<string, unknown>
 
-  cyInstance.layout(layoutOptions).run()
-}, [])
+    cyInstance.layout(layoutOptions).run()
+  }, [])
 
   const openSourceDocument = useCallback(async () => {
-    const docId = (selectedData as Record<string, unknown>)?.source_document_id
+    const docId = selectedData?.source_document_id
     if (!docId) return
 
     setOpeningDocument(true)
@@ -118,62 +127,104 @@ const GraphViewer = () => {
     }
   }, [cyRef, elements, runLayout])
 
-  const fetchGraph = useCallback(async () => {
-    if (!id_coleccion) return
-    setLoading(true)
-    setError(null)
-    try {
-      const token = await getAccessTokenSilently()
-      const res = await fetch(
-        `${API_URL}/api/collections/${id_coleccion}/graph`,
-        {
-          headers: { Authorization: 'Bearer ' + token },
-        },
-      )
-
-      if (!res.ok) throw new Error(`Error al cargar el grafo`)
-
-      const data: GraphResponse = await res.json()
-      if (
-        !data.elements ||
-        (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
-      ) {
-        throw new Error('No hay datos disponibles para visualizar.')
+  const fetchGraph = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!id_coleccion || id_coleccion === 'nueva') return
+      if (!options?.silent) {
+        setLoading(true)
+        setError(null)
+        setUnavailable(null)
       }
+      try {
+        const token = await getAccessTokenSilently()
+        const headers = { Authorization: `Bearer ${token}` }
+        const res = await fetch(
+          `${API_URL}/api/collections/${id_coleccion}/graph`,
+          { headers },
+        )
 
-      const nodes: ElementDefinition[] = data.elements.nodes.map((n) => ({
-        data: { ...n.data, id: String(n.data.id) },
-      }))
+        if (res.status === 404) {
+          setUnavailable({
+            title: 'Colección no encontrada',
+            subtitle:
+              'Esta colección ya no existe. Vuelve al inicio e intenta con otra.',
+            pending: false,
+          })
+          return
+        }
 
-      const edges: ElementDefinition[] = data.elements.edges.map(
-        (e, index) => ({
-          data: {
-            ...e.data,
-            id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
-            source: String(e.data.source ?? e.data.from),
-            target: String(e.data.target ?? e.data.to),
-            label: e.data.label || '',
-          },
-        }),
-      )
+        if (!res.ok) {
+          let detail = `Error al cargar el grafo (${res.status})`
+          try {
+            const body = await res.json()
+            if (body?.detail) detail = String(body.detail)
+          } catch {
+            /* respuesta no JSON */
+          }
+          throw new Error(detail)
+        }
 
-      setElements([...nodes, ...edges])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error desconocido')
-    } finally {
-      setLoading(false)
-    }
-  }, [id_coleccion, getAccessTokenSilently])
+        const data: GraphResponse = await res.json()
 
-  // Reemplaza tu bloque useEffect actual (líneas 158-162) por este:
+        if (!data.ready) {
+          setUnavailable(
+            getGraphUnavailableView(data.processing_status ?? null),
+          )
+          return
+        }
+
+        if (
+          !data.elements ||
+          (data.elements.nodes.length === 0 && data.elements.edges.length === 0)
+        ) {
+          setUnavailable(getGraphUnavailableView('idle'))
+          return
+        }
+
+        const nodes: ElementDefinition[] = data.elements.nodes.map((n) => ({
+          data: { ...n.data, id: String(n.data.id) },
+        }))
+
+        const edges: ElementDefinition[] = data.elements.edges.map(
+          (e, index) => ({
+            data: {
+              ...e.data,
+              id: e.data.id ? String(e.data.id) : `edge-${index}-${Date.now()}`,
+              source: String(e.data.source ?? e.data.from),
+              target: String(e.data.target ?? e.data.to),
+              label: e.data.label || '',
+            },
+          }),
+        )
+
+        setElements([...nodes, ...edges])
+      } catch (err) {
+        console.error('Error fetching graph:', err)
+        setError(err instanceof Error ? err.message : 'Error desconocido')
+      } finally {
+        if (!options?.silent) {
+          setLoading(false)
+        }
+      }
+    },
+    [id_coleccion, getAccessTokenSilently],
+  )
+
+  useEffect(() => {
+    if (!unavailable?.pending) return
+    const interval = window.setInterval(() => {
+      void fetchGraph({ silent: true })
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [unavailable?.pending, fetchGraph])
+
   useEffect(() => {
     const loadData = async () => {
       if (!id_coleccion) return
       await fetchGraph()
     }
-
     loadData()
-  }, [id_coleccion, fetchGraph]) // fetchGraph ya está envuelto en useCallback
+  }, [id_coleccion, fetchGraph])
 
   useEffect(() => {
     if (!cyRef) return
@@ -256,13 +307,30 @@ const GraphViewer = () => {
         <p>Cargando grafo...</p>
       </div>
     )
-  if (error)
+
+  if (unavailable || error)
     return (
-      <div className="gv-outer-wrapper gv-error-container">
-        <AlertCircle size={48} className="text-red-500" />
-        <p>{error}</p>
-        <button onClick={() => fetchGraph()} className="gv-retry-button">
-          Reintentar
+      <div
+        className={`gv-outer-wrapper gv-error-container${unavailable?.pending ? ' gv-unavailable-pending' : unavailable ? ' gv-unavailable-info' : ''}`}
+      >
+        {unavailable?.pending ? (
+          <Loader2 size={48} className="gv-spin-loader animate-spin" />
+        ) : (
+          <AlertCircle
+            size={48}
+            className={unavailable ? 'gv-unavailable-icon' : 'text-red-500'}
+          />
+        )}
+        {unavailable ? (
+          <>
+            <h2 className="gv-unavailable-title">{unavailable.title}</h2>
+            <p className="gv-unavailable-subtitle">{unavailable.subtitle}</p>
+          </>
+        ) : (
+          <p>{error}</p>
+        )}
+        <button onClick={() => void fetchGraph()} className="gv-retry-button">
+          {unavailable?.pending ? 'Comprobar de nuevo' : 'Reintentar'}
         </button>
       </div>
     )

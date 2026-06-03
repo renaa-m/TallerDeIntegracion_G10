@@ -96,7 +96,7 @@ def main() -> int:
     output_path = Path(args.output).expanduser().resolve()
     net.write_html(str(output_path), notebook=False, open_browser=False)
 
-    print(f"✅ Grafo generado:")
+    print("✅ Grafo generado:")
     print(f"   Nodos: {len(nodes_added)}")
     print(f"   Aristas: {edges_added}")
     print(f"   HTML:  {output_path}")

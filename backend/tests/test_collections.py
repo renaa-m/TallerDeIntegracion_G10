@@ -114,18 +114,65 @@ class TestObtenerColeccion:
 
 class TestEliminarColeccion:
     def test_eliminar_coleccion_exitoso(self, client):
-        with patch(
-            "app.api.routes.collections.supabase_client.delete_collection",
-            return_value=True,
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.delete_collection",
+                return_value=True,
+            ),
         ):
             response = client.delete(f"/api/collections/{MOCK_COLLECTION_ID}")
 
         assert response.status_code == 204
 
+    def test_eliminar_encolada_legacy_no_drena(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "queued"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=col,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.delete_collection",
+                return_value=True,
+            ),
+            patch(
+                "app.api.routes.collections.processing_queue.drain_user_queue",
+            ) as mock_drain,
+        ):
+            response = client.delete(f"/api/collections/{MOCK_COLLECTION_ID}")
+
+        assert response.status_code == 204
+        mock_drain.assert_not_called()
+
+    def test_eliminar_procesando_no_drena_en_delete(self, client):
+        """El worker activo drena la cola al terminar; DELETE no debe bloquear ni adelantar."""
+        col = {**MOCK_COLLECTION, "processing_status": "processing_text"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=col,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.delete_collection",
+                return_value=True,
+            ),
+            patch(
+                "app.api.routes.collections.processing_queue.drain_user_queue",
+            ) as mock_drain,
+        ):
+            response = client.delete(f"/api/collections/{MOCK_COLLECTION_ID}")
+
+        assert response.status_code == 204
+        mock_drain.assert_not_called()
+
     def test_eliminar_coleccion_no_encontrada_retorna_404(self, client):
         with patch(
-            "app.api.routes.collections.supabase_client.delete_collection",
-            return_value=False,
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=None,
         ):
             response = client.delete(f"/api/collections/{uuid4()}")
 
@@ -177,17 +224,44 @@ class TestProcesarColeccion:
                 return_value=[{"id": str(uuid4())}],
             ),
             patch(
-                "app.api.routes.collections.supabase_client.update_collection_processing_status",
-            ),
-            patch(
-                "app.api.routes.collections.wukong_runner.process_collection",
-            ),
+                "app.api.routes.collections.processing_queue.request_process",
+                return_value="processing_text",
+            ) as mock_request,
         ):
             response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
 
         assert response.status_code == 202
         data = response.json()
         assert data["processing_status"] == "processing_text"
+        mock_request.assert_called_once()
+
+    def test_procesar_coleccion_retorna_409_si_slot_ocupado(self, client):
+        from app.services.processing_queue import ProcessingSlotBusyError
+
+        blocking = {
+            "id": str(uuid4()),
+            "name": "Otra colección",
+            "processing_status": "processing_text",
+        }
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.get_documents",
+                return_value=[{"id": str(uuid4())}],
+            ),
+            patch(
+                "app.api.routes.collections.processing_queue.request_process",
+                side_effect=ProcessingSlotBusyError(blocking),
+            ),
+        ):
+            response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
+
+        assert response.status_code == 409
+        assert "Otra colección" in response.json()["detail"]
+        assert "Se está procesando" in response.json()["detail"]
 
     def test_procesar_coleccion_en_procesamiento_retorna_409(self, client):
         coleccion_procesando = {**MOCK_COLLECTION, "processing_status": "processing_text"}
@@ -224,6 +298,27 @@ class TestCancelarProcesamiento:
         assert data["processing_status"] == "cancelled"
         mock_upd.assert_called_once()
         assert mock_upd.call_args[0][1] == "cancelled"
+
+    def test_cancelar_legacy_queued_retorna_idle(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "queued"}
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=col,
+        ), patch(
+            "app.api.routes.collections.supabase_client.clear_collection_queue_metadata",
+        ), patch(
+            "app.api.routes.collections.supabase_client.update_collection_processing_status",
+        ) as mock_upd, patch(
+            "app.api.routes.collections.processing_queue.drain_user_queue",
+        ) as mock_drain:
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/process/cancel",
+            )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["processing_status"] == "idle"
+        mock_upd.assert_called_once()
+        mock_drain.assert_not_called()
 
     def test_cancelar_idempotente_si_ya_cancelada(self, client):
         col = {**MOCK_COLLECTION, "processing_status": "cancelled"}
@@ -281,6 +376,7 @@ class TestObtenerGrafo:
 
         assert response.status_code == 200
         data = response.json()
+        assert data["ready"] is True
         assert "elements" in data
         assert "nodes" in data["elements"]
         assert "edges" in data["elements"]
@@ -303,14 +399,49 @@ class TestObtenerGrafo:
         assert len(data["elements"]["nodes"]) == 2
         assert len(data["elements"]["edges"]) == 1
 
-    def test_grafo_no_listo_retorna_409(self, client):
+    def test_grafo_partial_error_retorna_200(self, client):
+        coleccion = {**MOCK_COLLECTION, "processing_status": "partial_error"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.download_collection_qm",
+                return_value=_QM_MINIMAL.encode("utf-8"),
+            ),
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 200
+
+    def test_grafo_no_listo_retorna_200_sin_ready(self, client):
         with patch(
             "app.api.routes.collections.supabase_client.get_collection",
             return_value=MOCK_COLLECTION,  # processing_status: "idle"
         ):
             response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
 
-        assert response.status_code == 409
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ready"] is False
+        assert data["processing_status"] == "idle"
+        assert "Aún no hay grafo para visualizar" in data["message"]
+        assert data["elements"]["nodes"] == []
+        assert data["elements"]["edges"] == []
+
+    def test_grafo_en_procesamiento_retorna_200_sin_ready(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "processing_graph"}
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=col,
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}/graph")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ready"] is False
+        assert "se está generando" in data["message"].lower()
 
     def test_coleccion_no_encontrada_retorna_404(self, client):
         with patch(
@@ -391,11 +522,9 @@ class TestGenerateGraph:
                 return_value=[{"id": str(uuid4())}],
             ),
             patch(
-                "app.api.routes.collections.supabase_client.update_collection_processing_status",
-            ),
-            patch(
-                "app.api.routes.collections.wukong_runner.process_collection",
-            ) as mock_process,
+                "app.api.routes.collections.processing_queue.request_process",
+                return_value="processing_text",
+            ) as mock_request,
         ):
             response = client.post(
                 f"/api/collections/{MOCK_COLLECTION_ID}/generate-graph",
@@ -405,10 +534,10 @@ class TestGenerateGraph:
         assert response.status_code == 202
         data = response.json()
         assert data["processing_status"] == "processing_text"
-        mock_process.assert_called_once()
-        _, kwargs_model = mock_process.call_args[0][0], mock_process.call_args[0][1]
-        assert "RangoMilitar" in kwargs_model["entities"]
-        assert "CentroDetencion" in kwargs_model["entities"]
+        mock_request.assert_called_once()
+        _, kwargs = mock_request.call_args
+        assert "RangoMilitar" in kwargs["custom_data_model"]["entities"]
+        assert "CentroDetencion" in kwargs["custom_data_model"]["entities"]
 
     def test_coleccion_no_encontrada_retorna_404(self, client):
         with patch(

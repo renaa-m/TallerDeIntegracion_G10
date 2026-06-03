@@ -1,0 +1,104 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE: us-central1-docker.pkg.dev/titulo-grupo10/imfd-backend/imfd-app:${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # wukong-engine es privado; GITHUB_TOKEN no alcanza. PAT con lectura en ambos repos.
+          token: ${{ secrets.SUBMODULES_PAT }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Write GCP Vision credentials
+        run: echo '${{ secrets.GCP_VISION_KEY }}' > backend/gcp-vision-key.json
+
+      # El modelo se descarga aquí (no en el Dockerfile) para evitar rate-limits
+      # de HuggingFace durante el docker build. Se guarda en caché entre runs.
+      - name: Cache modelo de embeddings
+        id: hf-cache
+        uses: actions/cache@v4
+        with:
+          path: hf-model
+          key: hf-paraphrase-multilingual-MiniLM-L12-v2-v1
+
+      - name: Descargar modelo de embeddings (si no está en caché)
+        if: steps.hf-cache.outputs.cache-hit != 'true'
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          pip install huggingface_hub
+          python -c "
+          import os
+          from huggingface_hub import snapshot_download
+          snapshot_download(
+              repo_id='sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2',
+              local_dir='hf-model',
+              token=os.environ.get('HF_TOKEN') or None,
+          )
+          "
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE }} \
+            --build-arg VITE_AUTH0_DOMAIN=${{ secrets.AUTH0_DOMAIN }} \
+            --build-arg VITE_AUTH0_CLIENT_ID=${{ secrets.VITE_AUTH0_CLIENT_ID }} \
+            --build-arg VITE_AUTH0_AUDIENCE=${{ secrets.AUTH0_API_AUDIENCE }} \
+            --build-arg VITE_API_URL="" \
+            --build-arg VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
+            --build-arg VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_KEY }} \
+            .
+
+      - name: Push Docker image
+        run: docker push ${{ env.IMAGE }}
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: imfd-backend
+          region: ${{ secrets.GCP_REGION }}
+          image: ${{ env.IMAGE }}
+          # --no-cpu-throttling: la CPU no se limita entre requests.
+          # Es obligatorio porque el procesamiento de documentos corre en hilos
+          # daemon que siguen activos después de devolver el 202 HTTP.
+          # Sin esto Cloud Run suspende la CPU y Wukong/OCR quedan colgados.
+          flags: --allow-unauthenticated --memory=2Gi --cpu=2 --no-cpu-throttling --min-instances=1
+          env_vars: |
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            AUTH0_DOMAIN=${{ secrets.AUTH0_DOMAIN }}
+            AUTH0_API_AUDIENCE=${{ secrets.AUTH0_API_AUDIENCE }}
+            AUTH0_M2M_CLIENT_ID=${{ secrets.AUTH0_M2M_CLIENT_ID }}
+            AUTH0_M2M_CLIENT_SECRET=${{ secrets.AUTH0_M2M_CLIENT_SECRET }}
+            MILLENNIUMDB_HOST=${{ secrets.MILLENNIUMDB_HOST }}
+            MILLENNIUMDB_PORT=${{ secrets.MILLENNIUMDB_PORT }}
+            GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            DEBUG=false
+            MAX_UPLOAD_RETRIES=3
+            UPLOAD_RETRY_DELAY_SECONDS=1.0
+            GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json
