@@ -1,0 +1,179 @@
+const DEFAULT_DATA_MODEL = {
+  parameters: {
+    role: 'Un analista experto en extraer entidades estructuradas de documentos en español. Tu tarea es identificar PERSONAS (humanos), ORGANIZACIONES (instituciones, empresas, partidos, tribunales, ministerios, universidades, fiscalías, organismos del Estado), LUGARES GEOGRÁFICOS (ciudades, comunas, regiones, países, direcciones físicas) y EVENTOS (acontecimientos con fecha). Sos extremadamente cuidadoso en distinguir Organizaciones de Lugares: una institución NO es un lugar.',
+    context:
+      'Documentos de texto en español que pueden mencionar personas, organizaciones, lugares y eventos relevantes.',
+    input_language: 'spanish',
+    output_language: 'spanish',
+    included_documents: ['preview'],
+    included_entities: ['Persona', 'Organizacion', 'Lugar', 'Evento'],
+    included_relations: [
+      'TrabajaEn',
+      'DuenoDe',
+      'UbicadoEn',
+      'Participo',
+      'Menciona',
+    ],
+  },
+  entities: {
+    Persona: {
+      description:
+        "Una persona natural (ser humano individual) mencionada por su nombre en el documento. NO incluye personajes ficticios, ni cargos genéricos sin nombre propio (ej: 'el ministro' sin nombre NO cuenta, pero 'el ministro Juan Pérez' SÍ).",
+      primary_key: 'nombre',
+      duplicates: 'similar',
+      properties: {
+        nombre: {
+          type: 'string',
+          description:
+            'Nombre completo de la persona, tal como aparece en el documento. Si solo se menciona apellido, usar el apellido. Debe ser único.',
+          example: 'Carlos Alberto Délano Abbott',
+          required: true,
+        },
+        rol: {
+          type: 'string',
+          description:
+            'Cargo, profesión u ocupación más relevante de la persona, si se menciona explícitamente. Si no se menciona, omitir.',
+          example: 'Director del Servicio de Impuestos Internos',
+        },
+      },
+    },
+    Organizacion: {
+      description:
+        "Una entidad colectiva con identidad propia: empresas, partidos políticos, ONGs, ministerios, fiscalías, tribunales, juzgados, universidades, comisiones, organismos públicos, sociedades de inversión, bancos, agencias del Estado. Es CUALQUIER institución que actúa como sujeto colectivo, AUNQUE tenga un nombre que mencione un lugar (ej: 'Juzgado de Garantía de Santiago' es Organizacion, NO Lugar; 'Universidad de Chile' es Organizacion, NO Lugar).",
+      primary_key: 'nombre',
+      duplicates: 'similar',
+      properties: {
+        nombre: {
+          type: 'string',
+          description:
+            'Nombre oficial de la organización tal como aparece en el documento. Debe ser único.',
+          example: 'Servicio de Impuestos Internos',
+          required: true,
+        },
+        tipo: {
+          type: 'string',
+          description: 'Categoría general de la organización.',
+          options: [
+            'Empresa',
+            'ONG',
+            'Universidad',
+            'OrganismoEstatal',
+            'TribunalOFiscalia',
+            'PartidoPolitico',
+            'Banco',
+            'Otro',
+          ],
+        },
+      },
+    },
+    Lugar: {
+      description:
+        "EXCLUSIVAMENTE un lugar geográfico físico: una ciudad, comuna, región, país, barrio, calle, dirección postal, sector geográfico (ej: 'Santiago', 'Las Condes', 'Región Metropolitana', 'sector oriente de Santiago'). NUNCA es un Lugar: una universidad, un tribunal, un juzgado, un ministerio, un organismo público, una empresa, un partido, ni un edificio identificado por su institución (esos son Organizacion). Si dudás entre Lugar y Organizacion, elegí Organizacion.",
+      primary_key: 'nombre',
+      duplicates: 'similar',
+      properties: {
+        nombre: {
+          type: 'string',
+          description:
+            'Nombre del lugar geográfico tal como aparece en el documento.',
+          example: 'Las Condes',
+          required: true,
+        },
+        tipo: {
+          type: 'string',
+          description: 'Tipo del lugar. Debe ser estrictamente geográfico.',
+          options: [
+            'Ciudad',
+            'Comuna',
+            'Region',
+            'Pais',
+            'Barrio',
+            'Direccion',
+            'Otro',
+          ],
+        },
+      },
+    },
+    Evento: {
+      description:
+        "Un acontecimiento concreto con una fecha asociada (formalizaciones, reuniones, querellas, anuncios, hechos noticiables). NO es un evento la simple existencia de algo (ej: 'el Grupo Penta tiene un banco' NO es evento; 'la formalización de Délano el 10 de octubre de 2014' SÍ).",
+      primary_key: 'nombre',
+      duplicates: 'similar',
+      properties: {
+        nombre: {
+          type: 'string',
+          description:
+            'Título corto y descriptivo del evento, de 2 a 8 palabras. Sirve como identificador legible. NO incluir la fecha en el título.',
+          example: 'Formalización de Délano y Lavín',
+          required: true,
+        },
+        descripcion: {
+          type: 'string',
+          description:
+            'Descripción más extensa del evento (1 a 3 frases), explicando qué pasó.',
+          example:
+            'El Juzgado de Garantía de Santiago formalizó a los socios controladores del Grupo Penta por delitos tributarios.',
+          required: true,
+        },
+        fecha: {
+          type: 'string',
+          description:
+            'Fecha del evento. Formato TYYYYMMDD. Si no hay día, usar 01. Si no hay mes, usar 01. Si no hay año, omitir el evento entero.',
+          example: 'T20141010',
+          required: true,
+        },
+      },
+    },
+  },
+  relations: {
+    TrabajaEn: {
+      origin_target: {
+        Persona: ['Organizacion'],
+      },
+      description:
+        'Una persona desempeña un cargo laboral o profesional dentro de una organización.',
+      duplicates: 'similar',
+      properties: {
+        cargo: {
+          type: 'string',
+          description:
+            'Cargo o rol específico que ocupa la persona en la organización, si se menciona.',
+          example: 'Fiscal jefe',
+        },
+      },
+    },
+    DuenoDe: {
+      origin_target: {
+        Persona: ['Organizacion'],
+      },
+      description:
+        'Una persona es dueña, controladora, propietaria o accionista mayoritaria de una organización.',
+      force_unique: true,
+    },
+    UbicadoEn: {
+      origin_target: {
+        Organizacion: ['Lugar'],
+      },
+      description:
+        'Una organización tiene su sede, oficinas o domicilio en un lugar geográfico específico.',
+      force_unique: true,
+    },
+    Participo: {
+      origin_target: {
+        Persona: ['Evento'],
+      },
+      description:
+        'Una persona participó, asistió o estuvo directamente involucrada en un evento.',
+      force_unique: true,
+    },
+    Menciona: {
+      origin: ['Evento'],
+      target: ['Organizacion', 'Lugar'],
+      description: 'Un evento menciona o involucra a una organización o lugar.',
+      bypass_LLM: true,
+      force_unique: true,
+    },
+  },
+} as const
+
+export default DEFAULT_DATA_MODEL

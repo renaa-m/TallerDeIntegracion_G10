@@ -45,7 +45,7 @@ def _get_service_client() -> Client:
 # ── Collections ────────────────────────────────────────────────────────────────
 
 
-def create_collection(user_id: str, name: str, description: str | None = None, included_entities: list[str] | None = None,) -> dict:
+def create_collection(user_id: str, name: str, description: str | None = None,) -> dict:
     client = get_supabase_client()
     data = {
         "id": str(uuid4()),
@@ -53,7 +53,6 @@ def create_collection(user_id: str, name: str, description: str | None = None, i
         "name": name,
         "description": description,
         "status": "active",
-        "included_entities": included_entities or ["Persona", "Organizacion", "Lugar", "Evento"],
     }
     response = client.table("collections").insert(data).execute()
     return response.data[0]

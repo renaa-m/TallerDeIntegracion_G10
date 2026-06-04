@@ -7,14 +7,6 @@ from pydantic import BaseModel, Field
 class CollectionCreate(BaseModel):
     name: str
     description: str | None = None
-    included_entities: list[str] = Field(
-        default_factory=lambda: [
-            "Persona",
-            "Organizacion",
-            "Lugar",
-            "Evento",
-        ],
-    )
 
 
 class FailedProcessingDocument(BaseModel):
@@ -27,14 +19,6 @@ class CollectionResponse(BaseModel):
     user_id: str
     name: str
     description: str | None
-    included_entities: list[str] = Field(
-        default_factory=lambda: [
-            "Persona",
-            "Organizacion",
-            "Lugar",
-            "Evento",
-        ],
-    )
     status: str
     processing_status: str = "idle"
     processing_error_message: str | None = None

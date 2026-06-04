@@ -361,15 +361,38 @@ describe('ModalCarga', () => {
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
-        `${API_BASE}/api/collections/collection-123/process`,
+        `${API_BASE}/api/collections/collection-123/generate-graph`,
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
             Authorization: 'Bearer fake-token',
+            'Content-Type': 'application/json',
           }),
+          body: expect.any(String),
         }),
       )
     })
+
+    const generateGraphCall = (globalThis.fetch as jest.Mock).mock.calls.find(
+      ([url]) =>
+        url === `${API_BASE}/api/collections/collection-123/generate-graph`,
+    )
+
+    expect(generateGraphCall).toBeTruthy()
+
+    const body = JSON.parse(generateGraphCall![1].body)
+
+    expect(body.parameters.included_entities).toEqual([
+      'Persona',
+      'Organizacion',
+      'Lugar',
+      'Evento',
+    ])
+
+    expect(body.entities).toHaveProperty('Persona')
+    expect(body.entities).toHaveProperty('Organizacion')
+    expect(body.entities).toHaveProperty('Lugar')
+    expect(body.entities).toHaveProperty('Evento')
 
     expect(
       await screen.findByText('Extrayendo texto de los documentos...'),
