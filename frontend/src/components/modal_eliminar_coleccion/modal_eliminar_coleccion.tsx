@@ -3,6 +3,7 @@ import './modal_eliminar_coleccion.css'
 interface ModalEliminarColeccionProps {
   isOpen: boolean
   nombreColeccion?: string
+  isConfirming?: boolean
   onConfirm: () => void
   onClose: () => void
 }
@@ -10,13 +11,14 @@ interface ModalEliminarColeccionProps {
 function ModalEliminarColeccion({
   isOpen,
   nombreColeccion,
+  isConfirming = false,
   onConfirm,
   onClose,
 }: ModalEliminarColeccionProps) {
   if (!isOpen) return null
 
   return (
-    <div className="mea-overlay" onClick={onClose}>
+    <div className="mea-overlay" onClick={isConfirming ? undefined : onClose}>
       <div className="mea-box" onClick={(e) => e.stopPropagation()}>
         <div className="mea-icon-wrap">
           <div className="mea-icon-ring" />
@@ -54,11 +56,19 @@ function ModalEliminarColeccion({
         <p className="mea-warning">Esta acción no se puede deshacer.</p>
 
         <div className="mea-actions">
-          <button className="mea-btn mea-btn-cancel" onClick={onClose}>
+          <button
+            className="mea-btn mea-btn-cancel"
+            onClick={onClose}
+            disabled={isConfirming}
+          >
             Cancelar
           </button>
-          <button className="mea-btn mea-btn-confirm" onClick={onConfirm}>
-            Sí, eliminar
+          <button
+            className="mea-btn mea-btn-confirm"
+            onClick={onConfirm}
+            disabled={isConfirming}
+          >
+            {isConfirming ? 'Eliminando…' : 'Sí, eliminar'}
           </button>
         </div>
       </div>

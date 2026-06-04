@@ -310,6 +310,41 @@
   text-align: center;
 }
 
+.gv-unavailable-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.dark .gv-unavailable-title {
+  color: #f1f5f9;
+}
+
+.gv-unavailable-subtitle {
+  margin: 0;
+  max-width: 420px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #64748b;
+}
+
+.dark .gv-unavailable-subtitle {
+  color: #94a3b8;
+}
+
+.gv-unavailable-icon {
+  color: #8b5cf6;
+}
+
+.gv-unavailable-info .gv-unavailable-icon {
+  color: #8b5cf6;
+}
+
+.gv-unavailable-pending .gv-spin-loader {
+  color: #8b5cf6;
+}
+
 .gv-retry-button {
   padding: 8px 16px;
   background: #8b5cf6;

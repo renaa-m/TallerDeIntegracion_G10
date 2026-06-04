@@ -18,10 +18,14 @@ let mockUser: {
   nickname: 'anto',
   given_name: 'Anto',
 }
+let mockIsAuthenticated = true
+let mockIsLoading = false
 
 jest.mock('@auth0/auth0-react', () => ({
   useAuth0: () => ({
     user: mockUser,
+    isAuthenticated: mockIsAuthenticated,
+    isLoading: mockIsLoading,
     getAccessTokenSilently: mockGetToken,
   }),
 }))
@@ -56,6 +60,9 @@ const coleccionesMock = [
 describe('LandingPage', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+
+    mockIsAuthenticated = true
+    mockIsLoading = false
 
     mockParams = {
       id_usuario: 'user123',
