@@ -1,6 +1,6 @@
 import fitz
 import pytest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from app.config import language_to_ocr_hints, language_to_wukong_name
 from app.services.text_extraction import (
