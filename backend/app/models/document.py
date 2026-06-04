@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 class CollectionCreate(BaseModel):
     name: str
     description: str | None = None
+    language: str = "es"
 
 
 class FailedProcessingDocument(BaseModel):
@@ -20,6 +21,7 @@ class CollectionResponse(BaseModel):
     name: str
     description: str | None
     status: str
+    language: str = "es"
     processing_status: str = "idle"
     processing_error_message: str | None = None
     processed_at: datetime | None = None

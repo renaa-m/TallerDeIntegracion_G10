@@ -37,6 +37,7 @@ def process_txt_document(
     user_id: str,
     collection_id: str,
     storage_path: str,
+    language_hints: list[str] | None = None,  # ignorado para TXT, sólo por consistencia de firma
 ) -> dict:
     """
     Pipeline completo para un archivo TXT:
@@ -89,6 +90,17 @@ def extract_text_pymupdf(file_path: str) -> str:
     pages = [doc[i].get_text() for i in range(len(doc))]
     doc.close()
     return "\n\n".join(pages)
+
+
+def _build_image_context(language_hints: list[str] | None) -> vision.ImageContext | None:
+    """Construye un ImageContext con language_hints para Cloud Vision.
+
+    Devuelve None cuando no hay hints para evitar enviar un objeto vacío.
+    Los códigos siguen el estándar BCP-47 (ej. 'es', 'en', 'pt').
+    """
+    if not language_hints:
+        return None
+    return vision.ImageContext(language_hints=language_hints)
 
 
 def _estimate_pixels_at_dpi(page: fitz.Page, dpi: int) -> int:
@@ -164,20 +176,15 @@ def pixmap_to_ocr_bytes(pix: fitz.Pixmap) -> bytes:
     return pix.tobytes("png")
 
 
-def _vision_image_context() -> vision.ImageContext:
-    hints = [
-        lang.strip()
-        for lang in settings.ocr_language_hints.split(",")
-        if lang.strip()
-    ]
-    return vision.ImageContext(language_hints=hints or ["es"])
-
-
-def _call_vision_ocr(client: vision.ImageAnnotatorClient, image_bytes: bytes) -> str:
+def _call_vision_ocr(
+    client: vision.ImageAnnotatorClient,
+    image_bytes: bytes,
+    image_context: vision.ImageContext | None = None,
+) -> str:
     image = vision.Image(content=image_bytes)
     response = client.document_text_detection(
         image=image,
-        image_context=_vision_image_context(),
+        **({"image_context": image_context} if image_context is not None else {}),
     )
     if response.error.message:
         raise RuntimeError(response.error.message)
@@ -190,10 +197,11 @@ def _ocr_page_with_dpi(
     client: vision.ImageAnnotatorClient,
     page: fitz.Page,
     dpi: int,
+    image_context: vision.ImageContext | None = None,
 ) -> str:
     pix = render_page_for_ocr(page, dpi)
     try:
-        return _call_vision_ocr(client, pixmap_to_ocr_bytes(pix))
+        return _call_vision_ocr(client, pixmap_to_ocr_bytes(pix), image_context)
     finally:
         pix = None
 
@@ -202,6 +210,7 @@ def ocr_pdf_page(
     client: vision.ImageAnnotatorClient,
     page: fitz.Page,
     page_num: int,
+    image_context: vision.ImageContext | None = None,
 ) -> str:
     """
     OCR de una página con DPI adaptativo y reintento a mayor resolución si el
@@ -209,7 +218,7 @@ def ocr_pdf_page(
     """
     dpi = choose_ocr_dpi(page)
     try:
-        text = _ocr_page_with_dpi(client, page, dpi)
+        text = _ocr_page_with_dpi(client, page, dpi, image_context)
     except RuntimeError as exc:
         raise RuntimeError(
             f"Cloud Vision error en página {page_num + 1}: {exc.args[0]}"
@@ -218,7 +227,7 @@ def ocr_pdf_page(
     retry_dpi = _clamp_dpi_for_vision(page, settings.ocr_dpi_complex)
     if len(text.strip()) < _OCR_MIN_CHARS_BEFORE_RETRY and retry_dpi > dpi:
         try:
-            text = _ocr_page_with_dpi(client, page, retry_dpi)
+            text = _ocr_page_with_dpi(client, page, retry_dpi, image_context)
         except RuntimeError as exc:
             raise RuntimeError(
                 f"Cloud Vision error en página {page_num + 1}: {exc.args[0]}"
@@ -231,7 +240,10 @@ def ocr_pdf_page(
     return text
 
 
-def extract_text_vision(file_path: str) -> str:
+def extract_text_vision(
+    file_path: str,
+    language_hints: list[str] | None = None,
+) -> str:
     """
     Extrae texto de un PDF escaneado usando Google Cloud Vision API.
     Estrategia: página por página como imagen PNG en escala de grises, con DPI
@@ -241,11 +253,12 @@ def extract_text_vision(file_path: str) -> str:
     """
     client = vision.ImageAnnotatorClient()
     doc = fitz.open(file_path)
+    image_context = _build_image_context(language_hints)
     pages_text = []
 
     try:
         for page_num in range(len(doc)):
-            pages_text.append(ocr_pdf_page(client, doc[page_num], page_num))
+            pages_text.append(ocr_pdf_page(client, doc[page_num], page_num, image_context))
     finally:
         doc.close()
 
@@ -257,6 +270,7 @@ def process_pdf_document(
     user_id: str,
     collection_id: str,
     storage_path: str,
+    language_hints: list[str] | None = None,
 ) -> dict:
     """
     Pipeline completo para un archivo PDF digital:
@@ -264,11 +278,12 @@ def process_pdf_document(
     2. Descarga el archivo desde Supabase Storage
     3. Escribe los bytes en un archivo temporal
     4. Detecta si es PDF digital o escaneado
-    5. Extrae el texto con PyMuPDF
+    5. Extrae el texto con PyMuPDF (digital) o Cloud Vision con language_hints (escaneado)
     6. Guarda el texto en la tabla document_texts
     7. Marca el documento como 'text_extracted'
 
-    Si el PDF es escaneado, extrae el texto con Google Cloud Vision API (OCR).
+    ``language_hints`` se propaga a Cloud Vision solo cuando el PDF es escaneado.
+    Para PDFs digitales (PyMuPDF) el parámetro se ignora.
     Si algo falla, marca el documento como 'error' con el mensaje.
     """
     tmp_path = None
@@ -284,7 +299,7 @@ def process_pdf_document(
         file_type = detect_file_type(tmp_path)
 
         if file_type == "pdf_scanned":
-            extracted_text = extract_text_vision(tmp_path)
+            extracted_text = extract_text_vision(tmp_path, language_hints=language_hints)
             save_document_text(
                 document_id=document_id,
                 user_id=user_id,
