@@ -1,24 +1,39 @@
 :root {
-  /* MODO CLARO: Basado en tu referencia */
+  /* Modo Claro */
   --bg-gradient: linear-gradient(180deg, #f8ffa1 0%, #f6d5ee 55%, #ffffff 100%);
-  --card-bg: rgba(255, 255, 255, 0.75);
+  --card-bg: rgba(255, 255, 255, 0.72);
   --text-main: #111111;
-  --text-sub: #4f4f5c;
-  --landing-accent: #aba3f6;
-  --border-color: rgba(171, 163, 246, 0.3);
-  --btn-text: #111111;
+  --text-sub: #5c5c68;
+  --border-color: rgba(171, 163, 246, 0.35);
 }
-
 @media (prefers-color-scheme: dark) {
-  :root {
-    /* MODO OSCURO: Basado en la imagen que subiste */
-    --bg-gradient: radial-gradient(circle at center, #243166 0%, #1a1a2e 100%);
-    --card-bg: rgba(23, 23, 35, 0.7);
-    --text-main: #ffffff;
-    --text-sub: #ffffff;
-    --accent: #a8a3f6;
-    --border-color: rgba(168, 163, 246, 0.2);
-    --btn-text: #111111;
+  
+  /* 1. Fondo de tarjetas: Blanco semi-transparente que se ve claro */
+  .card {
+    background-color: rgba(255, 255, 255, 0.85) !important; 
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    backdrop-filter: blur(4px) !important;
+  }
+
+  /* 2. Textos fuera de la tarjeta (Títulos de página): Se mantienen blancos */
+  .title,
+  .collections-title {
+    color: #ffffff !important;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+  }
+
+  /* 3. Textos DENTRO de la tarjeta: Forzamos a negro */
+  .card h3,
+  .card p,
+  .card-progress,
+  .card-progress span {
+    color: #000000 !important;
+    text-shadow: none !important; /* Quitamos la sombra porque ya no hace falta */
+  }
+
+  /* 4. Subtítulo principal de bienvenida: Lo dejamos blanco para que destaque */
+  .subtitle {
+    color: #ffffff !important;
   }
 }
 
@@ -86,7 +101,7 @@ body {
 .subtitle {
   font-size: 18px;
   line-height: 1.6;
-  color: var(--text-sub);
+  color: var(--text-sub); /* <-- Obligatorio */
   margin-bottom: 32px;
   max-width: 520px;
 }
@@ -181,7 +196,7 @@ body {
   margin-top: 10px;
   font-size: 0.9rem;
   font-weight: 500;
-  color: #5c5c68;
+  color: var(--text-sub); /* <-- Obligatorio */
   line-height: 1.4;
 }
 
@@ -192,7 +207,7 @@ body {
 
 .card p {
   font-size: 16px;
-  color: #5c5c68;
+  color: var(--text-sub); /* <-- Obligatorio */
   text-align: center;
 }
 
