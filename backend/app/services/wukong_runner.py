@@ -40,7 +40,7 @@ from app.config import (
     settings,
 )
 # importamos el cliente de Supabase para interactuar con la base de datos
-from app.services import supabase_client
+from app.services import supabase_client, graph_transformer
 from app.services.qm_storage import export_qm_to_supabase
 from app.services.text_extraction import (
     process_pdf_document,
@@ -378,6 +378,7 @@ def process_graph_collection(collection_id: str, custom_data_model: dict | None 
             error_message=completion_message,
             processed_at=_now_iso(),
         )
+        graph_transformer.invalidate_facets_cache(collection_id)
     except ProcessingCancelled:
         logger.info("Construcción de grafo cancelada colección %s", collection_id)
         return
