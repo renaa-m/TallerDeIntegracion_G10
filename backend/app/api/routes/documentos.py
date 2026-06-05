@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -237,6 +238,29 @@ async def listar_documentos(
         raise HTTPException(
             status_code=502,
             detail="Error al obtener la lista de documentos.",
+        ) from exc
+
+
+@router.get("/signed-url")
+async def get_signed_url(
+    path: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Genera una URL firmada para acceder a un documento en Supabase Storage.
+
+    Debe llamarse solo cuando el usuario decide abrir el archivo, no de forma
+    masiva para todos los resultados de búsqueda.
+    """
+    safe_user_id = supabase_client.storage_path_user_folder(user_id)
+    if not path.startswith(safe_user_id + "/"):
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    try:
+        url = await asyncio.to_thread(supabase_client.create_signed_url, path)
+        return {"url": url}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo generar el enlace de descarga.",
         ) from exc
 
 
