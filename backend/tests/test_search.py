@@ -21,13 +21,18 @@ MOCK_COLLECTION = {
 
 MOCK_EMBEDDING = [0.1] * 384
 
+# total_count refleja lo que devuelve la window function SQL
 MOCK_CHUNK = {
     "chunk_id": "Chunk_1_1",
     "document_name": "informe.pdf",
     "chunk_text": "Fragmento de prueba del documento.",
     "similarity": 0.85,
     "storage_path": "auth0_testuser123/coleccion/doc",
+    "total_count": 1,
 }
+
+# Prefijo correcto para el usuario de prueba
+_VALID_PATH = "auth0_testuser123/coleccion/archivo.pdf"
 
 SEARCH_BODY = {
     "query": "consulta de prueba",
@@ -35,13 +40,15 @@ SEARCH_BODY = {
 }
 
 
-def _chunk(i: int, similarity: float = 0.8) -> dict:
+def _chunk(i: int, similarity: float = 0.8, total_count: int = 1) -> dict:
+    """Representa una fila devuelta por search_chunks (SQL ya paginó y filtró)."""
     return {
         "chunk_id": f"Chunk_1_{i}",
         "document_name": f"doc_{i}.pdf",
         "chunk_text": f"Fragmento número {i}.",
         "similarity": similarity,
-        "storage_path": f"user/{MOCK_COLLECTION_ID}/doc_{i}.pdf",
+        "storage_path": f"auth0_testuser123/{MOCK_COLLECTION_ID}/doc_{i}.pdf",
+        "total_count": total_count,
     }
 
 
@@ -158,15 +165,17 @@ class TestBusquedaSemantica:
 
 
 # ── Paginación ─────────────────────────────────────────────────────────────────
+# El mock representa lo que SQL devuelve: datos ya paginados + total_count real.
 
 
 class TestPaginacion:
     def test_page1_retorna_primeros_10(self, client):
-        chunks = [_chunk(i) for i in range(25)]
+        # SQL devuelve la página 1 (10 chunks) con total_count del universo completo
+        page_chunks = [_chunk(i, total_count=25) for i in range(10)]
         with (
             patch("app.api.routes.search.supabase_client.get_collection_by_id", return_value=MOCK_COLLECTION),
             patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
-            patch("app.api.routes.search.supabase_client.search_chunks", return_value=chunks),
+            patch("app.api.routes.search.supabase_client.search_chunks", return_value=page_chunks),
         ):
             data = client.post("/api/search", json=SEARCH_BODY).json()
 
@@ -177,11 +186,12 @@ class TestPaginacion:
         assert data["resultados"][0]["id_chunk"] == "Chunk_1_0"
 
     def test_page2_retorna_siguientes_10(self, client):
-        chunks = [_chunk(i) for i in range(25)]
+        # SQL devuelve la página 2 (chunks 10-19) con total_count del universo completo
+        page_chunks = [_chunk(i + 10, total_count=25) for i in range(10)]
         with (
             patch("app.api.routes.search.supabase_client.get_collection_by_id", return_value=MOCK_COLLECTION),
             patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
-            patch("app.api.routes.search.supabase_client.search_chunks", return_value=chunks),
+            patch("app.api.routes.search.supabase_client.search_chunks", return_value=page_chunks),
         ):
             data = client.post("/api/search", json={**SEARCH_BODY, "page": 2}).json()
 
@@ -190,11 +200,12 @@ class TestPaginacion:
         assert data["resultados"][0]["id_chunk"] == "Chunk_1_10"
 
     def test_ultima_pagina_puede_ser_parcial(self, client):
-        chunks = [_chunk(i) for i in range(25)]
+        # SQL devuelve la última página (5 chunks) con total_count del universo
+        page_chunks = [_chunk(i + 20, total_count=25) for i in range(5)]
         with (
             patch("app.api.routes.search.supabase_client.get_collection_by_id", return_value=MOCK_COLLECTION),
             patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
-            patch("app.api.routes.search.supabase_client.search_chunks", return_value=chunks),
+            patch("app.api.routes.search.supabase_client.search_chunks", return_value=page_chunks),
         ):
             data = client.post("/api/search", json={**SEARCH_BODY, "page": 3}).json()
 
@@ -202,44 +213,46 @@ class TestPaginacion:
         assert len(data["resultados"]) == 5
 
     def test_page_fuera_de_rango_retorna_lista_vacia(self, client):
-        chunks = [_chunk(i) for i in range(5)]
+        # SQL devuelve vacío cuando OFFSET supera el total de resultados
         with (
             patch("app.api.routes.search.supabase_client.get_collection_by_id", return_value=MOCK_COLLECTION),
             patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
-            patch("app.api.routes.search.supabase_client.search_chunks", return_value=chunks),
+            patch("app.api.routes.search.supabase_client.search_chunks", return_value=[]),
         ):
             data = client.post("/api/search", json={**SEARCH_BODY, "page": 99}).json()
 
-        assert data["total"] == 5
         assert data["resultados"] == []
 
     def test_total_refleja_todos_los_resultados_no_solo_la_pagina(self, client):
-        chunks = [_chunk(i) for i in range(15)]
+        # SQL devuelve 10 chunks (una página) pero total_count=15
+        page_chunks = [_chunk(i, total_count=15) for i in range(10)]
         with (
             patch("app.api.routes.search.supabase_client.get_collection_by_id", return_value=MOCK_COLLECTION),
             patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
-            patch("app.api.routes.search.supabase_client.search_chunks", return_value=chunks),
+            patch("app.api.routes.search.supabase_client.search_chunks", return_value=page_chunks),
         ):
             data = client.post("/api/search", json=SEARCH_BODY).json()
 
         assert data["total"] == 15
         assert len(data["resultados"]) == 10
 
-    def test_filtra_por_min_score_antes_de_paginar(self, client):
-        chunks = [
-            _chunk(0, similarity=0.9),
-            _chunk(1, similarity=0.3),  # descartado
-            _chunk(2, similarity=0.7),
-        ]
+    def test_sql_recibe_min_score_y_offset_correctos(self, client):
+        """Verifica que la ruta pasa min_score y offset a SQL (no filtra en Python)."""
+        from unittest.mock import MagicMock
+        mock_search = MagicMock(return_value=[_chunk(0, similarity=0.9, total_count=1)])
         with (
             patch("app.api.routes.search.supabase_client.get_collection_by_id", return_value=MOCK_COLLECTION),
             patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
-            patch("app.api.routes.search.supabase_client.search_chunks", return_value=chunks),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
         ):
-            data = client.post("/api/search", json={**SEARCH_BODY, "min_score": 0.5}).json()
+            client.post("/api/search", json={**SEARCH_BODY, "page": 2, "min_score": 0.6})
 
-        assert data["total"] == 2
-        assert all(r["score"] >= 0.5 for r in data["resultados"])
+        _, call_kwargs = mock_search.call_args
+        args = mock_search.call_args.args
+        # search_chunks(embedding, collection_id, limit, offset, ..., min_score)
+        assert args[2] == 10     # _PAGE_SIZE
+        assert args[3] == 10     # offset = (page 2 - 1) * 10
+        assert args[7] == 0.6    # min_score
 
 
 # ── Endpoint signed-url ─────────────────────────────────────────────────────────
@@ -251,7 +264,7 @@ class TestSignedUrl:
             "app.api.routes.documentos.supabase_client.create_signed_url",
             return_value="https://example.supabase.co/storage/v1/signed?token=abc",
         ):
-            response = client.get("/api/documentos/signed-url?path=user/col/archivo.pdf")
+            response = client.get(f"/api/documentos/signed-url?path={_VALID_PATH}")
 
         assert response.status_code == 200
         assert response.json()["url"].startswith("https://")
@@ -261,10 +274,15 @@ class TestSignedUrl:
             "app.api.routes.documentos.supabase_client.create_signed_url",
             side_effect=Exception("Storage error"),
         ):
-            response = client.get("/api/documentos/signed-url?path=user/col/archivo.pdf")
+            response = client.get(f"/api/documentos/signed-url?path={_VALID_PATH}")
 
         assert response.status_code == 502
 
+    def test_path_de_otro_usuario_retorna_403(self, client):
+        otro_path = "auth0_otrousuario/coleccion/archivo.pdf"
+        response = client.get(f"/api/documentos/signed-url?path={otro_path}")
+        assert response.status_code == 403
+
     def test_requiere_autenticacion(self, client_sin_auth):
-        response = client_sin_auth.get("/api/documentos/signed-url?path=user/col/archivo.pdf")
+        response = client_sin_auth.get(f"/api/documentos/signed-url?path={_VALID_PATH}")
         assert response.status_code == 403

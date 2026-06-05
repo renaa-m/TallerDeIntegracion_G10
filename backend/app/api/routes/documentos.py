@@ -249,6 +249,9 @@ async def get_signed_url(
     Debe llamarse solo cuando el usuario decide abrir el archivo, no de forma
     masiva para todos los resultados de búsqueda.
     """
+    safe_user_id = supabase_client.storage_path_user_folder(user_id)
+    if not path.startswith(safe_user_id + "/"):
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
     try:
         url = await asyncio.to_thread(supabase_client.create_signed_url, path)
         return {"url": url}

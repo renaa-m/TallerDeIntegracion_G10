@@ -21,10 +21,10 @@ async def search(
 ):
     """Búsqueda semántica sobre los chunks de una colección procesada.
 
-    Devuelve resultados paginados (10 por página). El total refleja todos los
-    chunks que superan el umbral de similitud, independiente de la página actual.
-    Los resultados incluyen storage_path; para obtener una URL abierta del
-    documento, usar GET /api/documentos/signed-url?path=<storage_path>.
+    Devuelve resultados paginados (10 por página). El filtro de min_score y la
+    paginación se ejecutan en SQL; cada fila incluye total_count para evitar
+    un segundo query. Los resultados incluyen storage_path; para obtener una URL
+    abierta del documento usar GET /api/documentos/signed-url?path=<storage_path>.
     """
     collection = supabase_client.get_collection_by_id(str(request.coleccion_id))
     if not collection or collection["user_id"] != user_id:
@@ -57,21 +57,19 @@ async def search(
     year_max = rango[1] if rango and len(rango) >= 2 else None
     entity_types = [filtros.tipo_entidad] if filtros and filtros.tipo_entidad else None
 
-    raw = await asyncio.to_thread(
+    page_results = await asyncio.to_thread(
         supabase_client.search_chunks,
         query_embedding,
         str(request.coleccion_id),
-        10_000,
+        _PAGE_SIZE,
+        (request.page - 1) * _PAGE_SIZE,
         entity_types,
         year_min,
         year_max,
+        request.min_score,
     )
 
-    filtered = [r for r in raw if float(r["similarity"]) >= request.min_score]
-    total = len(filtered)
-
-    offset = (request.page - 1) * _PAGE_SIZE
-    page_results = filtered[offset : offset + _PAGE_SIZE]
+    total = int(page_results[0]["total_count"]) if page_results else 0
 
     resultados = [
         SearchResult(
