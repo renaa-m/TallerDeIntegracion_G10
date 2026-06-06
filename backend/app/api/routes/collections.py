@@ -35,11 +35,17 @@ async def create_collection(
             user_id=user_id,
             name=body.name,
             description=body.description,
+            language=body.language,
         )
         return collection
 
     except Exception as exc:
-        print("ERROR CREATE COLLECTION:", repr(exc))
+        err_str = str(exc).lower()
+        if "unique" in err_str or "duplicate" in err_str or "23505" in err_str:
+            raise HTTPException(
+                status_code=409,
+                detail=f'Ya tienes una colección llamada "{body.name}". Elige otro nombre.',
+            ) from exc
         raise HTTPException(
             status_code=502,
             detail="Error al crear la colección.",

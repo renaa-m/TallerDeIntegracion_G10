@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -17,7 +18,9 @@ from app.services import supabase_client
 router = APIRouter(prefix="/api/documentos", tags=["documentos"])
 
 _FORMATOS_ACEPTADOS = {".pdf", ".txt"}
-_TAMANO_MAXIMO_MB = 50
+# Cloud Run rechaza cuerpos HTTP > ~32 MiB antes de que lleguen a FastAPI.
+# Limitar a 30 MB deja margen para headers y multipart overhead.
+_TAMANO_MAXIMO_MB = 30
 _TAMANO_MAXIMO_BYTES = _TAMANO_MAXIMO_MB * 1024 * 1024
 _CONTENT_TYPES = {".pdf": "application/pdf", ".txt": "text/plain"}
 
@@ -235,6 +238,29 @@ async def listar_documentos(
         raise HTTPException(
             status_code=502,
             detail="Error al obtener la lista de documentos.",
+        ) from exc
+
+
+@router.get("/signed-url")
+async def get_signed_url(
+    path: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Genera una URL firmada para acceder a un documento en Supabase Storage.
+
+    Debe llamarse solo cuando el usuario decide abrir el archivo, no de forma
+    masiva para todos los resultados de búsqueda.
+    """
+    safe_user_id = supabase_client.storage_path_user_folder(user_id)
+    if not path.startswith(safe_user_id + "/"):
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    try:
+        url = await asyncio.to_thread(supabase_client.create_signed_url, path)
+        return {"url": url}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="No se pudo generar el enlace de descarga.",
         ) from exc
 
 

@@ -50,5 +50,9 @@ supabase/.temp/
 gcp-vision-key.json
 google-vision-key.json
 
+# Modelo de embeddings descargado localmente por CI (se copia al Docker image).
+# No commitear: son ~470 MB de pesos del modelo.
+hf-model/
+
 # Wukong: snapshots locales del workdir (ver WUKONG_ARTIFACTS_DIR en .env)
 backend/wukong_artifacts/

@@ -92,7 +92,7 @@ function App() {
               isAuthenticated ? (
                 <BuscadorColeccion />
               ) : (
-                <Navigate to="/" replace />
+                <Navigate to="/login" replace />
               )
             }
           >
@@ -109,7 +109,7 @@ function App() {
               isAuthenticated ? (
                 <BuscadorColeccion />
               ) : (
-                <Navigate to="/" replace />
+                <Navigate to="/login" replace />
               )
             }
           />
@@ -117,16 +117,24 @@ function App() {
           <Route
             path="/landing-page/:id_usuario"
             element={
-              isAuthenticated ? <LandingPage /> : <Navigate to="/" replace />
+              isAuthenticated ? (
+                <LandingPage />
+              ) : (
+                <Navigate to="/login" replace />
+              )
             }
           />
           <Route
             path="/login"
             element={
-              !isAuthenticated ? <LoginPage /> : <Navigate to="/" replace />
+              !isAuthenticated ? (
+                <LoginPage />
+              ) : (
+                <Navigate to="/login" replace />
+              )
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </main>
     </div>

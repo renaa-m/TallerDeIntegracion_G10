@@ -45,7 +45,12 @@ def _get_service_client() -> Client:
 # ── Collections ────────────────────────────────────────────────────────────────
 
 
-def create_collection(user_id: str, name: str, description: str | None = None,) -> dict:
+def create_collection(
+    user_id: str,
+    name: str,
+    description: str | None = None,
+    language: str = "es",
+) -> dict:
     client = get_supabase_client()
     data = {
         "id": str(uuid4()),
@@ -53,6 +58,7 @@ def create_collection(user_id: str, name: str, description: str | None = None,) 
         "name": name,
         "description": description,
         "status": "active",
+        "language": language,
     }
     response = client.table("collections").insert(data).execute()
     return response.data[0]
@@ -746,11 +752,18 @@ def search_chunks(
     query_embedding: list[float],
     collection_id: str,
     limit: int = 10,
+    offset: int = 0,
     entity_types: list[str] | None = None,
     year_min: int | None = None,
     year_max: int | None = None,
+    min_score: float = 0.0,
 ) -> list[dict]:
-    """Búsqueda semántica sobre chunk_embeddings usando la función SQL search_chunks."""
+    """Búsqueda semántica sobre chunk_embeddings usando la función SQL search_chunks.
+
+    Devuelve solo la página solicitada. Cada fila incluye ``total_count`` con el
+    número total de resultados que superan min_score (calculado en SQL con window
+    function), evitando un segundo query para la paginación.
+    """
     client = _get_service_client()
     result = client.rpc(
         "search_chunks",
@@ -758,9 +771,11 @@ def search_chunks(
             "query_embedding": query_embedding,
             "p_collection_id": collection_id,
             "p_limit": limit,
+            "p_offset": offset,
             "p_entity_types": entity_types,
             "p_year_min": year_min,
             "p_year_max": year_max,
+            "p_min_score": min_score,
         },
     ).execute()
     return result.data or []

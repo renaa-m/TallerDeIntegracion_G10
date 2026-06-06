@@ -42,5 +42,7 @@ def test_busqueda_sin_grafo_retorna_200_vacio(client):
     data = response.json()
     assert data["ready"] is False
     assert data["total"] == 0
+    assert data["page"] == 1
+    assert data["total_pages"] == 0
     assert data["resultados"] == []
     assert "grafo" in data["message"].lower()
