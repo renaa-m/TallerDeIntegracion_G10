@@ -10,6 +10,17 @@ class CollectionCreate(BaseModel):
     language: str = "es"
 
 
+class EntityFacet(BaseModel):
+    id: str = Field(description="ID interno de la entidad en el grafo (ej. 'Persona_1').")
+    label: str = Field(description="Nombre legible de la entidad (ej. 'Pinochet').")
+    tipo: str = Field(description="Tipo de entidad (ej. 'Persona', 'Lugar').")
+
+
+class CollectionEntities(BaseModel):
+    tipos: list[str] = Field(description="Lista ordenada de tipos de entidad presentes en la colección.")
+    entidades: list[EntityFacet] = Field(description="Instancias de entidades disponibles para filtrar.")
+
+
 class FailedProcessingDocument(BaseModel):
     filename: str
     reason: str | None = None
