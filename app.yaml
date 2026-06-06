@@ -1,0 +1,7 @@
+runtime: python311
+entrypoint: uvicorn app.main:app --host 0.0.0.0 --port 8080
+
+# Esto le dice a GCP que cualquier petición sea manejada por tu FastAPI
+handlers:
+- url: /.*
+  script: auto

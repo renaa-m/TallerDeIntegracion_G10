@@ -1,5 +1,5 @@
 import React from 'react'
-import { X, FileText, Loader2 } from 'lucide-react'
+import { X, FileText, Loader2, ExternalLink } from 'lucide-react'
 import './modal_documentos_disponibles.css'
 
 interface Fuente {
@@ -7,6 +7,7 @@ interface Fuente {
   filename: string
   file_type: string
   status: string
+  url?: string
 }
 
 interface ModalProps {
@@ -23,6 +24,17 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
   darkMode,
 }) => {
   if (!isOpen) return null
+
+  // Función simplificada usando el enlace directo
+  const handleAccessDocument = (e: React.MouseEvent, url?: string) => {
+    e.stopPropagation() // Evita que se dispare el onClick de la tarjeta
+
+    if (url) {
+      window.open(url, '_blank')
+    } else {
+      console.error('El documento no tiene un enlace disponible')
+    }
+  }
 
   return (
     <div
@@ -51,7 +63,7 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
                 <div
                   key={f.id}
                   className="mdd-card"
-                  onClick={() => console.log('Documento seleccionado:', f.id)} // Aquí puedes añadir la lógica de selección
+                  onClick={() => console.log('Seleccionado:', f.id)}
                 >
                   <div className="mdd-card-icon">
                     {f.status === 'processing' ? (
@@ -60,10 +72,24 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
                       <FileText size={20} />
                     )}
                   </div>
+
                   <div className="mdd-card-content">
                     <span className="mdd-card-title">{f.filename}</span>
-                    <div className="mdd-card-footer"></div>
                   </div>
+
+                  {/* BOTÓN DE ACCESO USANDO LA URL FIRMADA */}
+                  <button
+                    type="button"
+                    className="mdd-access-btn"
+                    onClick={(e) => handleAccessDocument(e, f.url)}
+                    disabled={!f.url || f.status === 'processing'}
+                    title={f.url ? 'Acceder al documento' : 'URL no disponible'}
+                    aria-label={
+                      f.url ? 'Acceder al documento' : 'URL no disponible'
+                    }
+                  >
+                    <ExternalLink size={16} />
+                  </button>
                 </div>
               ))
             )}
