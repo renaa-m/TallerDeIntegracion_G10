@@ -278,32 +278,6 @@ async def get_signed_url(
         ) from exc
 
 
-@router.get("/{doc_id}/signed-url")
-async def obtener_documento_signed_url(
-    doc_id: UUID,
-    user_id: str = Depends(get_current_user),
-):
-    try:
-        documento = await supabase_client.get_document(str(doc_id), user_id)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Error al obtener el documento.",
-        ) from exc
-
-    if documento is None:
-        raise HTTPException(status_code=404, detail="Documento no encontrado.")
-
-    try:
-        signed_url = supabase_client.create_signed_url(documento["storage_path"])
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Error al generar la URL del documento.",
-        ) from exc
-
-    return {"signed_url": signed_url}
-
 
 @router.get("/{doc_id}", response_model=DocumentResponse)
 async def obtener_documento(
