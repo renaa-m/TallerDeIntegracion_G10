@@ -1402,3 +1402,34 @@
   border-color: var(--red);
   color: var(--red);
 }
+
+/* Estilo base del botón (ajusta según lo que ya tengas) */
+.bc-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative; /* Importante para posicionar el badge */
+  padding: 8px 16px;
+  /* ... resto de tus estilos actuales ... */
+}
+
+/* Estilo del badge circular */
+.bc-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: var(--accent, #5d54e4);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 50%;
+  margin-left: 2px;
+}
+
+/* Opcional: Si quieres que el botón cambie de color cuando hay filtros */
+.bc-filter-btn.has-filters {
+  border-color: var(--accent);
+  color: var(--accent);
+}

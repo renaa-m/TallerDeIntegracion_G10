@@ -113,6 +113,13 @@ const BuscadorColeccion = () => {
     useState('idle')
   const [fuentes, setFuentes] = useState([])
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
+
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>(() => {
+    const params = new URLSearchParams(window.location.search)
+    const entities = params.get('entities')
+    return entities ? entities.split(',') : []
+  })
+
   // --- NUEVOS ESTADOS DE PAGINACIÓN ---
   const [page, setPage] = useState(1)
   const [totalResults, setTotalResults] = useState(0)
@@ -140,7 +147,6 @@ const BuscadorColeccion = () => {
   const [entitiesData, setEntitiesData] = useState<CollectionEntities | null>(
     null,
   )
-  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
 
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
@@ -201,6 +207,19 @@ const BuscadorColeccion = () => {
       }, 0)
     }
   }, [collectionProcessingStatus, cargarEntidades])
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+
+    if (selectedEntityIds.length > 0) {
+      params.set('entities', selectedEntityIds.join(','))
+    } else {
+      params.delete('entities')
+    }
+
+    // Usamos replace para no llenar el historial de navegación
+    setSearchParams(params, { replace: true })
+  }, [selectedEntityIds, setSearchParams, location.search])
 
   useEffect(() => {
     clearStaleActiveCollectionForPage(id_coleccion)
@@ -714,8 +733,6 @@ const BuscadorColeccion = () => {
     }
   }
 
-  const hayFiltrosActivos = personas.length > 0 || !!fechaDesde || !!fechaHasta
-
   // --- NUEVA LÓGICA DE URL FIRMADA ---
   const getSignedUrl = async (path: string) => {
     const token = await getAccessTokenSilently()
@@ -974,11 +991,18 @@ const BuscadorColeccion = () => {
                     onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
                   />
                   <button
-                    className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
+                    className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${selectedEntityIds.length > 0 ? 'has-filters' : ''}`}
                     onClick={() => setFiltroOpen(!filtroOpen)}
                   >
-                    <SlidersHorizontal size={14} />{' '}
+                    <SlidersHorizontal size={14} />
                     <span>Criterios de Búsqueda</span>
+
+                    {/* Badge que muestra la cantidad de filtros */}
+                    {selectedEntityIds.length > 0 && (
+                      <span className="bc-filter-badge">
+                        {selectedEntityIds.length}
+                      </span>
+                    )}
                   </button>
                 </div>
 
