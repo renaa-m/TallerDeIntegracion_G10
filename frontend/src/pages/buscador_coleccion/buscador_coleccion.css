@@ -1434,3 +1434,54 @@
 .bc-dark .bc-search-stats {
   color: #9aa0a6; /* Variación gris claro para el modo oscuro */
 }
+
+/* --- Estilos para la Paginación --- */
+.bc-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 16px;
+  border-top: 1px solid var(--mc-border, #e0e4eb);
+}
+
+.bc-pagination button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--mc-border, #e0e4eb);
+  background: var(--mc-surface, #ffffff);
+  color: var(--mc-text-1, #1a2550);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bc-pagination button:hover:not(:disabled) {
+  background: var(--mc-surface-2, #f5f7fa);
+  border-color: #a8a3f6;
+  color: #5d54e4;
+}
+
+.bc-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--mc-surface-2, #f5f7fa);
+}
+
+.bc-pagination span {
+  font-size: 0.85rem;
+  color: var(--mc-text-2, #6b778c);
+  font-weight: 500;
+}
+
+/* Ajuste para modo oscuro (si ya usas la clase .bc-dark) */
+.bc-dark .bc-pagination {
+  border-color: var(--mc-border);
+}
+
+.bc-dark .bc-pagination button {
+  background: var(--mc-surface-2);
+  color: var(--mc-text-1);
+}

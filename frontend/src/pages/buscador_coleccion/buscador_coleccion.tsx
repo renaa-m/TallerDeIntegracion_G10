@@ -53,9 +53,8 @@ interface SearchResultItem {
   titulo: string
   fragmento: string
   id_chunk: string
-  enlace: string
+  storage_path: string // <--- Cambio clave
   score: number
-  pagina?: number
 }
 
 // --- HELPER PARA HIGHLIGHT ---
@@ -103,6 +102,11 @@ const BuscadorColeccion = () => {
     useState('idle')
   const [fuentes, setFuentes] = useState([])
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
+  // --- NUEVOS ESTADOS DE PAGINACIÓN ---
+  const [page, setPage] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState('')
   const [loading, setLoading] = useState(false)
@@ -135,6 +139,7 @@ const BuscadorColeccion = () => {
   const [personas] = useState<string[]>([])
   const [fechaDesde] = useState('')
   const [fechaHasta] = useState('')
+  
 
   const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
@@ -491,7 +496,7 @@ const BuscadorColeccion = () => {
     nombreColeccion,
   ])
 
-  const ejecutarBusqueda = useCallback(async () => {
+  const ejecutarBusqueda = useCallback(async (targetPage: number = 1) => {
     // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
     if (
       !id_coleccion ||
@@ -511,6 +516,7 @@ const BuscadorColeccion = () => {
       const searchRequest = {
         coleccion_id: id_coleccion,
         query: busquedaEnviada,
+        page: targetPage,
         limit: 10,
         min_score: 0.25,
         filtros:
@@ -552,6 +558,9 @@ const BuscadorColeccion = () => {
         } else {
           setResultados(data.resultados || [])
           setSearchTime(durationSeconds) // <-- GUARDAR DURACIÓN EN SEGUNDOS
+          setTotalResults(data.total)       
+          setTotalPages(data.total_pages)
+          setPage(data.page)
         }
       } else {
         setResultados([])
@@ -583,17 +592,20 @@ const BuscadorColeccion = () => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      ejecutarBusqueda()
+      // Ahora le pasamos la página 1 aquí para que coincida con la firma
+      ejecutarBusqueda(1); 
     }, 400)
     return () => clearTimeout(timer)
-  }, [ejecutarBusqueda])
+}, [ejecutarBusqueda])
 
   // --- HANDLERS ---
   const handleBuscar = () => {
     const trimmed = busqueda.trim()
     setSearchParams(trimmed ? { q: trimmed } : {})
     setBusquedaEnviada(trimmed)
-  }
+    setPage(1); // Reseteamos la página a 1 al hacer una nueva búsqueda
+    ejecutarBusqueda(1); // Llamamos con página 1
+}
 
   const saveNombre = async () => {
     if (tempNombre.trim() && id_coleccion && id_coleccion !== 'nueva') {
@@ -646,6 +658,26 @@ const BuscadorColeccion = () => {
   }
 
   const hayFiltrosActivos = personas.length > 0 || !!fechaDesde || !!fechaHasta
+
+  // --- NUEVA LÓGICA DE URL FIRMADA ---
+  const getSignedUrl = async (path: string) => {
+    const token = await getAccessTokenSilently();
+    const res = await fetch(`${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) throw new Error("Error obteniendo URL");
+    const { url } = await res.json();
+    return url;
+  };
+
+  const handleOpenDocument = async (path: string) => {
+    try {
+      const url = await getSignedUrl(path);
+      window.open(url, '_blank');
+    } catch (e) {
+      console.error("No se pudo abrir el documento", e);
+    }
+  };
 
   return (
     <>
@@ -925,9 +957,9 @@ const BuscadorColeccion = () => {
                   <>
                     <div className="bc-results-meta">
                       <span className="bc-results-count">
-                        {resultados.length} resultado
-                        {resultados.length !== 1 ? 's' : ''} en{' '}
-                        {searchTime > 0 ? `${searchTime}s` : ''}
+                        {/* Cambiamos resultados.length por totalResults */}
+                        {totalResults} resultado{totalResults !== 1 ? 's' : ''} encontrados
+                        {searchTime > 0 && ` en ${searchTime}s`}
                       </span>
                     </div>
                     <div className="bc-results-list">
@@ -953,17 +985,13 @@ const BuscadorColeccion = () => {
                               </div>
                             </div>
 
-                            {r.enlace && (
-                              <a
-                                href={r.enlace}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="bc-external-btn"
-                              >
-                                <ExternalLink size={13} />
-                                <span>Documento</span>
-                              </a>
-                            )}
+                            <button 
+                              onClick={() => handleOpenDocument(r.storage_path)}
+                              className="bc-external-btn"
+                            >
+                              <ExternalLink size={13} />
+                              <span>Ver Documento</span>
+                            </button>
                           </div>
 
                           <div className="bc-card-body">
@@ -989,6 +1017,13 @@ const BuscadorColeccion = () => {
                         </article>
                       ))}
                     </div>
+                    {totalPages > 1 && (
+                      <div className="bc-pagination">
+                        <button disabled={page === 1} onClick={() => ejecutarBusqueda(page - 1)}>Anterior</button>
+                        <span>Página {page} de {totalPages}</span>
+                        <button disabled={page === totalPages} onClick={() => ejecutarBusqueda(page + 1)}>Siguiente</button>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="bc-empty">
