@@ -413,6 +413,54 @@ async def continue_graph_collection(
     )
 
 @router.post(
+    "/{collection_id}/generate-graph/continue-graph",
+    response_model=GenerateGraphResponse,
+    status_code=202,
+)
+async def continue_graph_with_custom_model(
+    collection_id: UUID,
+    body: DataModelUpdate,
+    background_tasks: BackgroundTasks,
+    user_id: str = Depends(get_current_user),
+):
+    collection = supabase_client.get_collection(
+        collection_id=str(collection_id),
+        user_id=user_id,
+    )
+
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Colección no encontrada.")
+
+    current_status = _normalize_legacy_queued(
+        str(collection_id),
+        collection.get("processing_status", "idle"),
+    )
+
+    if current_status != "awaiting_graph_confirmation":
+        raise HTTPException(
+            status_code=409,
+            detail="La colección no está esperando confirmación para grafo.",
+        )
+
+    custom_model = body.model_dump(exclude_none=True)
+
+    try:
+        status = processing_queue.request_continue_graph(
+            str(collection_id),
+            user_id,
+            background_tasks,
+            custom_data_model=custom_model,
+        )
+    except ProcessingSlotBusyError as exc:
+        raise _slot_busy_http_exception(exc) from exc
+
+    return GenerateGraphResponse(
+        collection_id=collection_id,
+        processing_status=status,
+        detail="Construcción de grafo con modelo personalizado iniciada.",
+    )
+
+@router.post(
     "/{collection_id}/generate-graph",
     response_model=GenerateGraphResponse,
     status_code=202,

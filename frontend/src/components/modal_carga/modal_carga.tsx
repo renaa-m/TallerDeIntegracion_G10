@@ -22,6 +22,7 @@ import {
   resolveModalCollectionId,
   shouldOpenPipelineModal,
 } from '../../lib/collection_processing'
+import DEFAULT_DATA_MODEL from '../../data/defaultDataModel'
 
 interface ModalCargaProps {
   isOpen: boolean
@@ -147,6 +148,8 @@ function getCancellingMessage(
 
 const API_BASE = import.meta.env.VITE_API_URL?.replace(/\/$/, '') || ''
 
+const ENTITY_OPTIONS = ['Persona', 'Organizacion', 'Lugar', 'Evento'] as const
+
 const ModalCarga = ({
   isOpen,
   onClose,
@@ -168,6 +171,7 @@ const ModalCarga = ({
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedCount, setUploadedCount] = useState(0)
   const [nombreColeccion, setNombreColeccion] = useState('')
+  const [selectedEntities, setSelectedEntities] = useState<string[]>([])
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** ID de colección en creación/subida (sincrónico; el state puede ir retrasado). */
@@ -215,6 +219,7 @@ const ModalCarga = ({
   const resetUploadForm = useCallback(() => {
     setFiles([])
     setNombreColeccion('')
+    setSelectedEntities([])
     setError('')
     setEtapa('subida')
     setPipelineStatus('idle')
@@ -691,16 +696,76 @@ const ModalCarga = ({
     }
   }
 
+  const relationUsesOnlySelectedEntities = (
+    relation: (typeof DEFAULT_DATA_MODEL.relations)[keyof typeof DEFAULT_DATA_MODEL.relations],
+    entitiesToUse: string[],
+  ) => {
+    if ('origin_target' in relation && relation.origin_target) {
+      return Object.entries(relation.origin_target).every(
+        ([origin, targets]) =>
+          entitiesToUse.includes(origin) &&
+          targets.every((target: string) => entitiesToUse.includes(target)),
+      )
+    }
+
+    if (
+      'origin' in relation &&
+      'target' in relation &&
+      relation.origin &&
+      relation.target
+    ) {
+      return (
+        relation.origin.every((origin) => entitiesToUse.includes(origin)) &&
+        relation.target.every((target) => entitiesToUse.includes(target))
+      )
+    }
+
+    return false
+  }
+
+  const buildCustomDataModel = () => {
+    const entitiesToUse: string[] =
+      selectedEntities.length > 0
+        ? selectedEntities
+        : [...DEFAULT_DATA_MODEL.parameters.included_entities]
+
+    const relations = Object.fromEntries(
+      Object.entries(DEFAULT_DATA_MODEL.relations).filter(([, relation]) =>
+        relationUsesOnlySelectedEntities(relation, entitiesToUse),
+      ),
+    )
+
+    return {
+      ...DEFAULT_DATA_MODEL,
+      parameters: {
+        ...DEFAULT_DATA_MODEL.parameters,
+        included_entities: entitiesToUse,
+        included_relations: Object.keys(relations),
+      },
+      entities: Object.fromEntries(
+        Object.entries(DEFAULT_DATA_MODEL.entities).filter(([entityName]) =>
+          entitiesToUse.includes(entityName),
+        ),
+      ),
+      relations,
+    }
+  }
+
   const handleIniciarPipeline = async () => {
     if (!resolvedCollectionId) return
     setPipelineError('')
     try {
       const token = await getAccessTokenSilently()
+      const customDataModel = buildCustomDataModel()
       const res = await fetch(
-        `${API_BASE}/api/collections/${resolvedCollectionId}/process`,
+        `${API_BASE}/api/collections/${resolvedCollectionId}/generate-graph`,
         {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(customDataModel),
         },
       )
       const data = await res.json().catch(() => ({}))
@@ -771,11 +836,16 @@ const ModalCarga = ({
     try {
       setPipelineError('')
       const token = await getAccessTokenSilently()
+      const customDataModel = buildCustomDataModel()
       const res = await fetch(
-        `${API_BASE}/api/collections/${resolvedCollectionId}/process/continue-graph`,
+        `${API_BASE}/api/collections/${resolvedCollectionId}/generate-graph/continue-graph`,
         {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(customDataModel),
         },
       )
 
@@ -949,7 +1019,6 @@ const ModalCarga = ({
                 disabled={isUploadingLocked}
               />
             </div>
-
             <div className="mc-footer">
               <button
                 className="mc-btn-cancel"
@@ -1134,6 +1203,39 @@ const ModalCarga = ({
                   {pipelineError}
                 </div>
               )}
+            {pipelineStatus === 'idle' && (
+              <div className="mc-entity-options">
+                <p className="mc-entity-title">Entidades a extraer</p>
+
+                <div className="mc-entity-grid">
+                  {ENTITY_OPTIONS.map((entity) => (
+                    <label key={entity} className="mc-entity-option">
+                      <input
+                        type="checkbox"
+                        checked={selectedEntities.includes(entity)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedEntities((prev) => [...prev, entity])
+                          } else {
+                            setSelectedEntities((prev) =>
+                              prev.filter((item) => item !== entity),
+                            )
+                          }
+                        }}
+                        disabled={isCancelling}
+                      />
+                      <span>{entity}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <p className="mc-entity-help">
+                  Si no seleccionas ninguna, se usarán las entidades por
+                  defecto.
+                </p>
+              </div>
+            )}
+
             <div className="mc-footer">
               {pipelineStatus === 'idle' && (
                 <>
@@ -1145,6 +1247,7 @@ const ModalCarga = ({
                   >
                     {cancelButtonLabel}
                   </button>
+
                   <button
                     className="mc-btn-upload"
                     onClick={handleIniciarPipeline}
@@ -1154,6 +1257,7 @@ const ModalCarga = ({
                   </button>
                 </>
               )}
+
               {(isPipelineRunning ||
                 pipelineStatus === 'awaiting_graph_confirmation') && (
                 <>
@@ -1165,6 +1269,7 @@ const ModalCarga = ({
                   >
                     {cancelButtonLabel}
                   </button>
+
                   {pipelineStatus === 'awaiting_graph_confirmation' && (
                     <button
                       className="mc-btn-upload"
@@ -1177,6 +1282,7 @@ const ModalCarga = ({
                   )}
                 </>
               )}
+
               {(pipelineStatus === 'graph_ready' ||
                 pipelineStatus === 'partial_error') && (
                 <button
@@ -1186,6 +1292,7 @@ const ModalCarga = ({
                   <CheckCircle2 size={14} /> Finalizar
                 </button>
               )}
+
               {pipelineStatus === 'error' && (
                 <>
                   <button
@@ -1196,6 +1303,7 @@ const ModalCarga = ({
                   >
                     {cancelButtonLabel}
                   </button>
+
                   <button
                     className="mc-btn-upload"
                     type="button"

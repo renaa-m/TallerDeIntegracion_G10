@@ -96,10 +96,10 @@ def _dispatch_process_job(
     thread.start()
 
 
-def _dispatch_continue_graph_job(collection_id: str) -> None:
+def _dispatch_continue_graph_job(collection_id: str, custom_data_model: dict | None = None,) -> None:
     thread = threading.Thread(
         target=_run_continue_graph_job,
-        args=(collection_id,),
+        args=(collection_id, custom_data_model),
         daemon=True,
         name=f"continue-graph-{collection_id}",
     )
@@ -127,6 +127,7 @@ def request_continue_graph(
     collection_id: str,
     user_id: str,
     background_tasks: BackgroundTasks,
+    custom_data_model: dict | None = None,
 ) -> str:
     """Inicia solo la fase de grafo, o lanza ``ProcessingSlotBusyError``."""
     del background_tasks
@@ -134,7 +135,13 @@ def request_continue_graph(
     supabase_client.update_collection_processing_status(
         collection_id, "processing_graph"
     )
-    _dispatch_continue_graph_job(collection_id)
+    if custom_data_model is None:
+        _dispatch_continue_graph_job(collection_id)
+    else:
+        _dispatch_continue_graph_job(
+            collection_id,
+            custom_data_model=custom_data_model,
+        )
     return "processing_graph"
 
 
@@ -213,13 +220,13 @@ def _run_process_job(
         _mark_job_finished(collection_id)
 
 
-def _run_continue_graph_job(collection_id: str) -> None:
+def _run_continue_graph_job(collection_id: str, custom_data_model: dict | None = None,) -> None:
     _mark_job_running(collection_id)
     try:
         wukong_runner.process_graph_collection(
             collection_id,
-            None,
-            "partial_error",
+            custom_data_model=custom_data_model,
+            final_status_on_success="partial_error",
         )
     finally:
         _mark_job_finished(collection_id)
