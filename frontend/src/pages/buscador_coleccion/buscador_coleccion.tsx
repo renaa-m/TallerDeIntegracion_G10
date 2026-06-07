@@ -170,14 +170,37 @@ const BuscadorColeccion = () => {
     setBackgroundProcessingSnapshot(null)
   }
 
+  const cargarEntidades = useCallback(async () => {
+    if (!id_coleccion || id_coleccion === 'nueva') return
+
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(
+        `${API_URL}/api/collections/${id_coleccion}/entities`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+
+      if (res.ok) {
+        const data: CollectionEntities = await res.json()
+        setEntitiesData(data)
+      }
+    } catch (e) {
+      console.error('Error al cargar entidades:', e)
+    }
+  }, [id_coleccion, getAccessTokenSilently])
+
   useEffect(() => {
     if (
       collectionProcessingStatus === 'graph_ready' ||
       collectionProcessingStatus === 'partial_error'
     ) {
-      void cargarEntidades()
+      setTimeout(() => {
+        void cargarEntidades()
+      }, 0)
     }
-  }, [collectionProcessingStatus])
+  }, [collectionProcessingStatus, cargarEntidades])
 
   useEffect(() => {
     clearStaleActiveCollectionForPage(id_coleccion)
@@ -521,27 +544,6 @@ const BuscadorColeccion = () => {
     isCollectionProcessing,
     nombreColeccion,
   ])
-
-  const cargarEntidades = useCallback(async () => {
-    if (!id_coleccion || id_coleccion === 'nueva') return
-
-    try {
-      const token = await getAccessTokenSilently()
-      const res = await fetch(
-        `${API_URL}/api/collections/${id_coleccion}/entities`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      )
-
-      if (res.ok) {
-        const data: CollectionEntities = await res.json()
-        setEntitiesData(data)
-      }
-    } catch (e) {
-      console.error('Error al cargar entidades:', e)
-    }
-  }, [id_coleccion, getAccessTokenSilently])
 
   const ejecutarBusqueda = useCallback(
     async (targetPage: number = 1) => {

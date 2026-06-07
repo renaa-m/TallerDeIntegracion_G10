@@ -9,7 +9,6 @@ import {
   Network,
   CheckCircle2,
   AlertCircle,
-  Languages,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import './modal_carga.css'
