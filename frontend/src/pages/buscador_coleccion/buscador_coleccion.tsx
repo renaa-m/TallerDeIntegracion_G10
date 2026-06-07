@@ -11,7 +11,6 @@ import {
   Search,
   Network,
   SlidersHorizontal,
-  X,
   Trash2,
   Files,
   Edit2,
@@ -55,6 +54,18 @@ interface SearchResultItem {
   id_chunk: string
   storage_path: string // <--- Cambio clave
   score: number
+  pagina?: number
+}
+
+interface EntityFacet {
+  id: string
+  label: string
+  tipo: string
+}
+
+interface CollectionEntities {
+  tipos: string[]
+  entidades: EntityFacet[]
 }
 
 // --- HELPER PARA HIGHLIGHT ---
@@ -124,6 +135,11 @@ const BuscadorColeccion = () => {
   const [modalPipelineEtapa, setModalPipelineEtapa] = useState(false)
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
   const [isDeletingCollection, setIsDeletingCollection] = useState(false)
+
+  // --- NUEVOS ESTADOS PARA ENTIDADES ---
+  const [entitiesData, setEntitiesData] = useState<CollectionEntities | null>(null);
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
+
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
   const [backgroundProcessingId, setBackgroundProcessingId] = useState<
@@ -152,6 +168,12 @@ const BuscadorColeccion = () => {
     setBackgroundProcessingId(null)
     setBackgroundProcessingSnapshot(null)
   }
+
+  useEffect(() => {
+  if (collectionProcessingStatus === 'graph_ready' || collectionProcessingStatus === 'partial_error') {
+    void cargarEntidades();
+  }
+}, [collectionProcessingStatus]);
 
   useEffect(() => {
     clearStaleActiveCollectionForPage(id_coleccion)
@@ -496,6 +518,24 @@ const BuscadorColeccion = () => {
     nombreColeccion,
   ])
 
+  const cargarEntidades = useCallback(async () => {
+    if (!id_coleccion || id_coleccion === 'nueva') return;
+
+    try {
+      const token = await getAccessTokenSilently();
+      const res = await fetch(`${API_URL}/api/collections/${id_coleccion}/entities`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.ok) {
+        const data: CollectionEntities = await res.json();
+        setEntitiesData(data);
+      }
+    } catch (e) {
+      console.error("Error al cargar entidades:", e);
+    }
+  }, [id_coleccion, getAccessTokenSilently]);
+
   const ejecutarBusqueda = useCallback(async (targetPage: number = 1) => {
     // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
     if (
@@ -519,6 +559,7 @@ const BuscadorColeccion = () => {
         page: targetPage,
         limit: 10,
         min_score: 0.25,
+        entity_ids: selectedEntityIds,
         filtros:
           personas.length > 0 || fechaDesde || fechaHasta
             ? {
@@ -575,6 +616,7 @@ const BuscadorColeccion = () => {
   }, [
     id_coleccion,
     busquedaEnviada,
+    selectedEntityIds,
     personas,
     fechaDesde,
     fechaHasta,
@@ -923,29 +965,65 @@ const BuscadorColeccion = () => {
                 </div>
 
                 {filtroOpen && (
-                  <div className="bc-alert-banner">
-                    <div className="bc-alert-content">
-                      <div className="bc-alert-icon-wrap">
-                        <SlidersHorizontal
-                          size={14}
-                          className="bc-alert-icon"
-                        />
+                <div className="bc-filter-panel">
+                  {entitiesData?.tipos.map((tipo, index) => {
+                    const entidadesDeTipo = entitiesData.entidades.filter(e => e.tipo === tipo);
+                    const seleccionadasDeTipo = entidadesDeTipo.filter(e => selectedEntityIds?.includes(e.id));
+
+                    return (
+                      <div key={tipo}>
+                        {index > 0 && <div className="bc-filter-divider" />}
+                        <div className="bc-filter-group">
+                          <span className="bc-filter-label">{tipo}</span>
+
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (!val) return;
+                              setSelectedEntityIds(prev =>
+                                prev?.includes(val) ? prev : [...(prev ?? []), val]
+                              );
+                            }}
+                            className="bc-filter-tag-input"
+                          >
+                            <option value="">Agregar {tipo}…</option>
+                            {entidadesDeTipo
+                              .filter(entidad => !selectedEntityIds?.includes(entidad.id))
+                              .map(entidad => (
+                                <option key={entidad.id} value={entidad.id}>{entidad.label}</option>
+                              ))
+                            }
+                          </select>
+
+                          {seleccionadasDeTipo.length > 0 && (
+                            <div className="bc-filter-chips">
+                              {seleccionadasDeTipo.map(entidad => (
+                                <span key={entidad.id} className="bc-filter-chip selected">
+                                  {entidad.label}
+                                  <button
+                                    className="bc-chip-remove"
+                                    onClick={() => setSelectedEntityIds(prev => prev?.filter(id => id !== entidad.id) ?? [])}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="bc-alert-text">
-                        <span className="bc-alert-title">
-                          Próximamente: Criterios de Búsqueda
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      className="bc-alert-close"
-                      onClick={() => setFiltroOpen(false)}
-                    >
-                      <X size={14} />
+                    );
+                  })}
+
+                  {selectedEntityIds && selectedEntityIds.length > 0 && (
+                    <button className="bc-filter-clear-all" onClick={() => setSelectedEntityIds([])}>
+                      Limpiar filtros
                     </button>
-                  </div>
+                  )}
+                </div>
                 )}
-              </div>
+                              </div>
 
               <div className="bc-results-area">
                 {loading ? (
