@@ -114,9 +114,9 @@ const BuscadorColeccion = () => {
   const [fuentes, setFuentes] = useState([])
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
   // --- NUEVOS ESTADOS DE PAGINACIÓN ---
-  const [page, setPage] = useState(1);
-  const [totalResults, setTotalResults] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
+  const [page, setPage] = useState(1)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
 
   const [isEditingName, setIsEditingName] = useState(false)
   const [tempNombre, setTempNombre] = useState('')
@@ -137,8 +137,10 @@ const BuscadorColeccion = () => {
   const [isDeletingCollection, setIsDeletingCollection] = useState(false)
 
   // --- NUEVOS ESTADOS PARA ENTIDADES ---
-  const [entitiesData, setEntitiesData] = useState<CollectionEntities | null>(null);
-  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([]);
+  const [entitiesData, setEntitiesData] = useState<CollectionEntities | null>(
+    null,
+  )
+  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>([])
 
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
@@ -155,7 +157,6 @@ const BuscadorColeccion = () => {
   const [personas] = useState<string[]>([])
   const [fechaDesde] = useState('')
   const [fechaHasta] = useState('')
-  
 
   const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
@@ -170,10 +171,13 @@ const BuscadorColeccion = () => {
   }
 
   useEffect(() => {
-  if (collectionProcessingStatus === 'graph_ready' || collectionProcessingStatus === 'partial_error') {
-    void cargarEntidades();
-  }
-}, [collectionProcessingStatus]);
+    if (
+      collectionProcessingStatus === 'graph_ready' ||
+      collectionProcessingStatus === 'partial_error'
+    ) {
+      void cargarEntidades()
+    }
+  }, [collectionProcessingStatus])
 
   useEffect(() => {
     clearStaleActiveCollectionForPage(id_coleccion)
@@ -519,110 +523,119 @@ const BuscadorColeccion = () => {
   ])
 
   const cargarEntidades = useCallback(async () => {
-    if (!id_coleccion || id_coleccion === 'nueva') return;
+    if (!id_coleccion || id_coleccion === 'nueva') return
 
-    try {
-      const token = await getAccessTokenSilently();
-      const res = await fetch(`${API_URL}/api/collections/${id_coleccion}/entities`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (res.ok) {
-        const data: CollectionEntities = await res.json();
-        setEntitiesData(data);
-      }
-    } catch (e) {
-      console.error("Error al cargar entidades:", e);
-    }
-  }, [id_coleccion, getAccessTokenSilently]);
-
-  const ejecutarBusqueda = useCallback(async (targetPage: number = 1) => {
-    // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
-    if (
-      !id_coleccion ||
-      id_coleccion === 'nueva' ||
-      !busquedaEnviada.trim() ||
-      isGrafoView
-    ) {
-      if (!isGrafoView) setResultados([])
-      return
-    }
-
-    setLoading(true)
-    setSearchNotReadyMessage(null)
     try {
       const token = await getAccessTokenSilently()
-
-      const searchRequest = {
-        coleccion_id: id_coleccion,
-        query: busquedaEnviada,
-        page: targetPage,
-        limit: 10,
-        min_score: 0.25,
-        entity_ids: selectedEntityIds,
-        filtros:
-          personas.length > 0 || fechaDesde || fechaHasta
-            ? {
-                tipo_entidad: personas.length > 0 ? personas[0] : null,
-                rango_años:
-                  fechaDesde || fechaHasta
-                    ? [parseInt(fechaDesde) || 0, parseInt(fechaHasta) || 2026]
-                    : null,
-              }
-            : null,
-      }
-
-      const startTime = performance.now() // <-- CAPTURAR TIEMPO INICIAL
-
-      const res = await fetch(`${API_URL}/api/search`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
+      const res = await fetch(
+        `${API_URL}/api/collections/${id_coleccion}/entities`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
         },
-        body: JSON.stringify(searchRequest),
-      })
-
-      const endTime = performance.now() // <-- CAPTURAR TIEMPO FINAL
-      const durationSeconds = parseFloat(
-        ((endTime - startTime) / 1000).toFixed(2),
       )
 
       if (res.ok) {
-        const data = await res.json()
-        if (data.ready === false) {
-          setResultados([])
-          setSearchNotReadyMessage(
-            data.message ??
-              'Aún no hay grafo generado. Genera el grafo para habilitar la búsqueda semántica.',
-          )
-        } else {
-          setResultados(data.resultados || [])
-          setSearchTime(durationSeconds) // <-- GUARDAR DURACIÓN EN SEGUNDOS
-          setTotalResults(data.total)       
-          setTotalPages(data.total_pages)
-          setPage(data.page)
-        }
-      } else {
-        setResultados([])
-        setSearchTime(0)
+        const data: CollectionEntities = await res.json()
+        setEntitiesData(data)
       }
     } catch (e) {
-      console.error('Error en búsqueda semántica:', e)
-      setSearchTime(0)
-    } finally {
-      setLoading(false)
+      console.error('Error al cargar entidades:', e)
     }
-  }, [
-    id_coleccion,
-    busquedaEnviada,
-    selectedEntityIds,
-    personas,
-    fechaDesde,
-    fechaHasta,
-    isGrafoView,
-    getAccessTokenSilently,
-  ])
+  }, [id_coleccion, getAccessTokenSilently])
+
+  const ejecutarBusqueda = useCallback(
+    async (targetPage: number = 1) => {
+      // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
+      if (
+        !id_coleccion ||
+        id_coleccion === 'nueva' ||
+        !busquedaEnviada.trim() ||
+        isGrafoView
+      ) {
+        if (!isGrafoView) setResultados([])
+        return
+      }
+
+      setLoading(true)
+      setSearchNotReadyMessage(null)
+      try {
+        const token = await getAccessTokenSilently()
+
+        const searchRequest = {
+          coleccion_id: id_coleccion,
+          query: busquedaEnviada,
+          page: targetPage,
+          limit: 10,
+          min_score: 0.25,
+          entity_ids: selectedEntityIds,
+          filtros:
+            personas.length > 0 || fechaDesde || fechaHasta
+              ? {
+                  tipo_entidad: personas.length > 0 ? personas[0] : null,
+                  rango_años:
+                    fechaDesde || fechaHasta
+                      ? [
+                          parseInt(fechaDesde) || 0,
+                          parseInt(fechaHasta) || 2026,
+                        ]
+                      : null,
+                }
+              : null,
+        }
+
+        const startTime = performance.now() // <-- CAPTURAR TIEMPO INICIAL
+
+        const res = await fetch(`${API_URL}/api/search`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(searchRequest),
+        })
+
+        const endTime = performance.now() // <-- CAPTURAR TIEMPO FINAL
+        const durationSeconds = parseFloat(
+          ((endTime - startTime) / 1000).toFixed(2),
+        )
+
+        if (res.ok) {
+          const data = await res.json()
+          if (data.ready === false) {
+            setResultados([])
+            setSearchNotReadyMessage(
+              data.message ??
+                'Aún no hay grafo generado. Genera el grafo para habilitar la búsqueda semántica.',
+            )
+          } else {
+            setResultados(data.resultados || [])
+            setSearchTime(durationSeconds) // <-- GUARDAR DURACIÓN EN SEGUNDOS
+            setTotalResults(data.total)
+            setTotalPages(data.total_pages)
+            setPage(data.page)
+          }
+        } else {
+          setResultados([])
+          setSearchTime(0)
+        }
+      } catch (e) {
+        console.error('Error en búsqueda semántica:', e)
+        setSearchTime(0)
+      } finally {
+        setLoading(false)
+      }
+    },
+    [
+      id_coleccion,
+      busquedaEnviada,
+      selectedEntityIds,
+      personas,
+      fechaDesde,
+      fechaHasta,
+      isGrafoView,
+      getAccessTokenSilently,
+    ],
+  )
 
   useEffect(() => {
     const iniciarCarga = async () => {
@@ -635,19 +648,19 @@ const BuscadorColeccion = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       // Ahora le pasamos la página 1 aquí para que coincida con la firma
-      ejecutarBusqueda(1); 
+      ejecutarBusqueda(1)
     }, 400)
     return () => clearTimeout(timer)
-}, [ejecutarBusqueda])
+  }, [ejecutarBusqueda])
 
   // --- HANDLERS ---
   const handleBuscar = () => {
     const trimmed = busqueda.trim()
     setSearchParams(trimmed ? { q: trimmed } : {})
     setBusquedaEnviada(trimmed)
-    setPage(1); // Reseteamos la página a 1 al hacer una nueva búsqueda
-    ejecutarBusqueda(1); // Llamamos con página 1
-}
+    setPage(1) // Reseteamos la página a 1 al hacer una nueva búsqueda
+    ejecutarBusqueda(1) // Llamamos con página 1
+  }
 
   const saveNombre = async () => {
     if (tempNombre.trim() && id_coleccion && id_coleccion !== 'nueva') {
@@ -703,23 +716,26 @@ const BuscadorColeccion = () => {
 
   // --- NUEVA LÓGICA DE URL FIRMADA ---
   const getSignedUrl = async (path: string) => {
-    const token = await getAccessTokenSilently();
-    const res = await fetch(`${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (!res.ok) throw new Error("Error obteniendo URL");
-    const { url } = await res.json();
-    return url;
-  };
+    const token = await getAccessTokenSilently()
+    const res = await fetch(
+      `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    )
+    if (!res.ok) throw new Error('Error obteniendo URL')
+    const { url } = await res.json()
+    return url
+  }
 
   const handleOpenDocument = async (path: string) => {
     try {
-      const url = await getSignedUrl(path);
-      window.open(url, '_blank');
+      const url = await getSignedUrl(path)
+      window.open(url, '_blank')
     } catch (e) {
-      console.error("No se pudo abrir el documento", e);
+      console.error('No se pudo abrir el documento', e)
     }
-  };
+  }
 
   return (
     <>
@@ -965,65 +981,88 @@ const BuscadorColeccion = () => {
                 </div>
 
                 {filtroOpen && (
-                <div className="bc-filter-panel">
-                  {entitiesData?.tipos.map((tipo, index) => {
-                    const entidadesDeTipo = entitiesData.entidades.filter(e => e.tipo === tipo);
-                    const seleccionadasDeTipo = entidadesDeTipo.filter(e => selectedEntityIds?.includes(e.id));
+                  <div className="bc-filter-panel">
+                    {entitiesData?.tipos.map((tipo, index) => {
+                      const entidadesDeTipo = entitiesData.entidades.filter(
+                        (e) => e.tipo === tipo,
+                      )
+                      const seleccionadasDeTipo = entidadesDeTipo.filter((e) =>
+                        selectedEntityIds?.includes(e.id),
+                      )
 
-                    return (
-                      <div key={tipo}>
-                        {index > 0 && <div className="bc-filter-divider" />}
-                        <div className="bc-filter-group">
-                          <span className="bc-filter-label">{tipo}</span>
+                      return (
+                        <div key={tipo}>
+                          {index > 0 && <div className="bc-filter-divider" />}
+                          <div className="bc-filter-group">
+                            <span className="bc-filter-label">{tipo}</span>
 
-                          <select
-                            value=""
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              if (!val) return;
-                              setSelectedEntityIds(prev =>
-                                prev?.includes(val) ? prev : [...(prev ?? []), val]
-                              );
-                            }}
-                            className="bc-filter-tag-input"
-                          >
-                            <option value="">Agregar {tipo}…</option>
-                            {entidadesDeTipo
-                              .filter(entidad => !selectedEntityIds?.includes(entidad.id))
-                              .map(entidad => (
-                                <option key={entidad.id} value={entidad.id}>{entidad.label}</option>
-                              ))
-                            }
-                          </select>
+                            <select
+                              value=""
+                              onChange={(e) => {
+                                const val = e.target.value
+                                if (!val) return
+                                setSelectedEntityIds((prev) =>
+                                  prev?.includes(val)
+                                    ? prev
+                                    : [...(prev ?? []), val],
+                                )
+                              }}
+                              className="bc-filter-tag-input"
+                            >
+                              <option value="">Agregar {tipo}…</option>
+                              {entidadesDeTipo
+                                .filter(
+                                  (entidad) =>
+                                    !selectedEntityIds?.includes(entidad.id),
+                                )
+                                .map((entidad) => (
+                                  <option key={entidad.id} value={entidad.id}>
+                                    {entidad.label}
+                                  </option>
+                                ))}
+                            </select>
 
-                          {seleccionadasDeTipo.length > 0 && (
-                            <div className="bc-filter-chips">
-                              {seleccionadasDeTipo.map(entidad => (
-                                <span key={entidad.id} className="bc-filter-chip selected">
-                                  {entidad.label}
-                                  <button
-                                    className="bc-chip-remove"
-                                    onClick={() => setSelectedEntityIds(prev => prev?.filter(id => id !== entidad.id) ?? [])}
+                            {seleccionadasDeTipo.length > 0 && (
+                              <div className="bc-filter-chips">
+                                {seleccionadasDeTipo.map((entidad) => (
+                                  <span
+                                    key={entidad.id}
+                                    className="bc-filter-chip selected"
                                   >
-                                    ×
-                                  </button>
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {selectedEntityIds && selectedEntityIds.length > 0 && (
-                    <button className="bc-filter-clear-all" onClick={() => setSelectedEntityIds([])}>
-                      Limpiar filtros
-                    </button>
-                  )}
-                </div>
-                )}
+                                    {entidad.label}
+                                    <button
+                                      className="bc-chip-remove"
+                                      onClick={() =>
+                                        setSelectedEntityIds(
+                                          (prev) =>
+                                            prev?.filter(
+                                              (id) => id !== entidad.id,
+                                            ) ?? [],
+                                        )
+                                      }
+                                    >
+                                      ×
+                                    </button>
+                                  </span>
+                                ))}
                               </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+
+                    {selectedEntityIds && selectedEntityIds.length > 0 && (
+                      <button
+                        className="bc-filter-clear-all"
+                        onClick={() => setSelectedEntityIds([])}
+                      >
+                        Limpiar filtros
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <div className="bc-results-area">
                 {loading ? (
@@ -1036,7 +1075,8 @@ const BuscadorColeccion = () => {
                     <div className="bc-results-meta">
                       <span className="bc-results-count">
                         {/* Cambiamos resultados.length por totalResults */}
-                        {totalResults} resultado{totalResults !== 1 ? 's' : ''} encontrados
+                        {totalResults} resultado{totalResults !== 1 ? 's' : ''}{' '}
+                        encontrados
                         {searchTime > 0 && ` en ${searchTime}s`}
                       </span>
                     </div>
@@ -1063,7 +1103,7 @@ const BuscadorColeccion = () => {
                               </div>
                             </div>
 
-                            <button 
+                            <button
                               onClick={() => handleOpenDocument(r.storage_path)}
                               className="bc-external-btn"
                             >
@@ -1097,9 +1137,21 @@ const BuscadorColeccion = () => {
                     </div>
                     {totalPages > 1 && (
                       <div className="bc-pagination">
-                        <button disabled={page === 1} onClick={() => ejecutarBusqueda(page - 1)}>Anterior</button>
-                        <span>Página {page} de {totalPages}</span>
-                        <button disabled={page === totalPages} onClick={() => ejecutarBusqueda(page + 1)}>Siguiente</button>
+                        <button
+                          disabled={page === 1}
+                          onClick={() => ejecutarBusqueda(page - 1)}
+                        >
+                          Anterior
+                        </button>
+                        <span>
+                          Página {page} de {totalPages}
+                        </span>
+                        <button
+                          disabled={page === totalPages}
+                          onClick={() => ejecutarBusqueda(page + 1)}
+                        >
+                          Siguiente
+                        </button>
                       </div>
                     )}
                   </>
