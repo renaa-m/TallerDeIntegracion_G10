@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from uuid import UUID
 from pydantic import BaseModel
 from app.middleware.auth import get_current_user
-from app.models.document import CollectionCreate, CollectionResponse
+from app.models.document import CollectionCreate, CollectionResponse, CollectionEntities
 from app.schemas.graph import DataModelUpdate
 from app.services import supabase_client, graph_transformer, processing_queue
 from app.services.processing_queue import ProcessingSlotBusyError
@@ -35,6 +35,7 @@ async def create_collection(
             user_id=user_id,
             name=body.name,
             description=body.description,
+            language=body.language,
         )
         return collection
 
@@ -550,3 +551,48 @@ async def get_collection_graph(
         message=None,
         elements=CytoscapeElements(**cytoscape_data["elements"]),
     )
+
+
+@router.get("/{collection_id}/entities", response_model=CollectionEntities)
+async def get_collection_entities(
+    collection_id: UUID,
+    user_id: str = Depends(get_current_user),
+) -> CollectionEntities:
+    """Devuelve las instancias de entidades del grafo de la colección.
+
+    Usado por el frontend para poblar el dropdown de filtros avanzados antes
+    de realizar una consulta semántica. El resultado se cachea en memoria para
+    evitar descargar y parsear el .qm en cada request.
+    """
+    collection = supabase_client.get_collection(
+        collection_id=str(collection_id),
+        user_id=user_id,
+    )
+    if collection is None:
+        raise HTTPException(status_code=404, detail="Colección no encontrada.")
+
+    status = collection.get("processing_status", "idle")
+    if status not in _GRAPH_AVAILABLE_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=_graph_unavailable_detail(status),
+        )
+
+    cached = graph_transformer.get_cached_facets(str(collection_id))
+    if cached is not None:
+        return CollectionEntities(**cached)
+
+    try:
+        qm_bytes = supabase_client.download_collection_qm(
+            user_id=user_id,
+            collection_id=str(collection_id),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Error al descargar el grafo desde el almacenamiento.",
+        ) from exc
+
+    facets = graph_transformer.extract_entity_facets(qm_bytes.decode("utf-8"))
+    graph_transformer.set_cached_facets(str(collection_id), facets)
+    return CollectionEntities(**facets)

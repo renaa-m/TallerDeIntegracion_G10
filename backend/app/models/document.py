@@ -7,6 +7,18 @@ from pydantic import BaseModel, Field
 class CollectionCreate(BaseModel):
     name: str
     description: str | None = None
+    language: str = "es"
+
+
+class EntityFacet(BaseModel):
+    id: str = Field(description="ID interno de la entidad en el grafo (ej. 'Persona_1').")
+    label: str = Field(description="Nombre legible de la entidad (ej. 'Pinochet').")
+    tipo: str = Field(description="Tipo de entidad (ej. 'Persona', 'Lugar').")
+
+
+class CollectionEntities(BaseModel):
+    tipos: list[str] = Field(description="Lista ordenada de tipos de entidad presentes en la colección.")
+    entidades: list[EntityFacet] = Field(description="Instancias de entidades disponibles para filtrar.")
 
 
 class FailedProcessingDocument(BaseModel):
@@ -20,6 +32,7 @@ class CollectionResponse(BaseModel):
     name: str
     description: str | None
     status: str
+    language: str = "es"
     processing_status: str = "idle"
     processing_error_message: str | None = None
     processed_at: datetime | None = None
@@ -41,10 +54,18 @@ class DocumentResponse(BaseModel):
     file_type: str
     file_size_bytes: int | None
     storage_path: str
+    url: str | None = Field(
+        default=None,
+        description="URL firmada del documento original.",
+    )
     status: str
     error_message: str | None
     sha256_hash: str | None = None
     created_at: datetime
+
+
+class DocumentSignedUrlResponse(BaseModel):
+    url: str
 
 
 class DocumentStatusUpdate(BaseModel):

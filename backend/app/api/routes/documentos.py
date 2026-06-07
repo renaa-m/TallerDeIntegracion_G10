@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -11,6 +12,7 @@ from app.models.document import (
     ArchivoFallido,
     BatchUploadResponse,
     DocumentResponse,
+    DocumentSignedUrlResponse,
 )
 from app.services import supabase_client
 
@@ -229,14 +231,50 @@ async def listar_documentos(
     coleccion_id: UUID | None = None,
     user_id: str = Depends(get_current_user),
 ):
+    documentos = await supabase_client.list_documents(
+        user_id, str(coleccion_id) if coleccion_id is not None else None
+    )
+    
+    # Agregar la URL a cada documento antes de retornar
+    for doc in documentos:
+        storage_path = doc.get("storage_path")
+        if storage_path:
+            try:
+                signed = await asyncio.to_thread(
+                    supabase_client.create_signed_url, storage_path
+                )
+                if isinstance(signed, str) and signed.strip().startswith("http"):
+                    doc["url"] = signed.strip()
+                else:
+                    doc["url"] = None
+            except Exception:
+                doc["url"] = None
+        else:
+            doc["url"] = None
+
+    return documentos
+
+
+@router.get("/signed-url")
+async def get_signed_url(
+    path: str,
+    user_id: str = Depends(get_current_user),
+):
+    """Genera una URL firmada para acceder a un documento en Supabase Storage.
+
+    Debe llamarse solo cuando el usuario decide abrir el archivo, no de forma
+    masiva para todos los resultados de búsqueda.
+    """
+    safe_user_id = supabase_client.storage_path_user_folder(user_id)
+    if not path.startswith(safe_user_id + "/"):
+        raise HTTPException(status_code=403, detail="Acceso denegado.")
     try:
-        return await supabase_client.list_documents(
-            user_id, str(coleccion_id) if coleccion_id is not None else None
-        )
+        url = await asyncio.to_thread(supabase_client.create_signed_url, path)
+        return {"url": url}
     except Exception as exc:
         raise HTTPException(
             status_code=502,
-            detail="Error al obtener la lista de documentos.",
+            detail="No se pudo generar el enlace de descarga.",
         ) from exc
 
 
@@ -282,4 +320,51 @@ async def obtener_documento(
 
     if documento is None:
         raise HTTPException(status_code=404, detail="Documento no encontrado.")
+    # Añadir URL firmada válida si es posible
+    try:
+        signed = await asyncio.to_thread(
+            supabase_client.create_signed_url, documento.get("storage_path")
+        )
+        if isinstance(signed, str) and signed.strip().startswith("http"):
+            documento["url"] = signed.strip()
+        else:
+            documento["url"] = None
+    except Exception:
+        documento["url"] = None
+
     return documento
+
+
+@router.get("/{doc_id}/signed-url", response_model=DocumentSignedUrlResponse)
+async def obtener_documento_signed_url(
+    doc_id: UUID,
+    user_id: str = Depends(get_current_user),
+):
+    try:
+        documento = await supabase_client.get_document(str(doc_id), user_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Error al obtener el documento.",
+        ) from exc
+
+    if documento is None:
+        raise HTTPException(status_code=404, detail="Documento no encontrado.")
+
+    try:
+        signed_url = await asyncio.to_thread(
+            supabase_client.create_signed_url, documento.get("storage_path")
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Error al generar la URL firmada del documento.",
+        ) from exc
+
+    if not (isinstance(signed_url, str) and signed_url.strip().startswith("http")):
+        raise HTTPException(
+            status_code=502,
+            detail="URL firmada inválida del documento.",
+        )
+
+    return DocumentSignedUrlResponse(url=signed_url.strip())

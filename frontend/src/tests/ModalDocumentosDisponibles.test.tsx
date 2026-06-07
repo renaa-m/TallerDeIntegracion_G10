@@ -144,7 +144,7 @@ describe('ModalDocumentosDisponibles', () => {
       .closest('.mdd-card') as HTMLElement
     fireEvent.click(card)
 
-    expect(consoleSpy).toHaveBeenCalledWith('Documento seleccionado:', 'doc-1')
+    expect(consoleSpy).toHaveBeenCalledWith('Seleccionado:', 'doc-1')
 
     consoleSpy.mockRestore()
   })

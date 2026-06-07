@@ -6,6 +6,22 @@ from typing import Any
 _SYSTEM_NODE_TYPES = frozenset({"Document", "Chunk"})
 _SYSTEM_EDGE_TYPES = frozenset({"ChunkOf", "ExtractedFrom"})
 
+# Caché en memoria: collection_id (str) → facets dict
+# Se invalida cuando la colección es reprocesada.
+_facets_cache: dict[str, dict] = {}
+
+
+def get_cached_facets(collection_id: str) -> dict | None:
+    return _facets_cache.get(collection_id)
+
+
+def set_cached_facets(collection_id: str, facets: dict) -> None:
+    _facets_cache[collection_id] = facets
+
+
+def invalidate_facets_cache(collection_id: str) -> None:
+    _facets_cache.pop(collection_id, None)
+
 # prop:"quoted value"  o  prop:unquoted_value
 _PROP_RE = re.compile(r'(\w+):(?:"([^"]*)"|(\S+))')
 
@@ -149,3 +165,35 @@ def qm_to_cytoscape(
             node["data"].update(node_document_map[node_id])
 
     return {"elements": {"nodes": nodes, "edges": valid_edges}}
+
+
+def extract_entity_facets(qm_text: str) -> dict:
+    """Extrae instancias de entidades del .qm para el dropdown de filtros avanzados.
+
+    Devuelve un dict con:
+    - ``tipos``: lista ordenada de tipos de entidad presentes en la colección.
+    - ``entidades``: lista de instancias ordenadas por tipo y label.
+
+    Excluye Document y Chunk (entidades internas del pipeline).
+    """
+    entities: list[dict] = []
+    seen_ids: set[str] = set()
+
+    for line in qm_text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        node_m = _NODE_RE.match(line)
+        if not node_m:
+            continue
+        node_id, entity_type, props_raw = node_m.groups()
+        if entity_type in _SYSTEM_NODE_TYPES or node_id in seen_ids:
+            continue
+        seen_ids.add(node_id)
+        props = _parse_props(props_raw)
+        label = _first_meaningful_value(props, node_id)
+        entities.append({"id": node_id, "label": label, "tipo": entity_type})
+
+    entities.sort(key=lambda e: (e["tipo"], e["label"].lower()))
+    tipos = sorted({e["tipo"] for e in entities})
+    return {"tipos": tipos, "entidades": entities}

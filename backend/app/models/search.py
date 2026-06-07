@@ -19,7 +19,7 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, description="Consulta en lenguaje natural.")
     coleccion_id: UUID = Field(..., description="ID de la colección sobre la que buscar.")
     filtros: Optional[FiltrosBusqueda] = None
-    limit: int = Field(default=10, ge=1, le=50, description="Número máximo de resultados.")
+    page: int = Field(default=1, ge=1, description="Página de resultados (base 1).")
     min_score: float = Field(default=0.4, ge=0.0, le=1.0, description="Similitud mínima para incluir un resultado [0, 1].")
 
 
@@ -27,12 +27,14 @@ class SearchResult(BaseModel):
     titulo: str = Field(description="Nombre del documento fuente.")
     fragmento: str = Field(description="Texto del chunk más relevante.")
     id_chunk: str = Field(description="ID del chunk en el grafo (e.g. 'Chunk_1_2').")
-    enlace: str = Field(description="Ruta de Storage del documento original.")
+    storage_path: str = Field(description="Ruta interna de Storage del documento original.")
     score: float = Field(description="Similitud coseno [0, 1].")
 
 
 class SearchResponse(BaseModel):
     resultados: list[SearchResult]
     total: int
+    page: int
+    total_pages: int
     ready: bool = True
     message: str | None = None
