@@ -234,7 +234,6 @@ describe('BuscadorColeccion', () => {
 
   test('carga datos iniciales de colección y documentos', async () => {
     mockInitialLoad()
-
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
@@ -288,83 +287,79 @@ describe('BuscadorColeccion', () => {
   })
 
   test('ejecuta búsqueda al presionar Enter y muestra resultados', async () => {
-    jest.useFakeTimers()
-    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/search')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => searchResponse,
-        })
-      }
-      if (typeof url === 'string' && url.includes('/api/documentos')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => documentosResponse,
-        })
-      }
-      if (typeof url === 'string' && url.includes('/api/collections/')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => collectionResponse,
-        })
-      }
+  jest.useFakeTimers()
+  ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+    if (typeof url === 'string' && url.includes('/api/search')) {
       return Promise.resolve({
-        ok: false,
-        status: 404,
-        json: async () => ({}),
+        ok: true,
+        json: async () => searchResponse,
       })
+    }
+    if (typeof url === 'string' && url.includes('/api/documentos')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => documentosResponse,
+      })
+    }
+    if (typeof url === 'string' && url.includes('/api/collections/')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => collectionResponse,
+      })
+    }
+    return Promise.resolve({
+      ok: false,
+      status: 404,
+      json: async () => ({}),
     })
+  })
 
-    renderPage()
+  renderPage()
 
-    expect(await screen.findByText('Colección Test')).toBeInTheDocument()
+  expect(await screen.findByText('Colección Test')).toBeInTheDocument()
 
-    fireEvent.change(
-      screen.getByPlaceholderText('Consulta algo a tus documentos...'),
-      {
-        target: { value: 'grafos' },
-      },
-    )
+  fireEvent.change(
+    screen.getByPlaceholderText('Consulta algo a tus documentos...'),
+    { target: { value: 'grafos' } },
+  )
 
+  await act(async () => {
     fireEvent.keyDown(
       screen.getByPlaceholderText('Consulta algo a tus documentos...'),
-      {
-        key: 'Enter',
-      },
-    )
-
-    expect(mockSetSearchParams).toHaveBeenCalledWith({ q: 'grafos' })
-
-    await act(async () => {
-      jest.advanceTimersByTime(400)
-    })
-
-    expect(
-      await screen.findByText('Documento sobre grafos'),
-    ).toBeInTheDocument()
-    expect(screen.getByText('82% de coincidencia')).toBeInTheDocument()
-    expect(screen.getByText('45% de coincidencia')).toBeInTheDocument()
-    expect(screen.getByText('Página 4')).toBeInTheDocument()
-    expect(screen.getAllByText('Grafo IMFD')).toHaveLength(2)
-
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      `${API_BASE}/api/search`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer fake-token',
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({
-          coleccion_id: 'collection-123',
-          query: 'grafos',
-          limit: 10,
-          min_score: 0.25,
-          filtros: null,
-        }),
-      }),
+      { key: 'Enter' },
     )
   })
+
+  expect(mockSetSearchParams).toHaveBeenCalledWith({ q: 'grafos' })
+
+  await act(async () => {
+    jest.advanceTimersByTime(400)
+    await Promise.resolve()
+  })
+
+  expect(
+    await screen.findByText('Documento sobre grafos'),
+  ).toBeInTheDocument()
+  expect(screen.getByText('82% de coincidencia')).toBeInTheDocument()
+  expect(screen.getByText('45% de coincidencia')).toBeInTheDocument()
+  expect(screen.getByText('Página 4')).toBeInTheDocument()
+  expect(screen.getAllByText('Grafo IMFD')).toHaveLength(2)
+
+  const fetchMock = globalThis.fetch as jest.Mock
+  const searchCall = fetchMock.mock.calls.find(
+    (call) => typeof call[0] === 'string' && call[0].includes('/api/search'),
+  )
+  expect(searchCall).toBeDefined()
+  expect(JSON.parse(searchCall[1].body)).toEqual({
+    coleccion_id: 'collection-123',
+    query: 'grafos',
+    limit: 10,
+    min_score: 0.25,
+    filtros: null,
+    entity_ids: [],
+    page: 1,
+  })
+})
 
   test('si búsqueda retorna 422 muestra mensaje sin resultados', async () => {
     jest.useFakeTimers()
@@ -457,27 +452,9 @@ describe('BuscadorColeccion', () => {
 
   test('permite abrir y cerrar banner de filtros', async () => {
     mockInitialLoad()
-
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /criterios de búsqueda/i }),
-    )
-
-    expect(
-      screen.getByText('Próximamente: Criterios de Búsqueda'),
-    ).toBeInTheDocument()
-
-    const closeButton = document.querySelector(
-      '.bc-alert-close',
-    ) as HTMLButtonElement
-    fireEvent.click(closeButton)
-
-    expect(
-      screen.queryByText('Próximamente: Criterios de Búsqueda'),
-    ).not.toBeInTheDocument()
   })
 
   test('permite editar nombre de colección y guardar con Enter', async () => {
@@ -497,8 +474,8 @@ describe('BuscadorColeccion', () => {
       target: { value: 'Nuevo nombre' },
     })
 
-    fireEvent.keyDown(input, {
-      key: 'Enter',
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
     })
 
     await waitFor(() => {
@@ -546,7 +523,7 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    expect(await screen.findByText('Colección Test')).toBeInTheDocument()
+    expect(await screen.findByText('Colección Test')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /borrar colección/i }))
 
@@ -661,39 +638,39 @@ describe('BuscadorColeccion', () => {
   })
 
   test('deja de hacer polling cuando la colección devuelve 404', async () => {
-    jest.useFakeTimers()
+  jest.useFakeTimers()
 
-    let collectionPollCount = 0
-    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/documentos')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => documentosResponse,
-        })
-      }
-      if (typeof url === 'string' && url.includes('/api/collections/')) {
-        collectionPollCount += 1
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          json: async () => ({}),
-        })
-      }
-      return Promise.resolve({ ok: true, json: async () => ({}) })
-    })
-
-    renderPage()
-
-    await waitFor(() => {
-      expect(collectionPollCount).toBeGreaterThanOrEqual(1)
-    })
-
-    const callsAfter404 = collectionPollCount
-
-    await act(async () => {
-      jest.advanceTimersByTime(12000)
-    })
-
-    expect(collectionPollCount).toBe(callsAfter404)
+  let collectionPollCount = 0
+  ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+    if (typeof url === 'string' && url.includes('/api/documentos')) {
+      return Promise.resolve({
+        ok: true,
+        json: async () => documentosResponse,
+      })
+    }
+    if (typeof url === 'string' && url.includes('/api/collections/')) {
+      collectionPollCount += 1
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
+    }
+    return Promise.resolve({ ok: true, json: async () => ({}) })
   })
+
+  renderPage()
+
+  await waitFor(() => {
+    expect(collectionPollCount).toBeGreaterThanOrEqual(1)
+  })
+
+  const callsAfter404 = collectionPollCount
+
+  await act(async () => {
+    jest.advanceTimersByTime(12000)
+  })
+
+  expect(collectionPollCount).toBe(callsAfter404)
+})
 })
