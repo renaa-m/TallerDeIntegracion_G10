@@ -280,7 +280,7 @@ describe('ModalCarga', () => {
         body: JSON.stringify({
           name: 'Mi colección',
           description: '',
-          language: "es" 
+          language: 'es',
         }),
       }),
     )
