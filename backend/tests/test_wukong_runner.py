@@ -438,6 +438,37 @@ class TestRunWukong:
         assert "wukong_engine" in result.lower()
 
 
+# ── Tests para _split_into_subchunks ──────────────────────────────────────────
+
+
+class TestSplitIntoSubchunks:
+    def test_texto_corto_devuelve_un_solo_subchunk(self):
+        text = " ".join(["palabra"] * 80)
+        result = wukong_runner._split_into_subchunks(text)
+        assert len(result) == 1
+        assert result[0] == text
+
+    def test_texto_exactamente_max_words_devuelve_un_solo_subchunk(self):
+        text = " ".join(["x"] * 100)
+        result = wukong_runner._split_into_subchunks(text)
+        assert len(result) == 1
+
+    def test_texto_largo_genera_multiples_subchunks_de_maximo_100_palabras(self):
+        text = " ".join([f"p{i}" for i in range(200)])
+        result = wukong_runner._split_into_subchunks(text)
+        # step=85 → sub-chunks en i=0, 85, 170 → 3 sub-chunks
+        assert len(result) == 3
+        assert all(len(s.split()) <= 100 for s in result)
+
+    def test_overlap_correcto_entre_subchunks_consecutivos(self):
+        text = " ".join([f"w{i}" for i in range(200)])
+        result = wukong_runner._split_into_subchunks(text)
+        words_0 = result[0].split()
+        words_1 = result[1].split()
+        # Las últimas 15 palabras del sub-chunk 0 deben ser las primeras 15 del sub-chunk 1
+        assert words_0[-15:] == words_1[:15]
+
+
 # ── Helpers para TestGenerateAndStoreEmbeddings ────────────────────────────────
 
 
@@ -487,6 +518,48 @@ class TestGenerateAndStoreEmbeddings:
         assert len(saved_records) == 1
         assert saved_records[0]["chunk_id"] == "Chunk_1_1"
         assert saved_records[0]["document_name"] == "informe.pdf"
+
+    @patch("app.services.wukong_runner.supabase_client.save_chunk_embeddings")
+    @patch("app.services.embeddings_service.generate_embeddings_batch")
+    @patch("app.services.wukong_runner.supabase_client.get_documents_by_collection")
+    def test_chunk_largo_genera_subchunks_con_chunk_id_padre_y_chunk_index_correcto(
+        self,
+        mock_get_docs,
+        mock_generate_batch,
+        mock_save_chunks,
+        tmp_path,
+    ):
+        # Chunk de 200 palabras → step=85 → 3 sub-chunks (i=0, 85, 170)
+        long_text = " ".join([f"palabra{i}" for i in range(200)])
+        results = tmp_path / "results"
+        _write_json(
+            results / "entities" / "Document.json",
+            [{"_ObjectId": "Document_1", "name": MOCK_DOC_UUID}],
+        )
+        _write_json(
+            results / "entities" / "Chunk.json",
+            [{"_ObjectId": "Chunk_1_1", "text": long_text}],
+        )
+        _write_json(
+            results / "relations" / "ChunkOf.json",
+            [{"_OriginId": "Chunk_1_1", "_TargetId": "Document_1", "chunk_number": 3}],
+        )
+        mock_get_docs.return_value = [{"id": MOCK_DOC_UUID, "filename": "informe.pdf"}]
+        mock_generate_batch.return_value = [[0.1] * 384] * 3
+
+        result = wukong_runner._generate_and_store_embeddings(tmp_path, MOCK_COL_ID)
+
+        assert result == 3
+        saved_records = mock_save_chunks.call_args[0][0]
+        assert len(saved_records) == 3
+        # chunk_id padre preservado en todos los sub-chunks
+        assert all(r["chunk_id"] == "Chunk_1_1" for r in saved_records)
+        # chunk_index = base_index * 1000 + sub_idx
+        assert saved_records[0]["chunk_index"] == 3000
+        assert saved_records[1]["chunk_index"] == 3001
+        assert saved_records[2]["chunk_index"] == 3002
+        # cada sub-chunk tiene como máximo 100 palabras
+        assert all(len(r["chunk_text"].split()) <= 100 for r in saved_records)
 
     @patch("app.services.wukong_runner.supabase_client.save_chunk_embeddings")
     @patch("app.services.embeddings_service.generate_embeddings_batch")
