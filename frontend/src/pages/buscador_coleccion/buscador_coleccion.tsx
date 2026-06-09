@@ -948,7 +948,11 @@ const BuscadorColeccion = () => {
                                   className="bc-status-icon"
                                 />
                                 <span className="bc-score-value">
-                                  {(r.score * 100).toFixed(0)}% de coincidencia
+                                  {r.score > 0.7
+                                    ? 'Alta coincidencia'
+                                    : r.score > 0.4
+                                      ? 'Coincidencia media'
+                                      : 'Coincidencia baja'}
                                 </span>
                               </div>
                             </div>

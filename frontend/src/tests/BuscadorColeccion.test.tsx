@@ -342,8 +342,8 @@ describe('BuscadorColeccion', () => {
     expect(
       await screen.findByText('Documento sobre grafos'),
     ).toBeInTheDocument()
-    expect(screen.getByText('82% de coincidencia')).toBeInTheDocument()
-    expect(screen.getByText('45% de coincidencia')).toBeInTheDocument()
+    expect(screen.getByText('Alta coincidencia')).toBeInTheDocument()
+    expect(screen.getByText('Coincidencia media')).toBeInTheDocument()
     expect(screen.getByText('Página 4')).toBeInTheDocument()
     expect(screen.getAllByText('Grafo IMFD')).toHaveLength(2)
 

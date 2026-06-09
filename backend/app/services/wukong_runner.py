@@ -776,6 +776,31 @@ def _now_iso() -> str:
 
 # ── Pipeline 3a: Embeddings ────────────────────────────────────────────────────
 
+_SUBCHUNK_MAX_WORDS = 100
+_SUBCHUNK_OVERLAP = 15
+
+
+def _split_into_subchunks(
+    text: str,
+    max_words: int = _SUBCHUNK_MAX_WORDS,
+    overlap: int = _SUBCHUNK_OVERLAP,
+) -> list[str]:
+    """Divide un texto en sub-chunks de tamaño máximo `max_words` palabras con solapamiento.
+
+    Si el texto cabe en un solo sub-chunk lo devuelve sin dividir.
+    El solapamiento evita cortar frases relevantes en los bordes.
+    """
+    words = text.split()
+    if len(words) <= max_words:
+        return [text]
+    step = max(1, max_words - overlap)
+    subchunks: list[str] = []
+    i = 0
+    while i < len(words):
+        subchunks.append(" ".join(words[i : i + max_words]))
+        i += step
+    return subchunks
+
 
 def _build_entity_types_map(results_dir: Path) -> dict[str, list[str]]:
     """Construye {chunk_id: [EntityType, ...]} desde la relación ExtractedFrom.
@@ -843,7 +868,9 @@ def _generate_and_store_embeddings(workdir: Path, collection_id: str) -> int:
     docs = supabase_client.get_documents_by_collection(collection_id)
     doc_filename_map: dict[str, str] = {d["id"]: d["filename"] for d in docs}
 
-    # 6. Construir registros
+    # 6. Construir registros — cada chunk Wukong se divide en sub-chunks de ~100 palabras
+    # para mejorar la calidad del embedding (el modelo trunca a 128 tokens ≈ 100 palabras).
+    # Los sub-chunks heredan el chunk_id del padre para mantener el vínculo con el grafo.
     records: list[dict] = []
     for chunk_id, chunk_text in chunk_text_map.items():
         doc_obj_id = chunk_to_doc_obj.get(chunk_id)
@@ -852,15 +879,18 @@ def _generate_and_store_embeddings(workdir: Path, collection_id: str) -> int:
         doc_uuid = doc_obj_to_uuid.get(doc_obj_id)
         if not doc_uuid:
             continue
-        records.append({
-            "chunk_id": chunk_id,
-            "collection_id": collection_id,
-            "document_id": doc_uuid,
-            "document_name": doc_filename_map.get(doc_uuid, doc_uuid),
-            "chunk_index": chunk_index_map.get(chunk_id, 0),
-            "chunk_text": chunk_text,
-            "entity_types": entity_types_map.get(chunk_id, []),
-        })
+        base_index = chunk_index_map.get(chunk_id, 0)
+        entity_types = entity_types_map.get(chunk_id, [])
+        for sub_idx, sub_text in enumerate(_split_into_subchunks(chunk_text)):
+            records.append({
+                "chunk_id": chunk_id,
+                "collection_id": collection_id,
+                "document_id": doc_uuid,
+                "document_name": doc_filename_map.get(doc_uuid, doc_uuid),
+                "chunk_index": base_index * 1000 + sub_idx,
+                "chunk_text": sub_text,
+                "entity_types": entity_types,
+            })
 
     if not records:
         logger.warning("No se encontraron chunks para embeddings en colección %s.", collection_id)
