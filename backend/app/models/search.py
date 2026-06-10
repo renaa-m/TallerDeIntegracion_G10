@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -13,10 +13,21 @@ class FiltrosBusqueda(BaseModel):
         default=None,
         description="Tipo de entidad a filtrar (Persona, Organizacion, Lugar, Evento).",
     )
+    nombres_entidades: Optional[list[str]] = Field(
+        default=None,
+        description="Nombres de entidades específicas a buscar en el texto (ej. ['Manuel Montt', 'Palacio La Moneda']).",
+    )
+    logica_entidades: Literal["OR", "AND"] = Field(
+        default="OR",
+        description="Lógica de combinación para nombres_entidades: OR = alguna entidad presente, AND = todas presentes.",
+    )
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(..., min_length=1, description="Consulta en lenguaje natural.")
+    query: Optional[str] = Field(
+        default=None,
+        description="Consulta en lenguaje natural. Opcional si se especifican nombres_entidades en filtros.",
+    )
     coleccion_id: UUID = Field(..., description="ID de la colección sobre la que buscar.")
     filtros: Optional[FiltrosBusqueda] = None
     page: int = Field(default=1, ge=1, description="Página de resultados (base 1).")

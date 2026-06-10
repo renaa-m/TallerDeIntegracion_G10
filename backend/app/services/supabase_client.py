@@ -749,7 +749,7 @@ def save_chunk_embeddings(records: list[dict]) -> None:
 
 
 def search_chunks(
-    query_embedding: list[float],
+    query_embedding: list[float] | None,
     collection_id: str,
     limit: int = 10,
     offset: int = 0,
@@ -757,12 +757,14 @@ def search_chunks(
     year_min: int | None = None,
     year_max: int | None = None,
     min_score: float = 0.0,
+    entity_names: list[str] | None = None,
+    entity_logic: str = "OR",
 ) -> list[dict]:
-    """Búsqueda semántica sobre chunk_embeddings usando la función SQL search_chunks.
+    """Búsqueda sobre chunk_embeddings usando la función SQL search_chunks.
 
-    Devuelve solo la página solicitada. Cada fila incluye ``total_count`` con el
-    número total de resultados que superan min_score (calculado en SQL con window
-    function), evitando un segundo query para la paginación.
+    query_embedding puede ser None para búsqueda por entidad pura (sin ranking semántico).
+    En ese caso los resultados se ordenan por chunk_index.
+    Cada fila incluye total_count (window function) para paginación sin segundo query.
     """
     client = _get_service_client()
     result = client.rpc(
@@ -776,6 +778,8 @@ def search_chunks(
             "p_year_min": year_min,
             "p_year_max": year_max,
             "p_min_score": min_score,
+            "p_entity_names": entity_names,
+            "p_entity_logic": entity_logic,
         },
     ).execute()
     return result.data or []
