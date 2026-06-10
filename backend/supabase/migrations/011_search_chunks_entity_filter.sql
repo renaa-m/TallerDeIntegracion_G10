@@ -13,8 +13,8 @@ CREATE INDEX IF NOT EXISTS chunk_embeddings_text_trgm_idx
     ON chunk_embeddings USING GIN (chunk_text gin_trgm_ops);
 
 CREATE OR REPLACE FUNCTION search_chunks(
-    query_embedding vector(384) DEFAULT NULL,
     p_collection_id UUID,
+    query_embedding vector(384) DEFAULT NULL,
     p_limit         INTEGER DEFAULT 10,
     p_offset        INTEGER DEFAULT 0,
     p_entity_types  TEXT[]  DEFAULT NULL,
