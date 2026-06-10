@@ -610,3 +610,139 @@ class TestGenerateGraph:
             json=payload_invalido,
         )
         assert response.status_code == 422
+
+
+# ── Cascada de borrado (delete_collection, unit) ───────────────────────────────
+
+_COL_ID = str(MOCK_COLLECTION_ID)
+_USER_ID = MOCK_USER_ID
+_DOC_PATH = f"auth0_testuser123/{MOCK_COLLECTION_ID}/doc.pdf"
+
+
+def _make_client(collection_row=None, doc_rows=None):
+    from unittest.mock import MagicMock
+
+    mock_client = MagicMock()
+    tables = {}
+
+    def _table(name):
+        if name not in tables:
+            tables[name] = MagicMock()
+        return tables[name]
+
+    mock_client.table.side_effect = _table
+
+    _table("collections").select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=collection_row if collection_row is not None
+        else [{"id": _COL_ID, "qm_storage_path": None}]
+    )
+    _table("collections").delete.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=[{"id": _COL_ID}]
+    )
+    _table("documents").select.return_value.eq.return_value.eq.return_value.execute.return_value = MagicMock(
+        data=doc_rows if doc_rows is not None else []
+    )
+    return mock_client, tables
+
+
+class TestCascadaBorrado:
+    def test_cascada_elimina_storage_documentos(self):
+        mock_client, _ = _make_client(doc_rows=[{"storage_path": _DOC_PATH}])
+        with patch(
+            "app.services.supabase_client.get_supabase_client",
+            return_value=mock_client,
+        ):
+            from app.services.supabase_client import delete_collection
+            delete_collection(_COL_ID, _USER_ID)
+
+        paths_removed = mock_client.storage.from_.return_value.remove.call_args[0][0]
+        assert _DOC_PATH in paths_removed
+
+    def test_cascada_elimina_qm(self):
+        mock_client, _ = _make_client(
+            collection_row=[{"id": _COL_ID, "qm_storage_path": "mi/path.qm"}],
+            doc_rows=[],
+        )
+        with patch(
+            "app.services.supabase_client.get_supabase_client",
+            return_value=mock_client,
+        ):
+            from app.services.supabase_client import delete_collection
+            delete_collection(_COL_ID, _USER_ID)
+
+        paths_removed = mock_client.storage.from_.return_value.remove.call_args[0][0]
+        assert "mi/path.qm" in paths_removed
+
+    def test_cascada_elimina_chunk_embeddings(self):
+        mock_client, tables = _make_client()
+        with patch(
+            "app.services.supabase_client.get_supabase_client",
+            return_value=mock_client,
+        ):
+            from app.services.supabase_client import delete_collection
+            delete_collection(_COL_ID, _USER_ID)
+
+        tables["chunk_embeddings"].delete.return_value.eq.assert_called_with(
+            "collection_id", _COL_ID
+        )
+
+    def test_cascada_elimina_document_texts(self):
+        mock_client, tables = _make_client()
+        with patch(
+            "app.services.supabase_client.get_supabase_client",
+            return_value=mock_client,
+        ):
+            from app.services.supabase_client import delete_collection
+            delete_collection(_COL_ID, _USER_ID)
+
+        tables["document_texts"].delete.return_value.eq.assert_called_with(
+            "collection_id", _COL_ID
+        )
+        tables["document_texts"].delete.return_value.eq.return_value.eq.assert_called_with(
+            "user_id", _USER_ID
+        )
+
+    def test_cascada_elimina_documents(self):
+        mock_client, tables = _make_client()
+        with patch(
+            "app.services.supabase_client.get_supabase_client",
+            return_value=mock_client,
+        ):
+            from app.services.supabase_client import delete_collection
+            delete_collection(_COL_ID, _USER_ID)
+
+        tables["documents"].delete.return_value.eq.assert_called_with(
+            "collection_id", _COL_ID
+        )
+        tables["documents"].delete.return_value.eq.return_value.eq.assert_called_with(
+            "user_id", _USER_ID
+        )
+
+    def test_cascada_elimina_collection(self):
+        mock_client, tables = _make_client()
+        with patch(
+            "app.services.supabase_client.get_supabase_client",
+            return_value=mock_client,
+        ):
+            from app.services.supabase_client import delete_collection
+            delete_collection(_COL_ID, _USER_ID)
+
+        tables["collections"].delete.return_value.eq.assert_called_with(
+            "id", _COL_ID
+        )
+        tables["collections"].delete.return_value.eq.return_value.eq.assert_called_with(
+            "user_id", _USER_ID
+        )
+
+    def test_cascada_coleccion_no_encontrada_retorna_false(self):
+        mock_client, tables = _make_client(collection_row=[])
+        with patch(
+            "app.services.supabase_client.get_supabase_client",
+            return_value=mock_client,
+        ):
+            from app.services.supabase_client import delete_collection
+            result = delete_collection(_COL_ID, _USER_ID)
+
+        assert result is False
+        mock_client.storage.from_.return_value.remove.assert_not_called()
+        tables["collections"].delete.assert_not_called()

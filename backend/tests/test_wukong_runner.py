@@ -522,3 +522,84 @@ class TestGenerateAndStoreEmbeddings:
 
         with pytest.raises(RuntimeError, match="Supabase no disponible"):
             wukong_runner._generate_and_store_embeddings(tmp_path, MOCK_COL_ID)
+
+
+# ── Transición de estados ──────────────────────────────────────────────────────
+
+
+class TestTransicionEstados:
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
+    @patch("app.services.wukong_runner.supabase_client")
+    @patch("app.services.wukong_runner._run_wukong", return_value=None)
+    @patch("app.services.wukong_runner._build_wukong_workdir", return_value=2)
+    @patch("app.services.wukong_runner.process_txt_document")
+    def test_secuencia_completa_de_estados(
+        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb, _mock_qm
+    ):
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]
+        mock_process_txt.return_value = {"status": "ok", "document_id": "doc1"}
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        statuses = [
+            call.args[1]
+            for call in mock_sb.update_collection_processing_status.call_args_list
+        ]
+        assert statuses == ["processing_graph", "graph_ready"]
+
+    @patch("app.services.wukong_runner._check_cancelled",
+           side_effect=wukong_runner.ProcessingCancelled)
+    @patch("app.services.wukong_runner.supabase_client")
+    def test_cancelacion_durante_extraccion(self, mock_sb, _mock_check):
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        mock_sb.update_collection_processing_status.assert_not_called()
+
+    @patch("app.services.wukong_runner.supabase_client")
+    @patch("app.services.wukong_runner._run_wukong",
+           side_effect=wukong_runner.ProcessingCancelled)
+    @patch("app.services.wukong_runner._build_wukong_workdir", return_value=2)
+    @patch("app.services.wukong_runner.process_txt_document")
+    def test_cancelacion_durante_wukong(
+        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb
+    ):
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]
+        mock_process_txt.return_value = {"status": "ok", "document_id": "doc1"}
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        statuses = [
+            call.args[1]
+            for call in mock_sb.update_collection_processing_status.call_args_list
+        ]
+        assert statuses == ["processing_graph"]
+        assert "error" not in statuses
+        assert "graph_ready" not in statuses
+
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
+    @patch("app.services.wukong_runner._generate_and_store_embeddings",
+           side_effect=RuntimeError("fallo embeddings"))
+    @patch("app.services.wukong_runner.supabase_client")
+    @patch("app.services.wukong_runner._run_wukong", return_value=None)
+    @patch("app.services.wukong_runner._build_wukong_workdir", return_value=2)
+    @patch("app.services.wukong_runner.process_txt_document")
+    def test_fallo_embeddings_no_bloquea_estado_graph_ready(
+        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb,
+        _mock_embeddings, _mock_qm
+    ):
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]
+        mock_process_txt.return_value = {"status": "ok", "document_id": "doc1"}
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        statuses = [
+            call.args[1]
+            for call in mock_sb.update_collection_processing_status.call_args_list
+        ]
+        assert statuses[-1] == "graph_ready"
