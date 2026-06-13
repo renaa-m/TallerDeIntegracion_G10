@@ -976,10 +976,6 @@ const BuscadorColeccion = () => {
                           </div>
 
                           <div className="bc-card-footer">
-                            <div className="bc-footer-tag">
-                              <Network size={12} />
-                              <span>Grafo IMFD</span>
-                            </div>
                             {r.pagina && (
                               <div className="bc-footer-tag">
                                 <span>Página {r.pagina}</span>
