@@ -286,3 +286,116 @@ class TestSignedUrl:
     def test_requiere_autenticacion(self, client_sin_auth):
         response = client_sin_auth.get(f"/api/documentos/signed-url?path={_VALID_PATH}")
         assert response.status_code == 403
+
+
+# ── Fallo en generación de embedding ───────────────────────────────────────────
+
+
+class TestEmbeddingFailure:
+    def test_generate_embedding_falla_retorna_502(self, client):
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch(
+                "app.api.routes.search.generate_embedding",
+                side_effect=Exception("modelo roto"),
+            ),
+        ):
+            response = client.post("/api/search", json=SEARCH_BODY)
+
+        assert response.status_code == 502
+
+
+# ── Filtros de búsqueda ────────────────────────────────────────────────────────
+
+
+class TestFiltrosBusqueda:
+    def test_entity_type_llega_a_sql(self, client):
+        from unittest.mock import MagicMock
+
+        mock_search = MagicMock(return_value=[_chunk(0, total_count=1)])
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
+        ):
+            client.post(
+                "/api/search",
+                json={**SEARCH_BODY, "filtros": {"tipo_entidad": "Persona"}},
+            )
+
+        assert mock_search.call_args.args[4] == ["Persona"]
+
+    def test_rango_años_llega_a_sql(self, client):
+        from unittest.mock import MagicMock
+
+        mock_search = MagicMock(return_value=[_chunk(0, total_count=1)])
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
+        ):
+            client.post(
+                "/api/search",
+                json={**SEARCH_BODY, "filtros": {"rango_años": [2000, 2010]}},
+            )
+
+        assert mock_search.call_args.args[5] == 2000
+        assert mock_search.call_args.args[6] == 2010
+
+
+# ── Colección no lista para búsqueda ──────────────────────────────────────────
+
+
+class TestColeccionNoLista:
+    def test_processing_text_retorna_ready_false(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "processing_text"}
+        with patch(
+            "app.api.routes.search.supabase_client.get_collection_by_id",
+            return_value=col,
+        ):
+            response = client.post("/api/search", json=SEARCH_BODY)
+
+        assert response.status_code == 200
+        assert response.json()["ready"] is False
+
+    def test_processing_graph_retorna_ready_false(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "processing_graph"}
+        with patch(
+            "app.api.routes.search.supabase_client.get_collection_by_id",
+            return_value=col,
+        ):
+            response = client.post("/api/search", json=SEARCH_BODY)
+
+        assert response.status_code == 200
+        assert response.json()["ready"] is False
+
+    def test_error_retorna_ready_false(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "error"}
+        with patch(
+            "app.api.routes.search.supabase_client.get_collection_by_id",
+            return_value=col,
+        ):
+            response = client.post("/api/search", json=SEARCH_BODY)
+
+        assert response.status_code == 200
+        assert response.json()["ready"] is False
+
+    def test_cancelled_retorna_ready_false(self, client):
+        col = {**MOCK_COLLECTION, "processing_status": "cancelled"}
+        with patch(
+            "app.api.routes.search.supabase_client.get_collection_by_id",
+            return_value=col,
+        ):
+            response = client.post("/api/search", json=SEARCH_BODY)
+
+        assert response.status_code == 200
+        assert response.json()["ready"] is False
