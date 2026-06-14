@@ -278,6 +278,7 @@ async def get_signed_url(
         ) from exc
 
 
+
 @router.get("/{doc_id}", response_model=DocumentResponse)
 async def obtener_documento(
     doc_id: UUID,

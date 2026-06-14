@@ -1,12 +1,17 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useParams } from 'react-router-dom'
 import CytoscapeComponent from 'react-cytoscapejs'
-import cytoscape, {
+import {
   type Core,
   type ElementDefinition,
   type StylesheetStyle,
   type LayoutOptions,
 } from 'cytoscape'
+import {
+  formatDateValue,
+  isProbablyDateKey,
+  isProbablyDateValue,
+} from '../../utils/dateFormatter'
 import {
   Loader2,
   ZoomIn,
@@ -38,6 +43,13 @@ interface GraphResponse {
   }
 }
 
+interface GraphData {
+  label?: string
+  source_document_id?: string | number
+  source_document_name?: string
+  [key: string]: unknown
+}
+
 const GraphViewer = () => {
   const { id_coleccion } = useParams<{ id_coleccion: string }>()
   const { getAccessTokenSilently } = useAuth0()
@@ -49,11 +61,9 @@ const GraphViewer = () => {
     null,
   )
   const [cyRef, setCyRef] = useState<Core | null>(null)
-  const [selectedData, setSelectedData] = useState<Record<
-    string,
-    unknown
-  > | null>(null)
+  const [selectedData, setSelectedData] = useState<GraphData | null>(null)
   const [selectedType, setSelectedType] = useState<'node' | 'edge' | null>(null)
+  const [openingDocument, setOpeningDocument] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const darkMode = useMemo(
@@ -61,18 +71,72 @@ const GraphViewer = () => {
     [],
   )
 
+  const renderValue = (k: string, v: unknown): string => {
+    if (v == null) return ''
+    const formatted =
+      isProbablyDateKey(k) || isProbablyDateValue(v) ? formatDateValue(v) : v
+    return String(formatted)
+  }
+
   const runLayout = useCallback((cyInstance: Core | null) => {
     if (!cyInstance) return
+
     const layoutOptions: LayoutOptions = {
-      name: 'cose',
+      name: 'breadthfirst',
       animate: true,
-      animationDuration: 500,
+      animationDuration: 1000,
       fit: true,
       padding: 50,
-      componentSpacing: 180,
-    }
+      directed: true,
+      grid: false,
+      circle: false,
+      spacingFactor: 2.5,
+    } as LayoutOptions & Record<string, unknown>
+
     cyInstance.layout(layoutOptions).run()
   }, [])
+
+  const openSourceDocument = useCallback(async () => {
+    const docId = selectedData?.source_document_id
+    if (!docId) {
+      console.error(
+        'No hay source_document_id en el nodo seleccionado',
+        selectedData,
+      )
+      return
+    }
+
+    setOpeningDocument(true)
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(
+        `${API_URL}/api/documentos/${String(docId)}/signed-url`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+
+      if (!res.ok) throw new Error('No se pudo obtener la URL del documento.')
+
+      const data = await res.json()
+      console.log('Respuesta de la API de documentos:', data) // <--- REVISA ESTO EN LA CONSOLA
+
+      // Cambia 'signed_url' por la propiedad real que veas en el console.log si difiere
+      const urlFinal = data.signed_url || data.url
+
+      if (!urlFinal) {
+        throw new Error(
+          'La API no devolvió ninguna URL válida en la respuesta.',
+        )
+      }
+
+      window.open(urlFinal, '_blank')
+    } catch (err) {
+      console.error('Error abriendo documento fuente:', err)
+    } finally {
+      setOpeningDocument(false)
+    }
+  }, [getAccessTokenSilently, selectedData])
 
   useEffect(() => {
     if (cyRef && elements.length > 0) {
@@ -163,7 +227,6 @@ const GraphViewer = () => {
     [id_coleccion, getAccessTokenSilently],
   )
 
-  // Actualizar automáticamente mientras el grafo se genera (solo /graph, sin GET extra).
   useEffect(() => {
     if (!unavailable?.pending) return
     const interval = window.setInterval(() => {
@@ -172,22 +235,13 @@ const GraphViewer = () => {
     return () => clearInterval(interval)
   }, [unavailable?.pending, fetchGraph])
 
-  // Fix para el Linter: Usar bandera de montaje y función interna
   useEffect(() => {
-    let isMounted = true
-
-    const init = async () => {
+    const loadData = async () => {
+      if (!id_coleccion) return
       await fetchGraph()
     }
-
-    if (isMounted) {
-      init()
-    }
-
-    return () => {
-      isMounted = false
-    }
-  }, [fetchGraph])
+    loadData()
+  }, [id_coleccion, fetchGraph])
 
   useEffect(() => {
     if (!cyRef) return
@@ -195,7 +249,7 @@ const GraphViewer = () => {
       evt: cytoscape.EventObject,
       type: 'node' | 'edge',
     ) => {
-      setSelectedData(evt.target.data() as Record<string, unknown>)
+      setSelectedData(evt.target.data())
       setSelectedType(type)
     }
     const handleUnselect = (evt: cytoscape.EventObject) => {
@@ -243,11 +297,25 @@ const GraphViewer = () => {
 
   const filteredMetadata = useMemo(() => {
     if (!selectedData) return []
-    const blacklist = ['id', 'source', 'target', 'label', 'tipo']
+    if (selectedType === 'edge') {
+      return Object.entries(selectedData).filter(
+        ([key, value]) => key === 'chunk_text' && value != null,
+      )
+    }
+    const blacklist = [
+      'id',
+      'source',
+      'target',
+      'label',
+      'chunk_text',
+      'extracted_from',
+      'source_document_id',
+      'source_document_name',
+    ]
     return Object.entries(selectedData).filter(
       ([key]) => !blacklist.includes(key),
     )
-  }, [selectedData])
+  }, [selectedData, selectedType])
 
   if (loading)
     return (
@@ -325,10 +393,47 @@ const GraphViewer = () => {
             <p className="gv-main-label">
               {String(selectedData.label || 'Sin etiqueta')}
             </p>
+            <br />
+            {selectedData?.source_document_id && (
+              <div className="gv-source-ref">
+                <span className="gv-source-ref-text">
+                  <span className="gv-source-ref-label">Referencia:</span>{' '}
+                  <span className="gv-source-ref-name">
+                    {String(selectedData.source_document_name || 'Documento')}
+                  </span>
+                </span>
+                <button
+                  className="gv-source-ref-btn"
+                  onClick={openSourceDocument}
+                  disabled={openingDocument}
+                  type="button"
+                  title="Abrir documento fuente"
+                >
+                  {openingDocument ? '...' : '↗'}
+                </button>
+              </div>
+            )}
+
             {filteredMetadata.map(([k, v]) => (
               <div key={k} className="gv-metadata-row">
-                <span className="gv-metadata-key">{k}</span>
-                <span className="gv-metadata-val">{String(v)}</span>
+                <span className="gv-metadata-key">
+                  {k === 'chunk_text'
+                    ? 'Descripción'
+                    : k === 'type'
+                      ? 'Tipo'
+                      : k === 'nombre'
+                        ? 'Nombre'
+                        : k === 'descripcion'
+                          ? 'Descripción'
+                          : k === 'fecha'
+                            ? 'Fecha'
+                            : k === 'rol'
+                              ? 'Rol'
+                              : k === 'tipo'
+                                ? 'Subtipo'
+                                : k}
+                </span>
+                <span className="gv-metadata-val">{renderValue(k, v)}</span>
               </div>
             ))}
           </div>
