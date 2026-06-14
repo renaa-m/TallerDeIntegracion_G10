@@ -97,29 +97,41 @@ const GraphViewer = () => {
   }, [])
 
   const openSourceDocument = useCallback(async () => {
-    const docId = selectedData?.source_document_id
-    if (!docId) return
+  const docId = selectedData?.source_document_id
+  if (!docId) {
+    console.error("No hay source_document_id en el nodo seleccionado", selectedData)
+    return
+  }
 
-    setOpeningDocument(true)
-    try {
-      const token = await getAccessTokenSilently()
-      const res = await fetch(
-        `${API_URL}/api/documentos/${String(docId)}/signed-url`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      )
+  setOpeningDocument(true)
+  try {
+    const token = await getAccessTokenSilently()
+    const res = await fetch(
+      `${API_URL}/api/documentos/${String(docId)}/signed-url`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    )
 
-      if (!res.ok) throw new Error('No se pudo obtener la URL del documento.')
+    if (!res.ok) throw new Error('No se pudo obtener la URL del documento.')
 
-      const { signed_url } = await res.json()
-      window.open(signed_url, '_blank')
-    } catch (err) {
-      console.error('Error abriendo documento fuente:', err)
-    } finally {
-      setOpeningDocument(false)
+    const data = await res.json()
+    console.log("Respuesta de la API de documentos:", data) // <--- REVISA ESTO EN LA CONSOLA
+
+    // Cambia 'signed_url' por la propiedad real que veas en el console.log si difiere
+    const urlFinal = data.signed_url || data.url 
+
+    if (!urlFinal) {
+      throw new Error('La API no devolvió ninguna URL válida en la respuesta.');
     }
-  }, [getAccessTokenSilently, selectedData])
+
+    window.open(urlFinal, '_blank')
+  } catch (err) {
+    console.error('Error abriendo documento fuente:', err)
+  } finally {
+    setOpeningDocument(false)
+  }
+}, [getAccessTokenSilently, selectedData])
 
   useEffect(() => {
     if (cyRef && elements.length > 0) {
