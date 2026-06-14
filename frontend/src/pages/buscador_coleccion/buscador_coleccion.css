@@ -454,204 +454,6 @@
   line-height: 1;
 }
 
-/* ── FILTER PANEL ────────────────────────────────────────────────────────── */
-.bc-filter-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  padding: 4px 4px;
-  background: var(--surface);
-  border: 1.5px solid var(--border);
-  border-radius: 16px;
-  animation: bc-fadein 0.2s ease both;
-  overflow: hidden;
-}
-
-/* Cada sección de filtro */
-.bc-filter-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 14px 14px;
-}
-
-.bc-filter-group-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-3);
-}
-
-.bc-filter-label {
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-/* Separador entre grupos */
-.bc-filter-divider {
-  height: 1px;
-  background: var(--border);
-  margin: 0 14px;
-}
-
-/* Input de texto para tags */
-.bc-filter-tag-row {
-  display: flex;
-  gap: 8px;
-}
-
-.bc-filter-tag-input {
-  flex: 1;
-  padding: 7px 12px;
-  border-radius: 10px;
-  border: 1.5px solid var(--border);
-  background: var(--surface-2);
-  font-size: 12.5px;
-  font-family: 'DM Sans', sans-serif;
-  color: var(--text-1);
-  outline: none;
-  transition:
-    border-color 0.2s,
-    background 0.2s;
-}
-.bc-filter-tag-input::placeholder {
-  color: var(--text-3);
-}
-.bc-filter-tag-input:focus {
-  border-color: var(--accent);
-  background: var(--surface);
-  box-shadow: 0 0 0 3px rgba(168, 163, 246, 0.1);
-}
-
-/* Chips de tags seleccionados */
-.bc-filter-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.bc-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px 4px 12px;
-  border-radius: 99px;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  font-size: 12px;
-  font-weight: 600;
-  font-family: 'DM Sans', sans-serif;
-  color: var(--text-2);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    border-color 0.15s,
-    color 0.15s;
-}
-.bc-filter-chip:hover {
-  background: var(--surface-3);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.bc-filter-chip.selected {
-  background: rgba(168, 163, 246, 0.15);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-.bc-filter-chip.selected:hover {
-  background: rgba(239, 68, 68, 0.08);
-  border-color: var(--red);
-  color: var(--red);
-}
-
-/* Fila de fechas */
-.bc-filter-date-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.bc-filter-date {
-  padding: 7px 10px;
-  border-radius: 10px;
-  border: 1.5px solid var(--border);
-  background: var(--surface-2);
-  font-size: 12.5px;
-  font-family: 'DM Sans', sans-serif;
-  color: var(--text-1);
-  outline: none;
-  cursor: pointer;
-  transition:
-    border-color 0.2s,
-    background 0.2s;
-}
-.bc-filter-date:focus {
-  border-color: var(--accent);
-  background: var(--surface);
-  box-shadow: 0 0 0 3px rgba(168, 163, 246, 0.1);
-}
-
-.bc-filter-date-sep {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-3);
-  flex-shrink: 0;
-}
-
-.bc-filter-date-clear {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  color: var(--text-3);
-  cursor: pointer;
-  flex-shrink: 0;
-  transition:
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
-}
-.bc-filter-date-clear:hover {
-  background: var(--red-bg);
-  color: var(--red);
-  border-color: var(--red);
-}
-
-/* Botón limpiar todos los filtros */
-.bc-filter-clear-all {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  align-self: flex-start;
-  margin: 4px 14px 10px;
-  padding: 5px 12px;
-  border-radius: 99px;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  font-size: 11px;
-  font-weight: 700;
-  font-family: 'DM Sans', sans-serif;
-  color: var(--text-3);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s,
-    border-color 0.15s;
-}
-.bc-filter-clear-all:hover {
-  background: var(--red-bg);
-  color: var(--red);
-  border-color: var(--red);
-}
-
 /* ── RESULTS ─────────────────────────────────────────────────────────────── */
 .bc-results-area {
   flex: 1;
@@ -1433,4 +1235,201 @@
 
 .bc-dark .bc-search-stats {
   color: #9aa0a6; /* Variación gris claro para el modo oscuro */
+}
+
+/* --- Estilos para la Paginación --- */
+.bc-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 16px;
+  border-top: 1px solid var(--mc-border, #e0e4eb);
+}
+
+.bc-pagination button {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--mc-border, #e0e4eb);
+  background: var(--mc-surface, #ffffff);
+  color: var(--mc-text-1, #1a2550);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bc-pagination button:hover:not(:disabled) {
+  background: var(--mc-surface-2, #f5f7fa);
+  border-color: #a8a3f6;
+  color: #5d54e4;
+}
+
+.bc-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--mc-surface-2, #f5f7fa);
+}
+
+.bc-pagination span {
+  font-size: 0.85rem;
+  color: var(--mc-text-2, #6b778c);
+  font-weight: 500;
+}
+
+/* Ajuste para modo oscuro (si ya usas la clase .bc-dark) */
+.bc-dark .bc-pagination {
+  border-color: var(--mc-border);
+}
+
+.bc-dark .bc-pagination button {
+  background: var(--mc-surface-2);
+  color: var(--mc-text-1);
+}
+
+/* ── PANEL PRINCIPAL ── */
+.bc-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* ── CADA GRUPO (Sección de entidad) ── */
+.bc-filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.bc-filter-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 16px;
+}
+
+.bc-filter-label {
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 2px;
+}
+
+/* ── INPUT / SELECT (Estilo "Add") ── */
+.bc-filter-tag-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1.5px dashed var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.bc-filter-tag-input:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+}
+
+/* ── CHIPS (Contenedor y Estilo) ── */
+.bc-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bc-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(168, 163, 246, 0.1);
+  color: var(--accent);
+  border: 1px solid rgba(168, 163, 246, 0.2);
+}
+
+.bc-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  background: rgba(168, 163, 246, 0.2);
+  color: var(--accent);
+  border: none;
+  cursor: pointer;
+  font-size: 10px;
+  transition: background 0.2s;
+}
+
+.bc-chip-remove:hover {
+  background: var(--accent);
+  color: white;
+}
+
+/* ── BOTÓN LIMPIAR TODO ── */
+.bc-filter-clear-all {
+  margin: 8px 16px 16px;
+  padding: 6px 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.bc-filter-clear-all:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+/* Estilo base del botón (ajusta según lo que ya tengas) */
+.bc-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  position: relative; /* Importante para posicionar el badge */
+  padding: 8px 16px;
+  /* ... resto de tus estilos actuales ... */
+}
+
+/* Estilo del badge circular */
+.bc-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background-color: var(--accent, #5d54e4);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 50%;
+  margin-left: 2px;
+}
+
+/* Opcional: Si quieres que el botón cambie de color cuando hay filtros */
+.bc-filter-btn.has-filters {
+  border-color: var(--accent);
+  color: var(--accent);
 }

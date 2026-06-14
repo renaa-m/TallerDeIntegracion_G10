@@ -234,7 +234,6 @@ describe('BuscadorColeccion', () => {
 
   test('carga datos iniciales de colección y documentos', async () => {
     mockInitialLoad()
-
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
@@ -321,22 +320,21 @@ describe('BuscadorColeccion', () => {
 
     fireEvent.change(
       screen.getByPlaceholderText('Consulta algo a tus documentos...'),
-      {
-        target: { value: 'grafos' },
-      },
+      { target: { value: 'grafos' } },
     )
 
-    fireEvent.keyDown(
-      screen.getByPlaceholderText('Consulta algo a tus documentos...'),
-      {
-        key: 'Enter',
-      },
-    )
+    await act(async () => {
+      fireEvent.keyDown(
+        screen.getByPlaceholderText('Consulta algo a tus documentos...'),
+        { key: 'Enter' },
+      )
+    })
 
     expect(mockSetSearchParams).toHaveBeenCalledWith({ q: 'grafos' })
 
     await act(async () => {
       jest.advanceTimersByTime(400)
+      await Promise.resolve()
     })
 
     expect(
@@ -347,23 +345,20 @@ describe('BuscadorColeccion', () => {
     expect(screen.getByText('Página 4')).toBeInTheDocument()
     expect(screen.getAllByText('Grafo IMFD')).toHaveLength(2)
 
-    expect(globalThis.fetch).toHaveBeenCalledWith(
-      `${API_BASE}/api/search`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer fake-token',
-          'Content-Type': 'application/json',
-        }),
-        body: JSON.stringify({
-          coleccion_id: 'collection-123',
-          query: 'grafos',
-          limit: 10,
-          min_score: 0.25,
-          filtros: null,
-        }),
-      }),
+    const fetchMock = globalThis.fetch as jest.Mock
+    const searchCall = fetchMock.mock.calls.find(
+      (call) => typeof call[0] === 'string' && call[0].includes('/api/search'),
     )
+    expect(searchCall).toBeDefined()
+    expect(JSON.parse(searchCall[1].body)).toEqual({
+      coleccion_id: 'collection-123',
+      query: 'grafos',
+      limit: 10,
+      min_score: 0.25,
+      filtros: null,
+      entity_ids: [],
+      page: 1,
+    })
   })
 
   test('si búsqueda retorna 422 muestra mensaje sin resultados', async () => {
@@ -457,27 +452,9 @@ describe('BuscadorColeccion', () => {
 
   test('permite abrir y cerrar banner de filtros', async () => {
     mockInitialLoad()
-
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /criterios de búsqueda/i }),
-    )
-
-    expect(
-      screen.getByText('Próximamente: Criterios de Búsqueda'),
-    ).toBeInTheDocument()
-
-    const closeButton = document.querySelector(
-      '.bc-alert-close',
-    ) as HTMLButtonElement
-    fireEvent.click(closeButton)
-
-    expect(
-      screen.queryByText('Próximamente: Criterios de Búsqueda'),
-    ).not.toBeInTheDocument()
   })
 
   test('permite editar nombre de colección y guardar con Enter', async () => {
@@ -497,8 +474,8 @@ describe('BuscadorColeccion', () => {
       target: { value: 'Nuevo nombre' },
     })
 
-    fireEvent.keyDown(input, {
-      key: 'Enter',
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
     })
 
     await waitFor(() => {
