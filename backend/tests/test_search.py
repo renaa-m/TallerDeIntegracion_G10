@@ -39,6 +39,13 @@ SEARCH_BODY = {
     "coleccion_id": str(MOCK_COLLECTION_ID),
 }
 
+MOCK_COLLECTION_PARTIAL = {**MOCK_COLLECTION, "processing_status": "partial_error"}
+
+ENTITY_ONLY_BODY = {
+    "coleccion_id": str(MOCK_COLLECTION_ID),
+    "filtros": {"nombres_entidades": ["Manuel Montt"]},
+}
+
 
 def _chunk(i: int, similarity: float = 0.8, total_count: int = 1) -> dict:
     """Representa una fila devuelta por search_chunks (SQL ya paginó y filtró)."""
@@ -351,6 +358,64 @@ class TestFiltrosBusqueda:
         assert mock_search.call_args.args[5] == 2000
         assert mock_search.call_args.args[6] == 2010
 
+    def test_nombres_entidades_llega_a_sql_como_args8(self, client):
+        from unittest.mock import MagicMock
+
+        mock_search = MagicMock(return_value=[_chunk(0, total_count=1)])
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
+        ):
+            client.post(
+                "/api/search",
+                json={**SEARCH_BODY, "filtros": {"nombres_entidades": ["Manuel Montt", "Diego Portales"]}},
+            )
+
+        assert mock_search.call_args.args[8] == ["Manuel Montt", "Diego Portales"]
+
+    def test_logica_entidades_and_llega_a_sql_como_args9(self, client):
+        from unittest.mock import MagicMock
+
+        mock_search = MagicMock(return_value=[_chunk(0, total_count=1)])
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
+        ):
+            client.post(
+                "/api/search",
+                json={**SEARCH_BODY, "filtros": {"nombres_entidades": ["X"], "logica_entidades": "AND"}},
+            )
+
+        assert mock_search.call_args.args[9] == "AND"
+
+    def test_rango_años_un_solo_elemento_year_min_llega_year_max_es_none(self, client):
+        from unittest.mock import MagicMock
+
+        mock_search = MagicMock(return_value=[_chunk(0, total_count=1)])
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch("app.api.routes.search.generate_embedding", return_value=MOCK_EMBEDDING),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
+        ):
+            client.post(
+                "/api/search",
+                json={**SEARCH_BODY, "filtros": {"rango_años": [2000]}},
+            )
+
+        assert mock_search.call_args.args[5] == 2000
+        assert mock_search.call_args.args[6] is None
+
 
 # ── Colección no lista para búsqueda ──────────────────────────────────────────
 
@@ -399,3 +464,77 @@ class TestColeccionNoLista:
 
         assert response.status_code == 200
         assert response.json()["ready"] is False
+
+
+# ── Búsqueda solo por entidad (sin query semántica) ────────────────────────────
+
+
+class TestBusquedaSoloEntidad:
+    def test_solo_entidad_sin_query_no_genera_embedding_y_llama_sql(self, client):
+        from unittest.mock import MagicMock
+
+        mock_embed = MagicMock()
+        mock_search = MagicMock(return_value=[MOCK_CHUNK])
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch("app.api.routes.search.generate_embedding", mock_embed),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
+        ):
+            response = client.post("/api/search", json=ENTITY_ONLY_BODY)
+
+        assert response.status_code == 200
+        mock_embed.assert_not_called()
+        assert mock_search.call_args.args[0] is None
+        assert mock_search.call_args.args[8] == ["Manuel Montt"]
+
+    def test_sin_query_ni_entidades_retorna_200_vacio_sin_llamar_sql(self, client):
+        from unittest.mock import MagicMock
+
+        mock_search = MagicMock()
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch("app.api.routes.search.supabase_client.search_chunks", mock_search),
+        ):
+            response = client.post(
+                "/api/search",
+                json={"coleccion_id": str(MOCK_COLLECTION_ID)},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["resultados"] == []
+        assert data["total"] == 0
+        mock_search.assert_not_called()
+
+
+# ── Colección en partial_error ─────────────────────────────────────────────────
+
+
+class TestPartialError:
+    def test_partial_error_habilita_busqueda_y_ready_es_true(self, client):
+        with (
+            patch(
+                "app.api.routes.search.supabase_client.get_collection_by_id",
+                return_value=MOCK_COLLECTION_PARTIAL,
+            ),
+            patch(
+                "app.api.routes.search.generate_embedding",
+                return_value=MOCK_EMBEDDING,
+            ),
+            patch(
+                "app.api.routes.search.supabase_client.search_chunks",
+                return_value=[MOCK_CHUNK],
+            ),
+        ):
+            response = client.post("/api/search", json=SEARCH_BODY)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["ready"] is True
+        assert len(data["resultados"]) == 1

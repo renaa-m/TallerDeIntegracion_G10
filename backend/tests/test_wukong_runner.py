@@ -397,6 +397,52 @@ class TestBuildWukongWorkdir:
         assert txt_path.exists()
         assert txt_path.read_text() == "Texto de prueba."
 
+    @patch("app.services.wukong_runner.supabase_client.get_collection_by_id")
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_collection_language_en_usa_data_model_ingles(
+        self, mock_get_texts, mock_get_collection, tmp_path
+    ):
+        mock_get_texts.return_value = self._make_rows()
+        mock_get_collection.return_value = {"id": MOCK_COL_ID}
+
+        wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID, collection_language="en")
+
+        written = json.loads((tmp_path / "data_model.json").read_text())
+        assert "Person" in written["entities"]
+        assert "Persona" not in written["entities"]
+
+    @patch("app.services.wukong_runner.supabase_client.get_collection_by_id")
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_included_entities_filtra_entidades_del_data_model(
+        self, mock_get_texts, mock_get_collection, tmp_path
+    ):
+        mock_get_texts.return_value = self._make_rows()
+        mock_get_collection.return_value = {
+            "id": MOCK_COL_ID,
+            "included_entities": ["Persona"],
+        }
+
+        wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID)
+
+        written = json.loads((tmp_path / "data_model.json").read_text())
+        assert "Persona" in written["entities"]
+        assert "Organizacion" not in written["entities"]
+        assert written["parameters"]["included_entities"] == ["Persona"]
+
+    @patch("app.services.wukong_runner.supabase_client.get_collection_by_id")
+    @patch("app.services.wukong_runner.supabase_client.get_document_texts_by_collection")
+    def test_included_entities_none_preserva_todas_las_entidades(
+        self, mock_get_texts, mock_get_collection, tmp_path
+    ):
+        mock_get_texts.return_value = self._make_rows()
+        mock_get_collection.return_value = {"id": MOCK_COL_ID}
+
+        wukong_runner._build_wukong_workdir(tmp_path, MOCK_COL_ID)
+
+        written = json.loads((tmp_path / "data_model.json").read_text())
+        assert "Persona" in written["entities"]
+        assert "Organizacion" in written["entities"]
+
 
 def _stub_wukong_config_path(tmp_path):
     """default.toml del submódulo no está en CI (repo privado / no clonable); los tests solo necesitan un archivo existente."""
@@ -595,6 +641,78 @@ class TestGenerateAndStoreEmbeddings:
 
         with pytest.raises(RuntimeError, match="Supabase no disponible"):
             wukong_runner._generate_and_store_embeddings(tmp_path, MOCK_COL_ID)
+
+
+# ── Tests para _build_entity_types_map ────────────────────────────────────────
+
+
+class TestBuildEntityTypesMap:
+    def test_archivo_no_existe_retorna_dict_vacio(self, tmp_path):
+        result = wukong_runner._build_entity_types_map(tmp_path / "results")
+        assert result == {}
+
+    def test_relacion_valida_mapea_chunk_a_tipo_de_entidad(self, tmp_path):
+        _write_json(
+            tmp_path / "results" / "relations" / "ExtractedFrom.json",
+            [{"_OriginId": "Persona_1", "_TargetId": "Chunk_1_1"}],
+        )
+        result = wukong_runner._build_entity_types_map(tmp_path / "results")
+        assert result == {"Chunk_1_1": ["Persona"]}
+
+    def test_target_sin_prefijo_chunk_se_ignora(self, tmp_path):
+        _write_json(
+            tmp_path / "results" / "relations" / "ExtractedFrom.json",
+            [{"_OriginId": "Persona_1", "_TargetId": "Document_1"}],
+        )
+        result = wukong_runner._build_entity_types_map(tmp_path / "results")
+        assert result == {}
+
+    def test_multiples_entidades_en_mismo_chunk_devuelve_lista_ordenada(self, tmp_path):
+        _write_json(
+            tmp_path / "results" / "relations" / "ExtractedFrom.json",
+            [
+                {"_OriginId": "Organizacion_1", "_TargetId": "Chunk_1_1"},
+                {"_OriginId": "Persona_1", "_TargetId": "Chunk_1_1"},
+            ],
+        )
+        result = wukong_runner._build_entity_types_map(tmp_path / "results")
+        assert result == {"Chunk_1_1": ["Organizacion", "Persona"]}
+
+    def test_campos_ausentes_no_rompe_pipeline(self, tmp_path):
+        _write_json(
+            tmp_path / "results" / "relations" / "ExtractedFrom.json",
+            [{}],
+        )
+        result = wukong_runner._build_entity_types_map(tmp_path / "results")
+        assert result == {}
+
+
+# ── Tests para entity_types en embeddings ─────────────────────────────────────
+
+
+class TestEntityTypesEnEmbeddings:
+    @patch("app.services.wukong_runner.supabase_client.save_chunk_embeddings")
+    @patch("app.services.embeddings_service.generate_embeddings_batch")
+    @patch("app.services.wukong_runner.supabase_client.get_documents_by_collection")
+    def test_entity_types_se_incluyen_en_record_cuando_extractedfrom_existe(
+        self,
+        mock_get_docs,
+        mock_generate_batch,
+        mock_save_chunks,
+        tmp_path,
+    ):
+        _setup_wukong_results(tmp_path)
+        _write_json(
+            tmp_path / "results" / "relations" / "ExtractedFrom.json",
+            [{"_OriginId": "Persona_1", "_TargetId": "Chunk_1_1"}],
+        )
+        mock_get_docs.return_value = [{"id": MOCK_DOC_UUID, "filename": "informe.pdf"}]
+        mock_generate_batch.return_value = [[0.1] * 384]
+
+        wukong_runner._generate_and_store_embeddings(tmp_path, MOCK_COL_ID)
+
+        saved_records = mock_save_chunks.call_args[0][0]
+        assert saved_records[0]["entity_types"] == ["Persona"]
 
 
 # ── Transición de estados ──────────────────────────────────────────────────────
