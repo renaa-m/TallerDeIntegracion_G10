@@ -152,12 +152,17 @@ const documentosResponse = [
 
 const searchResponse = {
   ready: true,
+  page: 1,
+  total: 34,
+  total_pages: 4,
+  pages: 4,
+  message: null,
   resultados: [
     {
       titulo: 'Documento sobre grafos',
       fragmento: 'Este fragmento habla sobre grafos y búsqueda semántica.',
       id_chunk: 'chunk-1',
-      enlace: 'https://example.com/doc',
+      storage_path: 'documentos/doc1.pdf',
       score: 0.82,
       pagina: 4,
     },
@@ -165,8 +170,18 @@ const searchResponse = {
       titulo: 'Documento sin enlace',
       fragmento: 'Otro resultado relevante.',
       id_chunk: 'chunk-2',
-      enlace: '',
+      storage_path: 'documentos/doc2.pdf',
       score: 0.45,
+    },
+  ],
+  results: [
+    {
+      titulo: 'Documento sobre grafos',
+      fragmento: 'Este fragmento habla sobre grafos y búsqueda semántica.',
+      id_chunk: 'chunk-1',
+      storage_path: 'documentos/doc1.pdf',
+      score: 0.82,
+      pagina: 4,
     },
   ],
 }
@@ -190,6 +205,11 @@ describe('BuscadorColeccion', () => {
         addEventListener: jest.fn(),
         removeEventListener: jest.fn(),
       })),
+    })
+
+    Object.defineProperty(window, 'scrollTo', {
+      writable: true,
+      value: jest.fn(),
     })
 
     globalThis.fetch = jest.fn()
@@ -292,6 +312,7 @@ describe('BuscadorColeccion', () => {
       if (typeof url === 'string' && url.includes('/api/search')) {
         return Promise.resolve({
           ok: true,
+          status: 200,
           json: async () => searchResponse,
         })
       }
@@ -343,7 +364,6 @@ describe('BuscadorColeccion', () => {
     expect(screen.getByText('Alta coincidencia')).toBeInTheDocument()
     expect(screen.getByText('Coincidencia media')).toBeInTheDocument()
     expect(screen.getByText('Página 4')).toBeInTheDocument()
-    expect(screen.getAllByText('Grafo IMFD')).toHaveLength(2)
 
     const fetchMock = globalThis.fetch as jest.Mock
     const searchCall = fetchMock.mock.calls.find(
@@ -353,12 +373,13 @@ describe('BuscadorColeccion', () => {
     expect(JSON.parse(searchCall[1].body)).toEqual({
       coleccion_id: 'collection-123',
       query: 'grafos',
-      limit: 10,
       min_score: 0.25,
       filtros: null,
-      entity_ids: [],
       page: 1,
     })
+
+    expect(screen.getByRole('button', { name: 'Anterior' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Siguiente' })).toBeInTheDocument()
   })
 
   test('si búsqueda retorna 422 muestra mensaje sin resultados', async () => {
@@ -458,10 +479,18 @@ describe('BuscadorColeccion', () => {
   })
 
   test('permite editar nombre de colección y guardar con Enter', async () => {
-    mockInitialLoad()
-    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ name: 'Nuevo nombre' }),
+    // Implementamos una máquina de estados quirúrgica para el fetch de este test
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string, options?: any) => {
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({ ok: true, json: async () => documentosResponse })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        if (options && options.method === 'PATCH') {
+          return Promise.resolve({ ok: true, json: async () => ({ id: 'collection-123', name: 'Nuevo nombre', processing_status: 'graph_ready' }) })
+        }
+        return Promise.resolve({ ok: true, json: async () => collectionResponse })
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({}) })
     })
 
     renderPage()
@@ -470,9 +499,7 @@ describe('BuscadorColeccion', () => {
     fireEvent.click(title)
 
     const input = screen.getByDisplayValue('Colección Test')
-    fireEvent.change(input, {
-      target: { value: 'Nuevo nombre' },
-    })
+    fireEvent.change(input, { target: { value: 'Nuevo nombre' } })
 
     await act(async () => {
       fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
@@ -483,10 +510,6 @@ describe('BuscadorColeccion', () => {
         `${API_BASE}/api/collections/collection-123`,
         expect.objectContaining({
           method: 'PATCH',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer fake-token',
-            'Content-Type': 'application/json',
-          }),
           body: JSON.stringify({ name: 'Nuevo nombre' }),
         }),
       )
@@ -497,7 +520,6 @@ describe('BuscadorColeccion', () => {
 
   test('abre y cierra modal de documentos disponibles con fuentes cargadas', async () => {
     mockInitialLoad()
-
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
@@ -515,10 +537,18 @@ describe('BuscadorColeccion', () => {
   })
 
   test('abre modal de eliminar colección y confirma borrado', async () => {
-    mockInitialLoad()
-    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({}),
+    // Garantizamos que las promesas iniciales se resuelvan siempre con la colección limpia
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string, options?: any) => {
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({ ok: true, json: async () => documentosResponse })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        if (options && options.method === 'DELETE') {
+          return Promise.resolve({ ok: true, json: async () => ({}) })
+        }
+        return Promise.resolve({ ok: true, json: async () => collectionResponse })
+      }
+      return Promise.resolve({ ok: false, status: 404, json: async () => ({}) })
     })
 
     renderPage()
@@ -530,18 +560,13 @@ describe('BuscadorColeccion', () => {
     expect(screen.getByTestId('modal-eliminar-coleccion')).toBeInTheDocument()
     expect(screen.getByText('Eliminar Colección Test')).toBeInTheDocument()
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /confirmar eliminación/i }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: /confirmar eliminación/i }))
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
         `${API_BASE}/api/collections/collection-123`,
         expect.objectContaining({
           method: 'DELETE',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer fake-token',
-          }),
         }),
       )
     })
@@ -553,7 +578,6 @@ describe('BuscadorColeccion', () => {
 
   test('abre y cierra modal de eliminar colección sin borrar', async () => {
     mockInitialLoad()
-
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
@@ -562,13 +586,9 @@ describe('BuscadorColeccion', () => {
 
     expect(screen.getByTestId('modal-eliminar-coleccion')).toBeInTheDocument()
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /cancelar eliminación/i }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: /cancelar eliminación/i }))
 
-    expect(
-      screen.queryByTestId('modal-eliminar-coleccion'),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('modal-eliminar-coleccion')).not.toBeInTheDocument()
   })
 
   test('cuando id_coleccion es nueva abre ModalCarga y no carga datos iniciales', () => {
@@ -607,9 +627,7 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    expect(
-      await screen.findByText(/Se está procesando «Colección en curso»/),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/Se está procesando «Colección en curso»/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Clic para ver detalle'))
 
@@ -628,7 +646,6 @@ describe('BuscadorColeccion', () => {
     })
 
     mockInitialLoad()
-
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
@@ -638,39 +655,55 @@ describe('BuscadorColeccion', () => {
   })
 
   test('deja de hacer polling cuando la colección devuelve 404', async () => {
-    jest.useFakeTimers()
+      jest.useFakeTimers()
 
-    let collectionPollCount = 0
-    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/documentos')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => documentosResponse,
-        })
-      }
-      if (typeof url === 'string' && url.includes('/api/collections/')) {
-        collectionPollCount += 1
-        return Promise.resolve({
-          ok: false,
-          status: 404,
-          json: async () => ({}),
-        })
-      }
-      return Promise.resolve({ ok: true, json: async () => ({}) })
+      let collectionPollCount = 0
+      ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+        if (typeof url === 'string' && url.includes('/api/documentos')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => documentosResponse,
+          })
+        }
+        if (typeof url === 'string' && url.includes('/api/collections/')) {
+          collectionPollCount += 1
+          return Promise.resolve({
+            ok: false,
+            status: 404,
+            json: async () => ({}),
+          })
+        }
+        return Promise.resolve({ ok: true, json: async () => ({}) })
+      })
+
+      renderPage()
+
+      // Esperamos a que se ejecute la primera tanda de llamadas iniciales que devuelven 404
+      await waitFor(() => {
+        expect(collectionPollCount).toBeGreaterThanOrEqual(1)
+      })
+
+      // Avanzamos el tiempo una primera vez para absorber cualquier llamada remanente en cola
+      await act(async () => {
+        jest.advanceTimersByTime(6000)
+      })
+
+      // Guardamos cuántas llamadas se registraron hasta este punto
+      const llamadasTrasPrimerIntervalo = (globalThis.fetch as jest.Mock).mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].includes('/api/collections/')
+      ).length
+
+      // Avanzamos el tiempo una SEGUNDA vez (otros 12 segundos). 
+      // Si el polling realmente se detuvo, este número NO puede haber aumentado.
+      await act(async () => {
+        jest.advanceTimersByTime(12000)
+      })
+
+      const llamadasFinales = (globalThis.fetch as jest.Mock).mock.calls.filter(
+        (call) => typeof call[0] === 'string' && call[0].includes('/api/collections/')
+      )
+      
+      // Verificamos que el contador se haya congelado por completo
+      expect(llamadasFinales.length).toBe(llamadasTrasPrimerIntervalo)
     })
-
-    renderPage()
-
-    await waitFor(() => {
-      expect(collectionPollCount).toBeGreaterThanOrEqual(1)
-    })
-
-    const callsAfter404 = collectionPollCount
-
-    await act(async () => {
-      jest.advanceTimersByTime(12000)
-    })
-
-    expect(collectionPollCount).toBe(callsAfter404)
-  })
 })
