@@ -1433,3 +1433,116 @@
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ==========================================================================
+   SECCIÓN: PAGINACIÓN SEMÁNTICA (Estilo Google)
+   ========================================================================== */
+.bc-google-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 32px;
+  padding: 16px 0;
+  width: 100%;
+}
+
+/* Botones Anterior y Siguiente */
+.bc-page-nav-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.bc-page-nav-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--accent);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.bc-page-nav-btn:disabled {
+  color: var(--text-3);
+  cursor: not-allowed;
+  opacity: 0.4;
+  background: transparent;
+  border-color: var(--border);
+  transform: none;
+}
+
+/* Contenedor de Números de Página */
+.bc-page-numbers {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Botones de Números Individuales */
+.bc-page-num-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.bc-page-num-btn:hover:not(.is-active) {
+  background: var(--surface-2);
+  color: var(--accent);
+  border-color: var(--border);
+}
+
+/* Estado Activo (Página Actual) */
+.bc-page-num-btn.is-active {
+  background: var(--accent);
+  color: #ffffff;
+  font-weight: 700;
+  cursor: default;
+  box-shadow: 0 4px 12px rgba(94, 75, 242, 0.25);
+}
+
+/* Ajuste sutil de sombra para el modo oscuro en el botón activo */
+@media (prefers-color-scheme: dark) {
+  .bc-page-num-btn.is-active {
+    box-shadow: 0 4px 14px rgba(94, 75, 242, 0.4);
+  }
+}
+
+/* RESPONSIVIDAD: Adaptación para móviles */
+@media (max-width: 768px) {
+  .bc-google-pagination {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+  
+  .bc-page-numbers {
+    order: -1; /* Mueve los números arriba de los botones de navegación en pantallas chicas */
+    width: 100%;
+    justify-content: center;
+  }
+
+  .bc-page-nav-btn {
+    flex: 1; /* Hace que 'Anterior' y 'Siguiente' ocupen el mismo ancho abajo */
+    justify-content: center;
+    padding: 10px;
+  }
+}
