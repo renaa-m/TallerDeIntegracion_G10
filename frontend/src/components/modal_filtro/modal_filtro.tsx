@@ -125,7 +125,9 @@ const ModalFiltros: React.FC<ModalFiltrosProps> = ({
 
             {entidadesSeleccionadas.length > 1 && (
               <div className={styles.logicToggle}>
-                <span className={styles.filterLabel}>Combinar con operador:</span>
+                <span className={styles.filterLabel}>
+                  Combinar con operador:
+                </span>
                 <div className={styles.logicBtns}>
                   <button
                     type="button"

@@ -124,7 +124,9 @@ const BuscadorColeccion = () => {
 
   // --- ESTADOS DE PAGINACIÓN ---
   // Sincronizamos la página inicial leyendo directamente los parámetros de la URL al cargar
-  const [page, setPage] = useState(() => parseInt(searchParams.get('page') ?? '1', 10))
+  const [page, setPage] = useState(() =>
+    parseInt(searchParams.get('page') ?? '1', 10),
+  )
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
 
@@ -136,7 +138,9 @@ const BuscadorColeccion = () => {
   const queryFromUrl = searchParams.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(queryFromUrl)
   const [busquedaEnviada, setBusquedaEnviada] = useState(queryFromUrl)
-  const [searchNotReadyMessage, setSearchNotReadyMessage] = useState<string | null>(null)
+  const [searchNotReadyMessage, setSearchNotReadyMessage] = useState<
+    string | null
+  >(null)
 
   // Modales
   const [modalCargaOpen, setModalCargaOpen] = useState(id_coleccion === 'nueva')
@@ -145,13 +149,19 @@ const BuscadorColeccion = () => {
   const [isDeletingCollection, setIsDeletingCollection] = useState(false)
 
   // Entidades
-  const [entitiesData, setEntitiesData] = useState<CollectionEntities | null>(null)
+  const [entitiesData, setEntitiesData] = useState<CollectionEntities | null>(
+    null,
+  )
 
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
-  const [backgroundProcessingId, setBackgroundProcessingId] = useState<string | null>(null)
-  const [currentProcessingSnapshot, setCurrentProcessingSnapshot] = useState<CollectionProcessingSnapshot | null>(null)
-  const [backgroundProcessingSnapshot, setBackgroundProcessingSnapshot] = useState<CollectionProcessingSnapshot | null>(null)
+  const [backgroundProcessingId, setBackgroundProcessingId] = useState<
+    string | null
+  >(null)
+  const [currentProcessingSnapshot, setCurrentProcessingSnapshot] =
+    useState<CollectionProcessingSnapshot | null>(null)
+  const [backgroundProcessingSnapshot, setBackgroundProcessingSnapshot] =
+    useState<CollectionProcessingSnapshot | null>(null)
 
   // Filtros
   const [filtroOpen, setFiltroOpen] = useState(false)
@@ -169,31 +179,35 @@ const BuscadorColeccion = () => {
   const entidadesSeleccionadasLabels = useMemo(() => {
     if (!entitiesData?.entidades) return []
     return entitiesData.entidades
-      .filter(e => selectedEntityIds.includes(e.id))
-      .map(e => e.label)
+      .filter((e) => selectedEntityIds.includes(e.id))
+      .map((e) => e.label)
   }, [selectedEntityIds, entitiesData])
 
   // Helper adaptativo para el toggle: el modal envía el label, nosotros buscamos su ID correspondiente
   const handleToggleEntidadPorLabel = (label: string) => {
-    const entidadEncontrada = entitiesData?.entidades.find(e => e.label === label)
+    const entidadEncontrada = entitiesData?.entidades.find(
+      (e) => e.label === label,
+    )
     if (!entidadEncontrada) return
 
-    setSelectedEntityIds(prev =>
+    setSelectedEntityIds((prev) =>
       prev.includes(entidadEncontrada.id)
-        ? prev.filter(id => id !== entidadEncontrada.id)
-        : [...prev, entidadEncontrada.id]
+        ? prev.filter((id) => id !== entidadEncontrada.id)
+        : [...prev, entidadEncontrada.id],
     )
-}
+  }
 
-// Filtra las entidades en base a la pestaña de categoría activa y el buscador de texto
-const entidadesFiltradas = useMemo(() => {
-  if (!entitiesData?.entidades) return []
-  return entitiesData.entidades.filter(e => {
-    const matchTipo = tipoFiltroUI === null || e.tipo === tipoFiltroUI
-    const matchSearch = !entitySearch.trim() || e.label.toLowerCase().includes(entitySearch.toLowerCase())
-    return matchTipo && matchSearch
-  })
-}, [entitiesData, tipoFiltroUI, entitySearch])
+  // Filtra las entidades en base a la pestaña de categoría activa y el buscador de texto
+  const entidadesFiltradas = useMemo(() => {
+    if (!entitiesData?.entidades) return []
+    return entitiesData.entidades.filter((e) => {
+      const matchTipo = tipoFiltroUI === null || e.tipo === tipoFiltroUI
+      const matchSearch =
+        !entitySearch.trim() ||
+        e.label.toLowerCase().includes(entitySearch.toLowerCase())
+      return matchTipo && matchSearch
+    })
+  }, [entitiesData, tipoFiltroUI, entitySearch])
 
   const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
@@ -309,7 +323,7 @@ const entidadesFiltradas = useMemo(() => {
         redirectIfCollectionMissing()
         return
       }
-   
+
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
@@ -352,12 +366,21 @@ const entidadesFiltradas = useMemo(() => {
 
   // Polling de colecciones omitido por brevedad, se mantiene idéntico
   useEffect(() => {
-    if (modalCargaOpen || !id_coleccion || id_coleccion === 'nueva' || isGrafoView) return
+    if (
+      modalCargaOpen ||
+      !id_coleccion ||
+      id_coleccion === 'nueva' ||
+      isGrafoView
+    )
+      return
     let cancelled = false
     let intervalId: number | undefined
     const stopPolling = () => {
       cancelled = true
-      if (intervalId !== undefined) { clearInterval(intervalId); intervalId = undefined; }
+      if (intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
     }
     const pollCollection = async (): Promise<boolean> => {
       try {
@@ -366,15 +389,24 @@ const entidadesFiltradas = useMemo(() => {
           headers: { Authorization: `Bearer ${token}` },
         })
         if (cancelled) return false
-        if (res.status === 404) { redirectIfCollectionMissing(); stopPolling(); return false; }
+        if (res.status === 404) {
+          redirectIfCollectionMissing()
+          stopPolling()
+          return false
+        }
         if (!res.ok) return false
         const data = await res.json()
         const processing = isPipelineInProgress(data.processing_status)
-        const esperandoGrafo = isAwaitingGraphForCollection(id_coleccion, data.processing_status)
+        const esperandoGrafo = isAwaitingGraphForCollection(
+          id_coleccion,
+          data.processing_status,
+        )
         setCollectionProcessingStatus(data.processing_status ?? 'idle')
         setIsCollectionProcessing(processing)
         if (processing) {
-          setCurrentProcessingSnapshot(snapshotFromCollectionApi(data, id_coleccion))
+          setCurrentProcessingSnapshot(
+            snapshotFromCollectionApi(data, id_coleccion),
+          )
           if (isPipelineRunning(data.processing_status)) {
             localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
             localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
@@ -382,12 +414,19 @@ const entidadesFiltradas = useMemo(() => {
         } else {
           setCurrentProcessingSnapshot(null)
         }
-        if (!processing && localStorage.getItem(ACTIVE_COLLECTION_KEY) === id_coleccion && !esperandoGrafo) {
+        if (
+          !processing &&
+          localStorage.getItem(ACTIVE_COLLECTION_KEY) === id_coleccion &&
+          !esperandoGrafo
+        ) {
           localStorage.removeItem(ACTIVE_COLLECTION_KEY)
           localStorage.removeItem(MODAL_ETAPA_KEY)
         }
         return processing || esperandoGrafo
-      } catch (e) { console.error('Error polling colección:', e); return false; }
+      } catch (e) {
+        console.error('Error polling colección:', e)
+        return false
+      }
     }
     void (async () => {
       const keepPolling = await pollCollection()
@@ -398,7 +437,13 @@ const entidadesFiltradas = useMemo(() => {
       }, 3000)
     })()
     return () => stopPolling()
-  }, [id_coleccion, modalCargaOpen, isGrafoView, getAccessTokenSilently, redirectIfCollectionMissing])
+  }, [
+    id_coleccion,
+    modalCargaOpen,
+    isGrafoView,
+    getAccessTokenSilently,
+    redirectIfCollectionMissing,
+  ])
 
   useEffect(() => {
     if (!shouldPollBackground) return
@@ -408,7 +453,10 @@ const entidadesFiltradas = useMemo(() => {
     let intervalId: number | undefined
     const stopPolling = () => {
       cancelled = true
-      if (intervalId !== undefined) { clearInterval(intervalId); intervalId = undefined; }
+      if (intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
     }
     const pollBackground = async () => {
       try {
@@ -428,8 +476,13 @@ const entidadesFiltradas = useMemo(() => {
         const data = await res.json()
         if (isPipelineInProgress(data.processing_status)) {
           setBackgroundProcessingId(trackedId)
-          setBackgroundProcessingSnapshot(snapshotFromCollectionApi(data, trackedId))
-        } else if (isAwaitingGraphGeneration(data.processing_status) && localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline') {
+          setBackgroundProcessingSnapshot(
+            snapshotFromCollectionApi(data, trackedId),
+          )
+        } else if (
+          isAwaitingGraphGeneration(data.processing_status) &&
+          localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+        ) {
           setBackgroundProcessingId(trackedId)
           setBackgroundProcessingSnapshot(null)
         } else {
@@ -439,24 +492,43 @@ const entidadesFiltradas = useMemo(() => {
           setBackgroundProcessingSnapshot(null)
           stopPolling()
         }
-      } catch (e) { console.error('Error polling colección en background:', e) }
+      } catch (e) {
+        console.error('Error polling colección en background:', e)
+      }
     }
     void pollBackground()
     intervalId = window.setInterval(pollBackground, 3000)
     return () => stopPolling()
   }, [shouldPollBackground, getAccessTokenSilently])
 
-  const visibleBackgroundProcessingId = shouldPollBackground ? backgroundProcessingId : null
-  const visibleBackgroundProcessingSnapshot = shouldPollBackground ? backgroundProcessingSnapshot : null
+  const visibleBackgroundProcessingId = shouldPollBackground
+    ? backgroundProcessingId
+    : null
+  const visibleBackgroundProcessingSnapshot = shouldPollBackground
+    ? backgroundProcessingSnapshot
+    : null
 
   const currentPagePipelineSnapshot = useMemo(() => {
     if (!id_coleccion || id_coleccion === 'nueva') return null
-    if (currentProcessingSnapshot?.collectionId === id_coleccion) return currentProcessingSnapshot
+    if (currentProcessingSnapshot?.collectionId === id_coleccion)
+      return currentProcessingSnapshot
     if (currentPageInPipeline) {
-      return snapshotFromCollectionApi({ name: nombreColeccion, processing_status: collectionProcessingStatus }, id_coleccion)
+      return snapshotFromCollectionApi(
+        {
+          name: nombreColeccion,
+          processing_status: collectionProcessingStatus,
+        },
+        id_coleccion,
+      )
     }
     return null
-  }, [id_coleccion, currentProcessingSnapshot, currentPageInPipeline, collectionProcessingStatus, nombreColeccion])
+  }, [
+    id_coleccion,
+    currentProcessingSnapshot,
+    currentPageInPipeline,
+    collectionProcessingStatus,
+    nombreColeccion,
+  ])
 
   const currentPipelineBannerView = useMemo(() => {
     if (!currentPagePipelineSnapshot) return null
@@ -464,9 +536,21 @@ const entidadesFiltradas = useMemo(() => {
   }, [currentPagePipelineSnapshot])
 
   const otherPipelineBannerView = useMemo(() => {
-    if (!isNuevaColeccionPage || !visibleBackgroundProcessingSnapshot || visibleBackgroundProcessingId === id_coleccion) return null
-    return getProcessingBannerView(visibleBackgroundProcessingSnapshot, { showCollectionName: true })
-  }, [isNuevaColeccionPage, visibleBackgroundProcessingSnapshot, visibleBackgroundProcessingId, id_coleccion])
+    if (
+      !isNuevaColeccionPage ||
+      !visibleBackgroundProcessingSnapshot ||
+      visibleBackgroundProcessingId === id_coleccion
+    )
+      return null
+    return getProcessingBannerView(visibleBackgroundProcessingSnapshot, {
+      showCollectionName: true,
+    })
+  }, [
+    isNuevaColeccionPage,
+    visibleBackgroundProcessingSnapshot,
+    visibleBackgroundProcessingId,
+    id_coleccion,
+  ])
 
   const openCollectionPipelineModal = () => {
     if (id_coleccion && id_coleccion !== 'nueva') {
@@ -477,20 +561,43 @@ const entidadesFiltradas = useMemo(() => {
     setModalCargaOpen(true)
   }
 
-  const handleOpenCurrentCollectionModal = () => { openCollectionPipelineModal() }
+  const handleOpenCurrentCollectionModal = () => {
+    openCollectionPipelineModal()
+  }
 
   const handleOpenOtherCollection = () => {
     if (visibleBackgroundProcessingId && id_usuario) {
       localStorage.setItem(ACTIVE_COLLECTION_KEY, visibleBackgroundProcessingId)
       localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-      navigate(`/${id_usuario}/colecciones/${visibleBackgroundProcessingId}/buscador`, { state: { abrirModalCarga: true } })
+      navigate(
+        `/${id_usuario}/colecciones/${visibleBackgroundProcessingId}/buscador`,
+        { state: { abrirModalCarga: true } },
+      )
     }
   }
 
   const pendingGraphBannerView = useMemo(() => {
-    if (modalCargaOpen || id_coleccion === 'nueva' || currentPageInPipeline || currentPipelineBannerView || !isAwaitingGraphGeneration(collectionProcessingStatus) || fuentes.length === 0 || isCollectionProcessing) return null
+    if (
+      modalCargaOpen ||
+      id_coleccion === 'nueva' ||
+      currentPageInPipeline ||
+      currentPipelineBannerView ||
+      !isAwaitingGraphGeneration(collectionProcessingStatus) ||
+      fuentes.length === 0 ||
+      isCollectionProcessing
+    )
+      return null
     return getPendingGraphBannerView(nombreColeccion)
-  }, [modalCargaOpen, id_coleccion, currentPageInPipeline, currentPipelineBannerView, collectionProcessingStatus, fuentes.length, isCollectionProcessing, nombreColeccion])
+  }, [
+    modalCargaOpen,
+    id_coleccion,
+    currentPageInPipeline,
+    currentPipelineBannerView,
+    collectionProcessingStatus,
+    fuentes.length,
+    isCollectionProcessing,
+    nombreColeccion,
+  ])
 
   // --- FUNCIÓN DE BÚSQUEDA CENTRAL ---
   const ejecutarBusqueda = useCallback(
@@ -523,7 +630,10 @@ const entidadesFiltradas = useMemo(() => {
                   tipo_entidad: personas.length > 0 ? personas[0] : null,
                   rango_años:
                     fechaDesde || fechaHasta
-                      ? [parseInt(fechaDesde) || 0, parseInt(fechaHasta) || 2026]
+                      ? [
+                          parseInt(fechaDesde) || 0,
+                          parseInt(fechaHasta) || 2026,
+                        ]
                       : null,
                 }
               : null,
@@ -541,20 +651,28 @@ const entidadesFiltradas = useMemo(() => {
         })
 
         const endTime = performance.now()
-        const durationSeconds = parseFloat(((endTime - startTime) / 1000).toFixed(2))
+        const durationSeconds = parseFloat(
+          ((endTime - startTime) / 1000).toFixed(2),
+        )
 
         if (res.ok) {
           const data = await res.json()
           if (data.ready === false) {
             setResultados([])
             setSearchNotReadyMessage(
-              data.message ?? 'Aún no hay grafo generado. Genera el grafo para habilitar la búsqueda semántica.',
+              data.message ??
+                'Aún no hay grafo generado. Genera el grafo para habilitar la búsqueda semántica.',
             )
           } else {
             setResultados(data.resultados || [])
             setSearchTime(durationSeconds)
             setTotalResults(data.total || data.total_resultados || 0)
-            setTotalPages(data.total_pages || data.total_paginas || Math.ceil((data.total || 0) / 10) || 1)
+            setTotalPages(
+              data.total_pages ||
+                data.total_paginas ||
+                Math.ceil((data.total || 0) / 10) ||
+                1,
+            )
             setPage(targetPage) // Sincronizamos el estado local de la página actual
           }
         } else {
@@ -582,7 +700,8 @@ const entidadesFiltradas = useMemo(() => {
 
   // Maneja el clic directo a una página específica
   const cambiarPagina = (nuevaPagina: number) => {
-    if (nuevaPagina < 1 || nuevaPagina > totalPages || nuevaPagina === page) return
+    if (nuevaPagina < 1 || nuevaPagina > totalPages || nuevaPagina === page)
+      return
     void ejecutarBusqueda(nuevaPagina)
   }
 
@@ -637,13 +756,16 @@ const entidadesFiltradas = useMemo(() => {
           body: JSON.stringify({ name: tempNombre }),
         })
         if (res.ok) setNombreColeccion(tempNombre)
-      } catch (e) { console.error(e) }
+      } catch (e) {
+        console.error(e)
+      }
     }
     setIsEditingName(false)
   }
 
   const handleDelete = async () => {
-    if (!id_coleccion || id_coleccion === 'nueva' || isDeletingCollection) return
+    if (!id_coleccion || id_coleccion === 'nueva' || isDeletingCollection)
+      return
     setIsDeletingCollection(true)
     try {
       const token = await getAccessTokenSilently()
@@ -658,22 +780,32 @@ const entidadesFiltradas = useMemo(() => {
         setBackgroundProcessingId(null)
         setBackgroundProcessingSnapshot(null)
         setIsEliminarModalOpen(false)
-        if (id_usuario) navigate(`/landing-page/${id_usuario}`, { replace: true })
+        if (id_usuario)
+          navigate(`/landing-page/${id_usuario}`, { replace: true })
         return
       }
-    } catch (e) { console.error(e) } finally { setIsDeletingCollection(false) }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setIsDeletingCollection(false)
+    }
   }
 
   const handleOpenDocument = async (path: string) => {
     try {
       const token = await getAccessTokenSilently()
-      const res = await fetch(`${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      const res = await fetch(
+        `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
       if (!res.ok) throw new Error('Error obteniendo URL')
       const { url } = await res.json()
       window.open(url, '_blank')
-    } catch (e) { console.error('No se pudo abrir el documento', e) }
+    } catch (e) {
+      console.error('No se pudo abrir el documento', e)
+    }
   }
 
   return (
@@ -692,30 +824,61 @@ const entidadesFiltradas = useMemo(() => {
                   autoFocus
                 />
               ) : (
-                <div className="bc-sidebar-title-group" onClick={() => setIsEditingName(true)}>
-                  <h2 className="bc-sidebar-collection-name">{nombreColeccion}</h2>
+                <div
+                  className="bc-sidebar-title-group"
+                  onClick={() => setIsEditingName(true)}
+                >
+                  <h2 className="bc-sidebar-collection-name">
+                    {nombreColeccion}
+                  </h2>
                   <Edit2 size={12} className="bc-edit-icon" />
                 </div>
               )}
-              <span className="bc-sidebar-collection-label">Colección actual</span>
+              <span className="bc-sidebar-collection-label">
+                Colección actual
+              </span>
             </div>
 
             <div className="bc-sidebar-divider" />
 
             {isGrafoView ? (
-              <Link to={`/${id_usuario}/colecciones/${id_coleccion}/buscador`} className="bc-add-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                <FileText size={15} /> <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
+              <Link
+                to={`/${id_usuario}/colecciones/${id_coleccion}/buscador`}
+                className="bc-add-btn"
+                style={{
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+              >
+                <FileText size={15} />{' '}
+                <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
               </Link>
             ) : id_coleccion !== 'nueva' ? (
-              <Link to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`} className="bc-add-btn" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                <Network size={15} /> <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
+              <Link
+                to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`}
+                className="bc-add-btn"
+                style={{
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                }}
+              >
+                <Network size={15} />{' '}
+                <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
               </Link>
             ) : null}
 
-            <button className="bc-add-btn" onClick={() => setIsModalFuentesOpen(true)}>
+            <button
+              className="bc-add-btn"
+              onClick={() => setIsModalFuentesOpen(true)}
+            >
               <Files size={15} /> <span>Ver Documentos</span>
             </button>
-            <button className="bc-delete-collection-btn" onClick={() => setIsEliminarModalOpen(true)}>
+            <button
+              className="bc-delete-collection-btn"
+              onClick={() => setIsEliminarModalOpen(true)}
+            >
               <Trash2 size={14} /> <span>Borrar colección</span>
             </button>
           </div>
@@ -723,56 +886,148 @@ const entidadesFiltradas = useMemo(() => {
 
         <main className="bc-main">
           {!modalCargaOpen && currentPipelineBannerView && (
-            <div className="bc-alert-banner bc-processing-banner" style={{ cursor: 'pointer' }} onClick={handleOpenCurrentCollectionModal} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenCurrentCollectionModal(); } }}>
+            <div
+              className="bc-alert-banner bc-processing-banner"
+              style={{ cursor: 'pointer' }}
+              onClick={handleOpenCurrentCollectionModal}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleOpenCurrentCollectionModal()
+                }
+              }}
+            >
               <div className="bc-alert-content bc-processing-banner-main">
-                <div className="bc-alert-icon-wrap"><Loader2 size={14} className="bc-alert-icon bc-spin" /></div>
+                <div className="bc-alert-icon-wrap">
+                  <Loader2 size={14} className="bc-alert-icon bc-spin" />
+                </div>
                 <div className="bc-alert-text bc-processing-banner-text">
-                  <span className="bc-alert-title">{currentPipelineBannerView.title}</span>
-                  <p className="bc-alert-desc">{currentPipelineBannerView.subtitle}</p>
+                  <span className="bc-alert-title">
+                    {currentPipelineBannerView.title}
+                  </span>
+                  <p className="bc-alert-desc">
+                    {currentPipelineBannerView.subtitle}
+                  </p>
                   <div className="bc-processing-banner-progress-row">
-                    <div className={`bc-processing-banner-track${currentPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`} aria-hidden>
-                      <div className="bc-processing-banner-fill" style={currentPipelineBannerView.progressPercent !== null ? { width: `${currentPipelineBannerView.progressPercent}%` } : undefined} />
+                    <div
+                      className={`bc-processing-banner-track${currentPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`}
+                      aria-hidden
+                    >
+                      <div
+                        className="bc-processing-banner-fill"
+                        style={
+                          currentPipelineBannerView.progressPercent !== null
+                            ? {
+                                width: `${currentPipelineBannerView.progressPercent}%`,
+                              }
+                            : undefined
+                        }
+                      />
                     </div>
-                    <span className="bc-processing-banner-percent">{currentPipelineBannerView.progressCaption}</span>
+                    <span className="bc-processing-banner-percent">
+                      {currentPipelineBannerView.progressCaption}
+                    </span>
                   </div>
-                  <span className="bc-processing-banner-action">Clic para ver detalle</span>
+                  <span className="bc-processing-banner-action">
+                    Clic para ver detalle
+                  </span>
                 </div>
               </div>
             </div>
           )}
           {!modalCargaOpen && otherPipelineBannerView && (
-            <div className="bc-alert-banner bc-processing-banner" style={{ cursor: 'pointer' }} onClick={handleOpenOtherCollection} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenOtherCollection(); } }}>
+            <div
+              className="bc-alert-banner bc-processing-banner"
+              style={{ cursor: 'pointer' }}
+              onClick={handleOpenOtherCollection}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleOpenOtherCollection()
+                }
+              }}
+            >
               <div className="bc-alert-content bc-processing-banner-main">
-                <div className="bc-alert-icon-wrap"><Loader2 size={14} className="bc-alert-icon bc-spin" /></div>
+                <div className="bc-alert-icon-wrap">
+                  <Loader2 size={14} className="bc-alert-icon bc-spin" />
+                </div>
                 <div className="bc-alert-text bc-processing-banner-text">
-                  <span className="bc-alert-title">{otherPipelineBannerView.title}</span>
-                  <p className="bc-alert-desc">{otherPipelineBannerView.subtitle}</p>
+                  <span className="bc-alert-title">
+                    {otherPipelineBannerView.title}
+                  </span>
+                  <p className="bc-alert-desc">
+                    {otherPipelineBannerView.subtitle}
+                  </p>
                   <div className="bc-processing-banner-progress-row">
-                    <div className={`bc-processing-banner-track${otherPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`} aria-hidden>
-                      <div className="bc-processing-banner-fill" style={otherPipelineBannerView.progressPercent !== null ? { width: `${otherPipelineBannerView.progressPercent}%` } : undefined} />
+                    <div
+                      className={`bc-processing-banner-track${otherPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`}
+                      aria-hidden
+                    >
+                      <div
+                        className="bc-processing-banner-fill"
+                        style={
+                          otherPipelineBannerView.progressPercent !== null
+                            ? {
+                                width: `${otherPipelineBannerView.progressPercent}%`,
+                              }
+                            : undefined
+                        }
+                      />
                     </div>
-                    <span className="bc-processing-banner-percent">{otherPipelineBannerView.progressCaption}</span>
+                    <span className="bc-processing-banner-percent">
+                      {otherPipelineBannerView.progressCaption}
+                    </span>
                   </div>
-                  <span className="bc-processing-banner-action">Clic para ir a esa colección</span>
+                  <span className="bc-processing-banner-action">
+                    Clic para ir a esa colección
+                  </span>
                 </div>
               </div>
             </div>
           )}
           {!modalCargaOpen && pendingGraphBannerView && (
-            <div className="bc-alert-banner bc-processing-banner bc-pending-graph-banner" style={{ cursor: 'pointer' }} onClick={handleOpenCurrentCollectionModal} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpenCurrentCollectionModal(); } }}>
+            <div
+              className="bc-alert-banner bc-processing-banner bc-pending-graph-banner"
+              style={{ cursor: 'pointer' }}
+              onClick={handleOpenCurrentCollectionModal}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  handleOpenCurrentCollectionModal()
+                }
+              }}
+            >
               <div className="bc-alert-content bc-processing-banner-main">
-                <div className="bc-alert-icon-wrap"><Network size={14} className="bc-alert-icon" /></div>
+                <div className="bc-alert-icon-wrap">
+                  <Network size={14} className="bc-alert-icon" />
+                </div>
                 <div className="bc-alert-text bc-processing-banner-text">
-                  <span className="bc-alert-title">{pendingGraphBannerView.title}</span>
-                  <p className="bc-alert-desc">{pendingGraphBannerView.subtitle}</p>
-                  <span className="bc-processing-banner-action">{pendingGraphBannerView.actionLabel}</span>
+                  <span className="bc-alert-title">
+                    {pendingGraphBannerView.title}
+                  </span>
+                  <p className="bc-alert-desc">
+                    {pendingGraphBannerView.subtitle}
+                  </p>
+                  <span className="bc-processing-banner-action">
+                    {pendingGraphBannerView.actionLabel}
+                  </span>
                 </div>
               </div>
             </div>
           )}
 
           {isGrafoView ? (
-            <div style={{ width: '100%', height: '100%', position: 'relative' }}><Outlet /></div>
+            <div
+              style={{ width: '100%', height: '100%', position: 'relative' }}
+            >
+              <Outlet />
+            </div>
           ) : (
             <>
               <div className="bc-searchbar-wrap">
@@ -791,7 +1046,11 @@ const entidadesFiltradas = useMemo(() => {
                   >
                     <SlidersHorizontal size={14} />
                     <span>Criterios de Búsqueda</span>
-                    {selectedEntityIds.length > 0 && <span className="bc-filter-badge">{selectedEntityIds.length}</span>}
+                    {selectedEntityIds.length > 0 && (
+                      <span className="bc-filter-badge">
+                        {selectedEntityIds.length}
+                      </span>
+                    )}
                   </button>
                 </div>
 
@@ -813,9 +1072,10 @@ const entidadesFiltradas = useMemo(() => {
                       if (labelsActualizados.length === 0) {
                         setSelectedEntityIds([])
                       } else {
-                        const nuevosIds = entitiesData?.entidades
-                          .filter(e => labelsActualizados.includes(e.label))
-                          .map(e => e.id) || []
+                        const nuevosIds =
+                          entitiesData?.entidades
+                            .filter((e) => labelsActualizados.includes(e.label))
+                            .map((e) => e.id) || []
                         setSelectedEntityIds(nuevosIds)
                       }
                     }}
@@ -833,7 +1093,8 @@ const entidadesFiltradas = useMemo(() => {
                   <>
                     <div className="bc-results-meta">
                       <span className="bc-results-count">
-                        {totalResults} resultado{totalResults !== 1 ? 's' : ''} encontrados
+                        {totalResults} resultado{totalResults !== 1 ? 's' : ''}{' '}
+                        encontrados
                         {searchTime > 0 && ` en ${searchTime}s`}
                       </span>
                     </div>
@@ -846,25 +1107,44 @@ const entidadesFiltradas = useMemo(() => {
                                 <FileText size={14} className="bc-doc-icon" />
                                 <h3 className="bc-result-title">{r.titulo}</h3>
                               </div>
-                              <div className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}>
-                                <CheckCircle2 size={12} className="bc-status-icon" />
+                              <div
+                                className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
+                              >
+                                <CheckCircle2
+                                  size={12}
+                                  className="bc-status-icon"
+                                />
                                 <span className="bc-score-value">
-                                  {r.score > 0.7 ? 'Alta coincidencia' : r.score > 0.4 ? 'Coincidencia media' : 'Coincidencia baja'}
+                                  {r.score > 0.7
+                                    ? 'Alta coincidencia'
+                                    : r.score > 0.4
+                                      ? 'Coincidencia media'
+                                      : 'Coincidencia baja'}
                                 </span>
                               </div>
                             </div>
-                            <button onClick={() => handleOpenDocument(r.storage_path)} className="bc-external-btn">
+                            <button
+                              onClick={() => handleOpenDocument(r.storage_path)}
+                              className="bc-external-btn"
+                            >
                               <ExternalLink size={13} />
                               <span>Ver Documento</span>
                             </button>
                           </div>
                           <div className="bc-card-body">
                             <p className="bc-result-excerpt">
-                              <Highlight text={r.fragmento} query={busquedaEnviada} />
+                              <Highlight
+                                text={r.fragmento}
+                                query={busquedaEnviada}
+                              />
                             </p>
                           </div>
                           <div className="bc-card-footer">
-                            {r.pagina && <div className="bc-footer-tag"><span>Página {r.pagina}</span></div>}
+                            {r.pagina && (
+                              <div className="bc-footer-tag">
+                                <span>Página {r.pagina}</span>
+                              </div>
+                            )}
                           </div>
                         </article>
                       ))}
@@ -873,15 +1153,15 @@ const entidadesFiltradas = useMemo(() => {
                     {/* --- NUEVA PAGINACIÓN INTEGRADA (ESTILO GOOGLE) --- */}
                     {totalPages > 1 && (
                       <div className="bc-google-pagination">
-                        <button 
+                        <button
                           className="bc-page-nav-btn"
-                          disabled={page === 1} 
+                          disabled={page === 1}
                           onClick={() => cambiarPagina(page - 1)}
                         >
                           <ChevronLeft size={16} />
                           <span>Anterior</span>
                         </button>
-                        
+
                         <div className="bc-page-numbers">
                           {paginasDisponibles.map((p) => (
                             <button
@@ -894,9 +1174,9 @@ const entidadesFiltradas = useMemo(() => {
                           ))}
                         </div>
 
-                        <button 
+                        <button
                           className="bc-page-nav-btn"
-                          disabled={page === totalPages} 
+                          disabled={page === totalPages}
                           onClick={() => cambiarPagina(page + 1)}
                         >
                           <span>Siguiente</span>
@@ -907,16 +1187,21 @@ const entidadesFiltradas = useMemo(() => {
                   </>
                 ) : (
                   <div className="bc-empty">
-                    <div className="bc-empty-icon"><Search size={30} /></div>
+                    <div className="bc-empty-icon">
+                      <Search size={30} />
+                    </div>
                     <h3 className="bc-empty-title">
-                      {searchNotReadyMessage ? 'Búsqueda no disponible aún' : 'Sin resultados todavía'}
+                      {searchNotReadyMessage
+                        ? 'Búsqueda no disponible aún'
+                        : 'Sin resultados todavía'}
                     </h3>
                     <p className="bc-empty-sub">
-                      {searchNotReadyMessage ?? (busquedaEnviada
-                        ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
-                        : !isGraphViewable(collectionProcessingStatus)
-                          ? 'Genera el grafo de la colección para habilitar la búsqueda semántica.'
-                          : 'Haz una consulta para explorar los documentos de esta colección.')}
+                      {searchNotReadyMessage ??
+                        (busquedaEnviada
+                          ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
+                          : !isGraphViewable(collectionProcessingStatus)
+                            ? 'Genera el grafo de la colección para habilitar la búsqueda semántica.'
+                            : 'Haz una consulta para explorar los documentos de esta colección.')}
                     </p>
                   </div>
                 )}
@@ -926,9 +1211,43 @@ const entidadesFiltradas = useMemo(() => {
         </main>
       </div>
 
-      <ModalCarga key={id_coleccion === 'nueva' ? `nueva-${modalCargaOpen ? 'open' : 'closed'}` : (id_coleccion ?? 'none')} isOpen={modalCargaOpen} scopeCollectionId={id_coleccion ?? null} scopeUserId={id_usuario ?? null} forcePipelineEtapa={modalPipelineEtapa} onClose={() => { setModalCargaOpen(false); setModalPipelineEtapa(false); if (isNuevaColeccionPage) { const tracked = localStorage.getItem(ACTIVE_COLLECTION_KEY); setBackgroundProcessingId(tracked); } }} onProcessingChange={setIsCollectionProcessing} onUploadSuccess={cargarDatos} darkMode={darkMode} />
-      <ModalEliminarColeccion isOpen={isEliminarModalOpen} onClose={() => { if (!isDeletingCollection) setIsEliminarModalOpen(false) }} onConfirm={handleDelete} nombreColeccion={nombreColeccion} isConfirming={isDeletingCollection} />
-      <ModalDocumentosDisponibles isOpen={isModalFuentesOpen} fuentes={fuentes} onClose={() => setIsModalFuentesOpen(false)} darkMode={darkMode} />
+      <ModalCarga
+        key={
+          id_coleccion === 'nueva'
+            ? `nueva-${modalCargaOpen ? 'open' : 'closed'}`
+            : (id_coleccion ?? 'none')
+        }
+        isOpen={modalCargaOpen}
+        scopeCollectionId={id_coleccion ?? null}
+        scopeUserId={id_usuario ?? null}
+        forcePipelineEtapa={modalPipelineEtapa}
+        onClose={() => {
+          setModalCargaOpen(false)
+          setModalPipelineEtapa(false)
+          if (isNuevaColeccionPage) {
+            const tracked = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+            setBackgroundProcessingId(tracked)
+          }
+        }}
+        onProcessingChange={setIsCollectionProcessing}
+        onUploadSuccess={cargarDatos}
+        darkMode={darkMode}
+      />
+      <ModalEliminarColeccion
+        isOpen={isEliminarModalOpen}
+        onClose={() => {
+          if (!isDeletingCollection) setIsEliminarModalOpen(false)
+        }}
+        onConfirm={handleDelete}
+        nombreColeccion={nombreColeccion}
+        isConfirming={isDeletingCollection}
+      />
+      <ModalDocumentosDisponibles
+        isOpen={isModalFuentesOpen}
+        fuentes={fuentes}
+        onClose={() => setIsModalFuentesOpen(false)}
+        darkMode={darkMode}
+      />
     </>
   )
 }
