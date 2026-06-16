@@ -397,6 +397,7 @@ const BuscadorColeccion = () => {
 
       if (!res.ok) throw new Error('Error en la búsqueda')
       const data = await res.json()
+      console.log('SEARCH RESPONSE', data)
       
       // Calcula el tiempo transcurrido en segundos
       const endTime = performance.now()
@@ -405,7 +406,11 @@ const BuscadorColeccion = () => {
       // Asegurarse de que los datos se asignan correctamente
       setResultados(Array.isArray(data.resultados) ? data.resultados : [])
       setTotalResults(typeof data.total === 'number' ? data.total : 0)
-      setTotalPages(typeof data.pages === 'number' ? data.pages : 1)
+      setTotalPages(
+        typeof data.total_pages === 'number'
+          ? data.total_pages
+          : 1
+      )
       setSearchTime(elapsedSeconds)
       
       console.log('Búsqueda completada:', {
@@ -643,6 +648,7 @@ const BuscadorColeccion = () => {
         )
         if (res.ok) {
           const data = await res.json()
+          console.log('SEARCH RESPONSE', data)
           setEntidades(data.entidades || [])
           setTiposEntidad(data.tipos || [])
         }
@@ -704,6 +710,7 @@ const BuscadorColeccion = () => {
         }
         if (!res.ok) return false
         const data = await res.json()
+        console.log('SEARCH RESPONSE', data)
         const processing = isPipelineInProgress(data.processing_status)
         const esperandoGrafo = isAwaitingGraphForCollection(
           id_coleccion,
@@ -792,6 +799,7 @@ const BuscadorColeccion = () => {
         }
         if (!res.ok) return
         const data = await res.json()
+        console.log('SEARCH RESPONSE', data)
         if (isPipelineInProgress(data.processing_status)) {
           setBackgroundProcessingId(trackedId)
           setBackgroundProcessingSnapshot(
