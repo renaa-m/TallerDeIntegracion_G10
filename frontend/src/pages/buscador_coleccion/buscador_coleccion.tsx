@@ -18,6 +18,7 @@ import {
   FileText,
   CheckCircle2,
   Loader2,
+  X
 } from 'lucide-react'
 
 import { Link } from 'react-router-dom'
@@ -26,6 +27,7 @@ import { Link } from 'react-router-dom'
 import ModalCarga from '../../components/modal_carga/modal_carga'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
 import ModalDocumentosDisponibles from '../../components/modal_documentos_disponibles/modal_documentos_disponibles'
+import ModalFiltros from '../../components/modal_filtro/modal_filtro'
 
 import {
   ACTIVE_COLLECTION_KEY,
@@ -69,23 +71,21 @@ interface CollectionEntities {
 }
 
 // --- HELPER PARA HIGHLIGHT ---
-function Highlight({ text, query }: { text: string; query: string }) {
-  if (!query.trim()) return <>{text}</>
-  const regex = new RegExp(
-    `(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
-    'gi',
-  )
+function Highlight({ text, queries }: { text: string; queries: string[] }) {
+  const terms = queries.filter(q => q && q.trim())
+  if (terms.length === 0) return <>{text}</>
+  
+  // Escapa caracteres especiales de regex para evitar errores con nombres complejos
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const regex = new RegExp(`(${escaped.join('|')})`, 'gi')
   const parts = text.split(regex)
+  
   return (
     <>
       {parts.map((part, i) =>
-        regex.test(part) ? (
-          <mark key={i} className="bc-hl">
-            {part}
-          </mark>
-        ) : (
-          part
-        ),
+        regex.test(part)
+          ? <mark key={i} className="bc-hl">{part}</mark>
+          : part
       )}
     </>
   )
@@ -148,6 +148,19 @@ const BuscadorColeccion = () => {
     null,
   )
 
+  // PARTE 2 DE BUSQUEDA AVANZADA 
+  // 1. Estados para almacenar datos del backend
+  const [entidades, setEntidades] = useState<EntityFacet[]>([])
+  const [tiposEntidad, setTiposEntidad] = useState<string[]>([])
+
+  // 2. Estados para el filtro activo que irá al backend
+  const [entidadesSeleccionadas, setEntidadesSeleccionadas] = useState<string[]>([]) 
+  const [logicaEntidades, setLogicaEntidades] = useState<'OR' | 'AND'>('OR')
+
+  // 3. Estados para el control e interacción de la UI local
+  const [tipoFiltroUI, setTipoFiltroUI] = useState<string | null>(null)
+  const [entitySearch, setEntitySearch] = useState('')
+
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
   const [backgroundProcessingId, setBackgroundProcessingId] = useState<
@@ -207,6 +220,54 @@ const BuscadorColeccion = () => {
       }, 0)
     }
   }, [collectionProcessingStatus, cargarEntidades])
+
+  // Para rellenar el panel de filtros en cuanto la colección esté procesada y disponible
+  useEffect(() => {
+    if (!id_coleccion || id_coleccion === 'nueva') return
+    
+    // Asegúrate de usar tu función helper equivalente si difiere el nombre
+    const estaLista = collectionProcessingStatus === 'graph_ready' || collectionProcessingStatus === 'partial_error'
+    if (!estaLista) return
+
+    const fetchEntities = async () => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_URL}/api/collections/${id_coleccion}/entities`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          setEntidades(data.entidades || [])
+          setTiposEntidad(data.tipos || [])
+        }
+      } catch (e) {
+        console.error('Error cargando entidades:', e)
+      }
+    }
+
+    void fetchEntities()
+  }, [id_coleccion, collectionProcessingStatus, getAccessTokenSilently])
+
+  // Memoriza la lista filtrada por el buscador de texto interno y la pestaña de tipo
+  const entidadesFiltradas = useMemo(() =>
+    entidades.filter(e => {
+      const matchTipo = tipoFiltroUI === null || e.tipo === tipoFiltroUI
+      const matchSearch = !entitySearch.trim() ||
+        e.label.toLowerCase().includes(entitySearch.toLowerCase())
+      return matchTipo && matchSearch
+    }),
+    [entidades, tipoFiltroUI, entitySearch]
+  )
+
+  // Maneja la selección / deselección de un badge de entidad
+  const toggleEntidad = (label: string) => {
+    setEntidadesSeleccionadas(prev =>
+      prev.includes(label) ? prev.filter(n => n !== label) : [...prev, label]
+    )
+  }
+
+  // Variable derivada para pintar estilos del botón de filtros
+  const hayFiltrosActivos = entidadesSeleccionadas.length > 0 || !!fechaDesde || !!fechaHasta
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -564,99 +625,57 @@ const BuscadorColeccion = () => {
     nombreColeccion,
   ])
 
-  const ejecutarBusqueda = useCallback(
-    async (targetPage: number = 1) => {
-      // Si estamos en modo grafo, no ejecutamos consultas semánticas de texto innecesarias
-      if (
-        !id_coleccion ||
-        id_coleccion === 'nueva' ||
-        !busquedaEnviada.trim() ||
-        isGrafoView
-      ) {
-        if (!isGrafoView) setResultados([])
-        return
+  
+  const ejecutarBusqueda = useCallback(async () => {
+  // 1. CAMBIO DE DISPARO: Ahora permite avanzar si hay entidades seleccionadas, aunque la barra esté vacía
+  const tieneQuery = busquedaEnviada.trim().length > 0
+  const tieneEntidades = entidadesSeleccionadas.length > 0
+  
+  if (!tieneQuery && !tieneEntidades) {
+    setResultados([])
+    return
+  }
+
+  setLoading(true)
+    try {
+      const token = await getAccessTokenSilently()
+      
+      // 2. CAMBIO EN CUERPO DEL REQUEST
+      const searchRequest = {
+        coleccion_id: id_coleccion,
+        query: busquedaEnviada.trim() || undefined, // Evita mandar strings vacíos ""
+        min_score: 0.25,
+        filtros: (entidadesSeleccionadas.length > 0 || fechaDesde || fechaHasta)
+          ? {
+              nombres_entidades: entidadesSeleccionadas.length > 0 ? entidadesSeleccionadas : null,
+              logica_entidades: logicaEntidades,
+              rango_años: (fechaDesde || fechaHasta)
+                ? [parseInt(fechaDesde) || 0, parseInt(fechaHasta) || 2026]
+                : null,
+            }
+          : null,
       }
 
-      setLoading(true)
-      setSearchNotReadyMessage(null)
-      try {
-        const token = await getAccessTokenSilently()
+      const res = await fetch(`${API_URL}/api/search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(searchRequest)
+      })
 
-        const searchRequest = {
-          coleccion_id: id_coleccion,
-          query: busquedaEnviada,
-          page: targetPage,
-          limit: 10,
-          min_score: 0.25,
-          entity_ids: selectedEntityIds,
-          filtros:
-            personas.length > 0 || fechaDesde || fechaHasta
-              ? {
-                  tipo_entidad: personas.length > 0 ? personas[0] : null,
-                  rango_años:
-                    fechaDesde || fechaHasta
-                      ? [
-                          parseInt(fechaDesde) || 0,
-                          parseInt(fechaHasta) || 2026,
-                        ]
-                      : null,
-                }
-              : null,
-        }
-
-        const startTime = performance.now() // <-- CAPTURAR TIEMPO INICIAL
-
-        const res = await fetch(`${API_URL}/api/search`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(searchRequest),
-        })
-
-        const endTime = performance.now() // <-- CAPTURAR TIEMPO FINAL
-        const durationSeconds = parseFloat(
-          ((endTime - startTime) / 1000).toFixed(2),
-        )
-
-        if (res.ok) {
-          const data = await res.json()
-          if (data.ready === false) {
-            setResultados([])
-            setSearchNotReadyMessage(
-              data.message ??
-                'Aún no hay grafo generado. Genera el grafo para habilitar la búsqueda semántica.',
-            )
-          } else {
-            setResultados(data.resultados || [])
-            setSearchTime(durationSeconds) // <-- GUARDAR DURACIÓN EN SEGUNDOS
-            setTotalResults(data.total)
-            setTotalPages(data.total_pages)
-            setPage(data.page)
-          }
-        } else {
-          setResultados([])
-          setSearchTime(0)
-        }
-      } catch (e) {
-        console.error('Error en búsqueda semántica:', e)
-        setSearchTime(0)
-      } finally {
-        setLoading(false)
-      }
-    },
-    [
-      id_coleccion,
-      busquedaEnviada,
-      selectedEntityIds,
-      personas,
-      fechaDesde,
-      fechaHasta,
-      isGrafoView,
-      getAccessTokenSilently,
-    ],
-  )
+      if (!res.ok) throw new Error('Error en la búsqueda')
+      const data = await res.json()
+      setResultados(data.resultados || [])
+      
+    } catch (error) {
+      console.error(error)
+    } finally {
+      setLoading(false)
+    }
+    // 3. DEPENDENCIAS ACTUALIZADAS: Añadidas entidades y lógica para re-disparar con debounce
+  }, [id_coleccion, busquedaEnviada, entidadesSeleccionadas, logicaEntidades, fechaDesde, fechaHasta, getAccessTokenSilently])
 
   useEffect(() => {
     const iniciarCarga = async () => {
@@ -669,7 +688,7 @@ const BuscadorColeccion = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       // Ahora le pasamos la página 1 aquí para que coincida con la firma
-      ejecutarBusqueda(1)
+      ejecutarBusqueda()
     }, 400)
     return () => clearTimeout(timer)
   }, [ejecutarBusqueda])
@@ -680,7 +699,7 @@ const BuscadorColeccion = () => {
     setSearchParams(trimmed ? { q: trimmed } : {})
     setBusquedaEnviada(trimmed)
     setPage(1) // Reseteamos la página a 1 al hacer una nueva búsqueda
-    ejecutarBusqueda(1) // Llamamos con página 1
+    ejecutarBusqueda() // Llamamos con página 1
   }
 
   const saveNombre = async () => {
@@ -991,102 +1010,32 @@ const BuscadorColeccion = () => {
                     onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
                   />
                   <button
-                    className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${selectedEntityIds.length > 0 ? 'has-filters' : ''}`}
+                    className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${hayFiltrosActivos ? 'has-filters' : ''}`}
                     onClick={() => setFiltroOpen(!filtroOpen)}
                   >
                     <SlidersHorizontal size={14} />
                     <span>Criterios de Búsqueda</span>
-
-                    {/* Badge que muestra la cantidad de filtros */}
-                    {selectedEntityIds.length > 0 && (
-                      <span className="bc-filter-badge">
-                        {selectedEntityIds.length}
-                      </span>
+                    {entidadesSeleccionadas.length > 0 && (
+                      <span className="bc-filter-badge">{entidadesSeleccionadas.length}</span>
                     )}
                   </button>
                 </div>
 
                 {filtroOpen && (
-                  <div className="bc-filter-panel">
-                    {entitiesData?.tipos.map((tipo, index) => {
-                      const entidadesDeTipo = entitiesData.entidades.filter(
-                        (e) => e.tipo === tipo,
-                      )
-                      const seleccionadasDeTipo = entidadesDeTipo.filter((e) =>
-                        selectedEntityIds?.includes(e.id),
-                      )
-
-                      return (
-                        <div key={tipo}>
-                          {index > 0 && <div className="bc-filter-divider" />}
-                          <div className="bc-filter-group">
-                            <span className="bc-filter-label">{tipo}</span>
-
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                const val = e.target.value
-                                if (!val) return
-                                setSelectedEntityIds((prev) =>
-                                  prev?.includes(val)
-                                    ? prev
-                                    : [...(prev ?? []), val],
-                                )
-                              }}
-                              className="bc-filter-tag-input"
-                            >
-                              <option value="">Agregar {tipo}…</option>
-                              {entidadesDeTipo
-                                .filter(
-                                  (entidad) =>
-                                    !selectedEntityIds?.includes(entidad.id),
-                                )
-                                .map((entidad) => (
-                                  <option key={entidad.id} value={entidad.id}>
-                                    {entidad.label}
-                                  </option>
-                                ))}
-                            </select>
-
-                            {seleccionadasDeTipo.length > 0 && (
-                              <div className="bc-filter-chips">
-                                {seleccionadasDeTipo.map((entidad) => (
-                                  <span
-                                    key={entidad.id}
-                                    className="bc-filter-chip selected"
-                                  >
-                                    {entidad.label}
-                                    <button
-                                      className="bc-chip-remove"
-                                      onClick={() =>
-                                        setSelectedEntityIds(
-                                          (prev) =>
-                                            prev?.filter(
-                                              (id) => id !== entidad.id,
-                                            ) ?? [],
-                                        )
-                                      }
-                                    >
-                                      ×
-                                    </button>
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )
-                    })}
-
-                    {selectedEntityIds && selectedEntityIds.length > 0 && (
-                      <button
-                        className="bc-filter-clear-all"
-                        onClick={() => setSelectedEntityIds([])}
-                      >
-                        Limpiar filtros
-                      </button>
-                    )}
-                  </div>
+                  <ModalFiltros
+                    tiposEntidad={tiposEntidad}
+                    tipoFiltroUI={tipoFiltroUI}
+                    setTipoFiltroUI={setTipoFiltroUI}
+                    entitySearch={entitySearch}
+                    setEntitySearch={setEntitySearch}
+                    entidades={entidades}
+                    entidadesFiltradas={entidadesFiltradas}
+                    entidadesSeleccionadas={entidadesSeleccionadas}
+                    toggleEntidad={toggleEntidad}
+                    logicaEntidades={logicaEntidades}
+                    setLogicaEntidades={setLogicaEntidades}
+                    setEntidadesSeleccionadas={setEntidadesSeleccionadas}
+                  />
                 )}
               </div>
 
@@ -1107,26 +1056,26 @@ const BuscadorColeccion = () => {
                       </span>
                     </div>
                     <div className="bc-results-list">
-                      {resultados.map((r, idx) => (
-                        <article key={idx} className="bc-result-card">
+                      {resultados.map((resultado) => (
+                        <article key={resultado.id_chunk} className="bc-result-card">
                           <div className="bc-card-header">
                             <div className="bc-header-info">
                               <div className="bc-title-row">
                                 <FileText size={14} className="bc-doc-icon" />
-                                <h3 className="bc-result-title">{r.titulo}</h3>
+                                <h3 className="bc-result-title">{resultado.titulo}</h3>
                               </div>
 
                               <div
-                                className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
+                                className={`bc-score-status ${resultado.score > 0.7 ? 'status-high' : resultado.score > 0.4 ? 'status-med' : 'status-low'}`}
                               >
                                 <CheckCircle2
                                   size={12}
                                   className="bc-status-icon"
                                 />
                                 <span className="bc-score-value">
-                                  {r.score > 0.7
+                                  {resultado.score > 0.7
                                     ? 'Alta coincidencia'
-                                    : r.score > 0.4
+                                    : resultado.score > 0.4
                                       ? 'Coincidencia media'
                                       : 'Coincidencia baja'}
                                 </span>
@@ -1134,7 +1083,7 @@ const BuscadorColeccion = () => {
                             </div>
 
                             <button
-                              onClick={() => handleOpenDocument(r.storage_path)}
+                              onClick={() => handleOpenDocument(resultado.storage_path)}
                               className="bc-external-btn"
                             >
                               <ExternalLink size={13} />
@@ -1143,10 +1092,10 @@ const BuscadorColeccion = () => {
                           </div>
 
                           <div className="bc-card-body">
-                            <p className="bc-result-excerpt">
+                            <p className="bc-result-fragment">
                               <Highlight
-                                text={r.fragmento}
-                                query={busquedaEnviada}
+                                text={resultado.fragmento}
+                                queries={[busquedaEnviada, ...entidadesSeleccionadas]}
                               />
                             </p>
                           </div>
@@ -1156,9 +1105,9 @@ const BuscadorColeccion = () => {
                               <Network size={12} />
                               <span>Grafo IMFD</span>
                             </div>
-                            {r.pagina && (
+                            {resultado.pagina && (
                               <div className="bc-footer-tag">
-                                <span>Página {r.pagina}</span>
+                                <span>Página {resultado.pagina}</span>
                               </div>
                             )}
                           </div>
@@ -1169,7 +1118,7 @@ const BuscadorColeccion = () => {
                       <div className="bc-pagination">
                         <button
                           disabled={page === 1}
-                          onClick={() => ejecutarBusqueda(page - 1)}
+                          onClick={() => ejecutarBusqueda()}
                         >
                           Anterior
                         </button>
@@ -1178,7 +1127,7 @@ const BuscadorColeccion = () => {
                         </span>
                         <button
                           disabled={page === totalPages}
-                          onClick={() => ejecutarBusqueda(page + 1)}
+                          onClick={() => ejecutarBusqueda()}
                         >
                           Siguiente
                         </button>
