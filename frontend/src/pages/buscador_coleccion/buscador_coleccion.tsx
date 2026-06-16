@@ -18,16 +18,15 @@ import {
   FileText,
   CheckCircle2,
   Loader2,
-  ChevronLeft,
-  ChevronRight, // <-- Añadido para los iconos de navegación
+  X,
 } from 'lucide-react'
-
 import { Link } from 'react-router-dom'
 
 // Componentes
 import ModalCarga from '../../components/modal_carga/modal_carga'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
 import ModalDocumentosDisponibles from '../../components/modal_documentos_disponibles/modal_documentos_disponibles'
+import ModalFiltros from '../../components/modal_filtro/modal_filtro'
 
 import {
   ACTIVE_COLLECTION_KEY,
@@ -45,11 +44,13 @@ import {
   snapshotFromCollectionApi,
 } from '../../lib/collection_processing'
 
-// Estilos
 import './buscador_coleccion.css'
-import ModalFiltros from '../../components/modal_filtro/modal_filtro'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
+
+// ============================================
+// TIPOS
+// ============================================
 
 interface SearchResultItem {
   titulo: string
@@ -71,14 +72,18 @@ interface CollectionEntities {
   entidades: EntityFacet[]
 }
 
-// --- HELPER PARA HIGHLIGHT ---
-function Highlight({ text, query }: { text: string; query: string }) {
-  if (!query.trim()) return <>{text}</>
-  const regex = new RegExp(
-    `(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`,
-    'gi',
-  )
+// ============================================
+// COMPONENTE HELPER: HIGHLIGHT
+// ============================================
+
+function Highlight({ text, queries }: { text: string; queries: string[] }) {
+  const terms = queries.filter(q => q && q.trim())
+  if (terms.length === 0) return <>{text}</>
+
+  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const regex = new RegExp(`(${escaped.join('|')})`, 'gi')
   const parts = text.split(regex)
+
   return (
     <>
       {parts.map((part, i) =>
@@ -88,13 +93,21 @@ function Highlight({ text, query }: { text: string; query: string }) {
           </mark>
         ) : (
           part
-        ),
+        )
       )}
     </>
   )
 }
 
+// ============================================
+// COMPONENTE PRINCIPAL
+// ============================================
+
 const BuscadorColeccion = () => {
+  // ─────────────────────────────────────────
+  // 1. CONTEXTO & HOOKS DE ROUTING
+  // ─────────────────────────────────────────
+
   const { id_usuario, id_coleccion } = useParams<{
     id_usuario: string
     id_coleccion: string
@@ -104,114 +117,103 @@ const BuscadorColeccion = () => {
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
 
+  // ─────────────────────────────────────────
+  // 2. DERIVED STATE: RUTAS
+  // ─────────────────────────────────────────
+
   const isGrafoView = useMemo(
     () => location.pathname.endsWith('/grafo'),
-    [location.pathname],
+    [location.pathname]
   )
+  const isNuevaColeccionPage = id_coleccion === 'nueva'
 
-  // --- ESTADOS ---
+  // ─────────────────────────────────────────
+  // 3. ESTADO: COLECCIÓN
+  // ─────────────────────────────────────────
+
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
+  const [tempNombre, setTempNombre] = useState('')
   const [collectionProcessingStatus, setCollectionProcessingStatus] =
     useState('idle')
-  const [fuentes, setFuentes] = useState([])
-  const [resultados, setResultados] = useState<SearchResultItem[]>([])
+  const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
+  const [currentProcessingSnapshot, setCurrentProcessingSnapshot] =
+    useState<CollectionProcessingSnapshot | null>(null)
+  const [scopedCollectionId, setScopedCollectionId] = useState(id_coleccion)
 
-  const [selectedEntityIds, setSelectedEntityIds] = useState<string[]>(() => {
-    const params = new URLSearchParams(window.location.search)
-    const entities = params.get('entities')
-    return entities ? entities.split(',') : []
-  })
-
-  // --- ESTADOS DE PAGINACIÓN ---
-  // Sincronizamos la página inicial leyendo directamente los parámetros de la URL al cargar
-  const [page, setPage] = useState(() =>
-    parseInt(searchParams.get('page') ?? '1', 10),
-  )
-  const [totalResults, setTotalResults] = useState(0)
-  const [totalPages, setTotalPages] = useState(0)
-
-  const [isEditingName, setIsEditingName] = useState(false)
-  const [tempNombre, setTempNombre] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [searchTime, setSearchTime] = useState<number>(0)
+  // ─────────────────────────────────────────
+  // 4. ESTADO: BÚSQUEDA
+  // ─────────────────────────────────────────
 
   const queryFromUrl = searchParams.get('q') ?? ''
   const [busqueda, setBusqueda] = useState(queryFromUrl)
   const [busquedaEnviada, setBusquedaEnviada] = useState(queryFromUrl)
+  const [resultados, setResultados] = useState<SearchResultItem[]>([])
+  const [loading, setLoading] = useState(false)
+  const [searchTime, setSearchTime] = useState<number>(0)
   const [searchNotReadyMessage, setSearchNotReadyMessage] = useState<
     string | null
   >(null)
+  const [page, setPage] = useState<number>(1)
+  const [totalResults, setTotalResults] = useState(0)
+  const [totalPages, setTotalPages] = useState(0)
 
-  // Modales
-  const [modalCargaOpen, setModalCargaOpen] = useState(id_coleccion === 'nueva')
-  const [modalPipelineEtapa, setModalPipelineEtapa] = useState(false)
-  const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
-  const [isDeletingCollection, setIsDeletingCollection] = useState(false)
+  // ─────────────────────────────────────────
+  // 5. ESTADO: FILTROS & ENTIDADES
+  // ─────────────────────────────────────────
 
-  // Entidades
-  const [entitiesData, setEntitiesData] = useState<CollectionEntities | null>(
-    null,
-  )
-
-  const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
-  const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
-  const [backgroundProcessingId, setBackgroundProcessingId] = useState<
-    string | null
-  >(null)
-  const [currentProcessingSnapshot, setCurrentProcessingSnapshot] =
-    useState<CollectionProcessingSnapshot | null>(null)
-  const [backgroundProcessingSnapshot, setBackgroundProcessingSnapshot] =
-    useState<CollectionProcessingSnapshot | null>(null)
-
-  // Filtros
+  const [entidades, setEntidades] = useState<EntityFacet[]>([])
+  const [tiposEntidad, setTiposEntidad] = useState<string[]>([])
+  const [entidadesSeleccionadas, setEntidadesSeleccionadas] = useState<
+    string[]
+  >([])
+  const [logicaEntidades, setLogicaEntidades] = useState<'OR' | 'AND'>('OR')
+  const [selectedEntityIds] = useState<string[]>(() => {
+    const params = new URLSearchParams(location.search)
+    const entities = params.get('entities')
+    return entities ? entities.split(',') : []
+  })
+  const [tipoFiltroUI, setTipoFiltroUI] = useState<string | null>(null)
+  const [entitySearch, setEntitySearch] = useState('')
   const [filtroOpen, setFiltroOpen] = useState(false)
-  const [personas] = useState<string[]>([])
+
+  // ─────────────────────────────────────────
+  // 6. ESTADO: DOCUMENTOS
+  // ─────────────────────────────────────────
+
+  const [fuentes, setFuentes] = useState([])
+
+  // ─────────────────────────────────────────
+  // 7. ESTADO: FILTROS
+  // ─────────────────────────────────────────
+
   const [fechaDesde] = useState('')
   const [fechaHasta] = useState('')
 
-  // --- NUEVOS ESTADOS EXCLUSIVOS PARA EL MODAL FILTROS ---
-  const [tipoFiltroUI, setTipoFiltroUI] = useState<string | null>(null)
-  const [entitySearch, setEntitySearch] = useState('')
-  const [logicaEntidades, setLogicaEntidades] = useState<'OR' | 'AND'>('OR')
+  // ─────────────────────────────────────────
+  // 8. ESTADO: MODALES
+  // ─────────────────────────────────────────
 
-  // Mapeo adaptativo: El modal espera las seleccionadas por su 'label' (string[])
-  // Creamos este useMemo para transformar los IDs que tienes en selectedEntityIds a los labels que tu modal necesita
-  const entidadesSeleccionadasLabels = useMemo(() => {
-    if (!entitiesData?.entidades) return []
-    return entitiesData.entidades
-      .filter((e) => selectedEntityIds.includes(e.id))
-      .map((e) => e.label)
-  }, [selectedEntityIds, entitiesData])
+  const [modalCargaOpen, setModalCargaOpen] = useState(id_coleccion === 'nueva')
+  const [modalPipelineEtapa, setModalPipelineEtapa] = useState(false)
+  const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
+  const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
+  const [isDeletingCollection, setIsDeletingCollection] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
 
-  // Helper adaptativo para el toggle: el modal envía el label, nosotros buscamos su ID correspondiente
-  const handleToggleEntidadPorLabel = (label: string) => {
-    const entidadEncontrada = entitiesData?.entidades.find(
-      (e) => e.label === label,
-    )
-    if (!entidadEncontrada) return
+  // ─────────────────────────────────────────
+  // 9. ESTADO: BACKGROUND PROCESSING
+  // ─────────────────────────────────────────
 
-    setSelectedEntityIds((prev) =>
-      prev.includes(entidadEncontrada.id)
-        ? prev.filter((id) => id !== entidadEncontrada.id)
-        : [...prev, entidadEncontrada.id],
-    )
-  }
+  const [backgroundProcessingId, setBackgroundProcessingId] = useState<
+    string | null
+  >(null)
+  const [backgroundProcessingSnapshot, setBackgroundProcessingSnapshot] =
+    useState<CollectionProcessingSnapshot | null>(null)
 
-  // Filtra las entidades en base a la pestaña de categoría activa y el buscador de texto
-  const entidadesFiltradas = useMemo(() => {
-    if (!entitiesData?.entidades) return []
-    return entitiesData.entidades.filter((e) => {
-      const matchTipo = tipoFiltroUI === null || e.tipo === tipoFiltroUI
-      const matchSearch =
-        !entitySearch.trim() ||
-        e.label.toLowerCase().includes(entitySearch.toLowerCase())
-      return matchTipo && matchSearch
-    })
-  }, [entitiesData, tipoFiltroUI, entitySearch])
+  // ─────────────────────────────────────────
+  // 10. SINCRONIZACIÓN CUANDO CAMBIA LA COLECCIÓN (DESPUÉS DE TODOS LOS ESTADOS)
+  // ─────────────────────────────────────────
 
-  const darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
-
-  const [scopedCollectionId, setScopedCollectionId] = useState(id_coleccion)
   if (id_coleccion !== scopedCollectionId) {
     setScopedCollectionId(id_coleccion)
     setCurrentProcessingSnapshot(null)
@@ -221,79 +223,47 @@ const BuscadorColeccion = () => {
     setBackgroundProcessingSnapshot(null)
   }
 
-  const cargarEntidades = useCallback(async () => {
-    if (!id_coleccion || id_coleccion === 'nueva') return
+  // ─────────────────────────────────────────
+  // 11. DERIVED STATE: POLLING & VISIBILITY
+  // ─────────────────────────────────────────
 
-    try {
-      const token = await getAccessTokenSilently()
-      const res = await fetch(
-        `${API_URL}/api/collections/${id_coleccion}/entities`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      )
+  const shouldPollBackground = isNuevaColeccionPage && !modalCargaOpen
+  const currentPageInPipeline = isPipelineInProgress(collectionProcessingStatus)
 
-      if (res.ok) {
-        const data: CollectionEntities = await res.json()
-        setEntitiesData(data)
-      }
-    } catch (e) {
-      console.error('Error al cargar entidades:', e)
-    }
-  }, [id_coleccion, getAccessTokenSilently])
+  const visibleBackgroundProcessingId = shouldPollBackground
+    ? backgroundProcessingId
+    : null
+  const visibleBackgroundProcessingSnapshot = shouldPollBackground
+    ? backgroundProcessingSnapshot
+    : null
 
-  useEffect(() => {
-    if (
-      collectionProcessingStatus === 'graph_ready' ||
-      collectionProcessingStatus === 'partial_error'
-    ) {
-      setTimeout(() => {
-        void cargarEntidades()
-      }, 0)
-    }
-  }, [collectionProcessingStatus, cargarEntidades])
+  // ─────────────────────────────────────────
+  // 12. TEMA & CONFIGURACIÓN
+  // ─────────────────────────────────────────
 
-  // --- MODIFICACIÓN DE URL ---
-  // Mantenemos sincronizada tanto la entidad elegida como la página actual en la barra de direcciones
-  useEffect(() => {
-    const params = new URLSearchParams(location.search)
+  const darkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
 
-    if (selectedEntityIds.length > 0) {
-      params.set('entities', selectedEntityIds.join(','))
-    } else {
-      params.delete('entities')
-    }
+  // ─────────────────────────────────────────
+  // 13. COMPUTED: FILTROS
+  // ─────────────────────────────────────────
 
-    if (page > 1) {
-      params.set('page', page.toString())
-    } else {
-      params.delete('page')
-    }
+  const entidadesFiltradas = useMemo(() =>
+    entidades.filter(e => {
+      const matchTipo = tipoFiltroUI === null || e.tipo === tipoFiltroUI
+      const matchSearch =
+        !entitySearch.trim() ||
+        e.label.toLowerCase().includes(entitySearch.toLowerCase())
+      return matchTipo && matchSearch
+    }),
+    [entidades, tipoFiltroUI, entitySearch]
+  )
 
-    setSearchParams(params, { replace: true })
-  }, [selectedEntityIds, page, setSearchParams, location.search])
+  const hayFiltrosActivos =
+    entidadesSeleccionadas.length > 0 || !!fechaDesde || !!fechaHasta
 
-  useEffect(() => {
-    clearStaleActiveCollectionForPage(id_coleccion)
-  }, [id_coleccion])
-
-  useEffect(() => {
-    const state = location.state as { abrirModalCarga?: boolean } | null
-    if (!state?.abrirModalCarga) return
-
-    queueMicrotask(() => {
-      const isNueva = id_coleccion === 'nueva'
-      if (id_coleccion && !isNueva) {
-        localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
-        localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-        setModalPipelineEtapa(true)
-      } else {
-        setModalPipelineEtapa(false)
-      }
-      setModalCargaOpen(true)
-      navigate(location.pathname, { replace: true, state: {} })
-    })
-  }, [location.pathname, location.state, navigate, id_coleccion])
+  // ─────────────────────────────────────────
+  // 14. CALLBACKS: CARGA DE DATOS
+  // ─────────────────────────────────────────
 
   const redirectIfCollectionMissing = useCallback(() => {
     clearActiveCollectionStorageIfMatch(id_coleccion)
@@ -307,7 +277,26 @@ const BuscadorColeccion = () => {
     }
   }, [id_coleccion, id_usuario, navigate])
 
-  // --- CARGA DE DATOS INICIALES ---
+  const cargarEntidades = useCallback(async () => {
+    if (!id_coleccion || id_coleccion === 'nueva') return
+
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(
+        `${API_URL}/api/collections/${id_coleccion}/entities`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+
+      if (res.ok) {
+        const data: CollectionEntities = await res.json()
+        setEntidades(data.entidades || [])
+        setTiposEntidad(data.tipos || [])
+      }
+    } catch (e) {
+      console.error('Error al cargar entidades:', e)
+    }
+  }, [id_coleccion, getAccessTokenSilently])
+
   const cargarDatos = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva') return
 
@@ -317,13 +306,12 @@ const BuscadorColeccion = () => {
 
       const resColl = await fetch(
         `${API_URL}/api/collections/${id_coleccion}`,
-        { headers },
+        { headers }
       )
       if (resColl.status === 404) {
         redirectIfCollectionMissing()
         return
       }
-
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
@@ -334,7 +322,7 @@ const BuscadorColeccion = () => {
         setIsCollectionProcessing(processing)
         if (processing) {
           setCurrentProcessingSnapshot(
-            snapshotFromCollectionApi(data, id_coleccion),
+            snapshotFromCollectionApi(data, id_coleccion)
           )
         } else {
           setCurrentProcessingSnapshot(null)
@@ -345,7 +333,7 @@ const BuscadorColeccion = () => {
 
       const resDocs = await fetch(
         `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
-        { headers },
+        { headers }
       )
       if (resDocs.ok) {
         setFuentes(await resDocs.json())
@@ -353,396 +341,102 @@ const BuscadorColeccion = () => {
     } catch (e) {
       console.error('Error cargando datos:', e)
     }
-  }, [
-    id_coleccion,
-    isGrafoView,
-    getAccessTokenSilently,
-    redirectIfCollectionMissing,
-  ])
+  }, [id_coleccion, isGrafoView, getAccessTokenSilently, redirectIfCollectionMissing])
 
-  const isNuevaColeccionPage = id_coleccion === 'nueva'
-  const shouldPollBackground = isNuevaColeccionPage && !modalCargaOpen
-  const currentPageInPipeline = isPipelineInProgress(collectionProcessingStatus)
+  // ─────────────────────────────────────────
+  // 15. CALLBACKS: BÚSQUEDA
+  // ─────────────────────────────────────────
 
-  // Polling de colecciones omitido por brevedad, se mantiene idéntico
-  useEffect(() => {
-    if (
-      modalCargaOpen ||
-      !id_coleccion ||
-      id_coleccion === 'nueva' ||
-      isGrafoView
-    )
+  const ejecutarBusqueda = useCallback(async () => {
+    const tieneQuery = busquedaEnviada.trim().length > 0
+    const tieneEntidades = entidadesSeleccionadas.length > 0
+
+    if (!tieneQuery && !tieneEntidades) {
+      setResultados([])
+      setTotalResults(0)
+      setTotalPages(0)
+      setSearchTime(0)
       return
-    let cancelled = false
-    let intervalId: number | undefined
-    const stopPolling = () => {
-      cancelled = true
-      if (intervalId !== undefined) {
-        clearInterval(intervalId)
-        intervalId = undefined
-      }
     }
-    const pollCollection = async (): Promise<boolean> => {
-      try {
-        const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (cancelled) return false
-        if (res.status === 404) {
-          redirectIfCollectionMissing()
-          stopPolling()
-          return false
-        }
-        if (!res.ok) return false
-        const data = await res.json()
-        const processing = isPipelineInProgress(data.processing_status)
-        const esperandoGrafo = isAwaitingGraphForCollection(
-          id_coleccion,
-          data.processing_status,
-        )
-        setCollectionProcessingStatus(data.processing_status ?? 'idle')
-        setIsCollectionProcessing(processing)
-        if (processing) {
-          setCurrentProcessingSnapshot(
-            snapshotFromCollectionApi(data, id_coleccion),
-          )
-          if (isPipelineRunning(data.processing_status)) {
-            localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
-            localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-          }
-        } else {
-          setCurrentProcessingSnapshot(null)
-        }
-        if (
-          !processing &&
-          localStorage.getItem(ACTIVE_COLLECTION_KEY) === id_coleccion &&
-          !esperandoGrafo
-        ) {
-          localStorage.removeItem(ACTIVE_COLLECTION_KEY)
-          localStorage.removeItem(MODAL_ETAPA_KEY)
-        }
-        return processing || esperandoGrafo
-      } catch (e) {
-        console.error('Error polling colección:', e)
-        return false
-      }
-    }
-    void (async () => {
-      const keepPolling = await pollCollection()
-      if (cancelled || !keepPolling) return
-      intervalId = window.setInterval(async () => {
-        const stillActive = await pollCollection()
-        if (!stillActive) stopPolling()
-      }, 3000)
-    })()
-    return () => stopPolling()
-  }, [
-    id_coleccion,
-    modalCargaOpen,
-    isGrafoView,
-    getAccessTokenSilently,
-    redirectIfCollectionMissing,
-  ])
 
-  useEffect(() => {
-    if (!shouldPollBackground) return
-    const trackedId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
-    if (!trackedId) return
-    let cancelled = false
-    let intervalId: number | undefined
-    const stopPolling = () => {
-      cancelled = true
-      if (intervalId !== undefined) {
-        clearInterval(intervalId)
-        intervalId = undefined
-      }
-    }
-    const pollBackground = async () => {
-      try {
-        const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_URL}/api/collections/${trackedId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (cancelled) return
-        if (res.status === 404) {
-          clearActiveCollectionStorageIfMatch(trackedId)
-          setBackgroundProcessingId(null)
-          setBackgroundProcessingSnapshot(null)
-          stopPolling()
-          return
-        }
-        if (!res.ok) return
-        const data = await res.json()
-        if (isPipelineInProgress(data.processing_status)) {
-          setBackgroundProcessingId(trackedId)
-          setBackgroundProcessingSnapshot(
-            snapshotFromCollectionApi(data, trackedId),
-          )
-        } else if (
-          isAwaitingGraphGeneration(data.processing_status) &&
-          localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
-        ) {
-          setBackgroundProcessingId(trackedId)
-          setBackgroundProcessingSnapshot(null)
-        } else {
-          localStorage.removeItem(ACTIVE_COLLECTION_KEY)
-          localStorage.removeItem(MODAL_ETAPA_KEY)
-          setBackgroundProcessingId(null)
-          setBackgroundProcessingSnapshot(null)
-          stopPolling()
-        }
-      } catch (e) {
-        console.error('Error polling colección en background:', e)
-      }
-    }
-    void pollBackground()
-    intervalId = window.setInterval(pollBackground, 3000)
-    return () => stopPolling()
-  }, [shouldPollBackground, getAccessTokenSilently])
+    setLoading(true)
+    const startTime = performance.now() // ← Inicia el cronómetro
+    
+    try {
+      const token = await getAccessTokenSilently()
 
-  const visibleBackgroundProcessingId = shouldPollBackground
-    ? backgroundProcessingId
-    : null
-  const visibleBackgroundProcessingSnapshot = shouldPollBackground
-    ? backgroundProcessingSnapshot
-    : null
+      const searchRequest = {
+        coleccion_id: id_coleccion,
+        query: busquedaEnviada.trim() || undefined,
+        min_score: 0.25,
+        page: page,
+        filtros:
+          entidadesSeleccionadas.length > 0 || fechaDesde || fechaHasta
+            ? {
+                nombres_entidades:
+                  entidadesSeleccionadas.length > 0
+                    ? entidadesSeleccionadas
+                    : null,
+                logica_entidades: logicaEntidades,
+                rango_años:
+                  fechaDesde || fechaHasta
+                    ? [parseInt(fechaDesde) || 0, parseInt(fechaHasta) || 2026]
+                    : null,
+              }
+            : null,
+      }
 
-  const currentPagePipelineSnapshot = useMemo(() => {
-    if (!id_coleccion || id_coleccion === 'nueva') return null
-    if (currentProcessingSnapshot?.collectionId === id_coleccion)
-      return currentProcessingSnapshot
-    if (currentPageInPipeline) {
-      return snapshotFromCollectionApi(
-        {
-          name: nombreColeccion,
-          processing_status: collectionProcessingStatus,
+      const res = await fetch(`${API_URL}/api/search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
         },
-        id_coleccion,
-      )
+        body: JSON.stringify(searchRequest),
+      })
+
+      if (!res.ok) throw new Error('Error en la búsqueda')
+      const data = await res.json()
+      
+      // Calcula el tiempo transcurrido en segundos
+      const endTime = performance.now()
+      const elapsedSeconds = (endTime - startTime) / 1000
+      
+      // Asegurarse de que los datos se asignan correctamente
+      setResultados(Array.isArray(data.resultados) ? data.resultados : [])
+      setTotalResults(typeof data.total === 'number' ? data.total : 0)
+      setTotalPages(typeof data.pages === 'number' ? data.pages : 1)
+      setSearchTime(elapsedSeconds)
+      
+      console.log('Búsqueda completada:', {
+        resultados: data.resultados?.length,
+        total: data.total,
+        pages: data.pages,
+        tiempo_segundos: elapsedSeconds.toFixed(2)
+      })
+    } catch (error) {
+      console.error('Error en búsqueda:', error)
+      setResultados([])
+      setTotalResults(0)
+      setTotalPages(0)
+      setSearchTime(0)
+    } finally {
+      setLoading(false)
     }
-    return null
   }, [
     id_coleccion,
-    currentProcessingSnapshot,
-    currentPageInPipeline,
-    collectionProcessingStatus,
-    nombreColeccion,
+    busquedaEnviada,
+    entidadesSeleccionadas,
+    logicaEntidades,
+    fechaDesde,
+    fechaHasta,
+    page,
+    getAccessTokenSilently,
   ])
 
-  const currentPipelineBannerView = useMemo(() => {
-    if (!currentPagePipelineSnapshot) return null
-    return getProcessingBannerView(currentPagePipelineSnapshot)
-  }, [currentPagePipelineSnapshot])
-
-  const otherPipelineBannerView = useMemo(() => {
-    if (
-      !isNuevaColeccionPage ||
-      !visibleBackgroundProcessingSnapshot ||
-      visibleBackgroundProcessingId === id_coleccion
-    )
-      return null
-    return getProcessingBannerView(visibleBackgroundProcessingSnapshot, {
-      showCollectionName: true,
-    })
-  }, [
-    isNuevaColeccionPage,
-    visibleBackgroundProcessingSnapshot,
-    visibleBackgroundProcessingId,
-    id_coleccion,
-  ])
-
-  const openCollectionPipelineModal = () => {
-    if (id_coleccion && id_coleccion !== 'nueva') {
-      localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
-      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-    }
-    setModalPipelineEtapa(true)
-    setModalCargaOpen(true)
-  }
-
-  const handleOpenCurrentCollectionModal = () => {
-    openCollectionPipelineModal()
-  }
-
-  const handleOpenOtherCollection = () => {
-    if (visibleBackgroundProcessingId && id_usuario) {
-      localStorage.setItem(ACTIVE_COLLECTION_KEY, visibleBackgroundProcessingId)
-      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-      navigate(
-        `/${id_usuario}/colecciones/${visibleBackgroundProcessingId}/buscador`,
-        { state: { abrirModalCarga: true } },
-      )
-    }
-  }
-
-  const pendingGraphBannerView = useMemo(() => {
-    if (
-      modalCargaOpen ||
-      id_coleccion === 'nueva' ||
-      currentPageInPipeline ||
-      currentPipelineBannerView ||
-      !isAwaitingGraphGeneration(collectionProcessingStatus) ||
-      fuentes.length === 0 ||
-      isCollectionProcessing
-    )
-      return null
-    return getPendingGraphBannerView(nombreColeccion)
-  }, [
-    modalCargaOpen,
-    id_coleccion,
-    currentPageInPipeline,
-    currentPipelineBannerView,
-    collectionProcessingStatus,
-    fuentes.length,
-    isCollectionProcessing,
-    nombreColeccion,
-  ])
-
-  // --- FUNCIÓN DE BÚSQUEDA CENTRAL ---
-  const ejecutarBusqueda = useCallback(
-    async (targetPage: number = 1) => {
-      if (
-        !id_coleccion ||
-        id_coleccion === 'nueva' ||
-        (!busquedaEnviada.trim() && selectedEntityIds.length === 0) || // Permitir buscar si hay entidades seleccionadas
-        isGrafoView
-      ) {
-        if (!isGrafoView) setResultados([])
-        return
-      }
-
-      setLoading(true)
-      setSearchNotReadyMessage(null)
-      try {
-        const token = await getAccessTokenSilently()
-
-        const searchRequest = {
-          coleccion_id: id_coleccion,
-          query: busquedaEnviada || undefined,
-          page: targetPage,
-          limit: 10,
-          min_score: 0.25,
-          entity_ids: selectedEntityIds,
-          filtros:
-            personas.length > 0 || fechaDesde || fechaHasta
-              ? {
-                  tipo_entidad: personas.length > 0 ? personas[0] : null,
-                  rango_años:
-                    fechaDesde || fechaHasta
-                      ? [
-                          parseInt(fechaDesde) || 0,
-                          parseInt(fechaHasta) || 2026,
-                        ]
-                      : null,
-                }
-              : null,
-        }
-
-        const startTime = performance.now()
-
-        const res = await fetch(`${API_URL}/api/search`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(searchRequest),
-        })
-
-        const endTime = performance.now()
-        const durationSeconds = parseFloat(
-          ((endTime - startTime) / 1000).toFixed(2),
-        )
-
-        if (res.ok) {
-          const data = await res.json()
-          if (data.ready === false) {
-            setResultados([])
-            setSearchNotReadyMessage(
-              data.message ??
-                'Aún no hay grafo generado. Genera el grafo para habilitar la búsqueda semántica.',
-            )
-          } else {
-            setResultados(data.resultados || [])
-            setSearchTime(durationSeconds)
-            setTotalResults(data.total || data.total_resultados || 0)
-            setTotalPages(
-              data.total_pages ||
-                data.total_paginas ||
-                Math.ceil((data.total || 0) / 10) ||
-                1,
-            )
-            setPage(targetPage) // Sincronizamos el estado local de la página actual
-          }
-        } else {
-          setResultados([])
-          setSearchTime(0)
-        }
-      } catch (e) {
-        console.error('Error en búsqueda semántica:', e)
-        setSearchTime(0)
-      } finally {
-        setLoading(false)
-      }
-    },
-    [
-      id_coleccion,
-      busquedaEnviada,
-      selectedEntityIds,
-      personas,
-      fechaDesde,
-      fechaHasta,
-      isGrafoView,
-      getAccessTokenSilently,
-    ],
-  )
-
-  // Maneja el clic directo a una página específica
-  const cambiarPagina = (nuevaPagina: number) => {
-    if (nuevaPagina < 1 || nuevaPagina > totalPages || nuevaPagina === page)
-      return
-    void ejecutarBusqueda(nuevaPagina)
-  }
-
-  useEffect(() => {
-    const iniciarCarga = async () => {
-      await cargarDatos()
-    }
-    void iniciarCarga()
-  }, [cargarDatos])
-
-  // Disparador reactivo que escucha cambios en el término o en los filtros de entidades
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      void ejecutarBusqueda(page)
-    }, 400)
-    return () => clearTimeout(timer)
-  }, [ejecutarBusqueda, page])
-
-  const handleBuscar = () => {
-    const trimmed = busqueda.trim()
-    setSearchParams(trimmed ? { q: trimmed } : {})
-    setBusquedaEnviada(trimmed)
-    setPage(1) // Reseteamos siempre a la primera página al presionar Enter o Buscar
-  }
-
-  // --- LÓGICA DE BLOQUE DE PÁGINAS ESTILO GOOGLE ---
-  // ASÍ DEBE QUEDAR CORREGIDO
-  const paginasDisponibles = useMemo(() => {
-    const maxVisibles = 5
-    const paginas: number[] = []
-    let inicio = Math.max(1, page - Math.floor(maxVisibles / 2))
-    const fin = Math.min(totalPages, inicio + maxVisibles - 1) // <-- Cambiado 'let' por 'const'
-
-    if (fin - inicio + 1 < maxVisibles) {
-      inicio = Math.max(1, fin - maxVisibles + 1)
-    }
-    for (let i = inicio; i <= fin; i++) {
-      if (i >= 1 && i <= totalPages) paginas.push(i)
-    }
-    return paginas
-  }, [page, totalPages])
+  // ─────────────────────────────────────────
+  // 16. CALLBACKS: EDICIÓN & ELIMINACIÓN
+  // ─────────────────────────────────────────
 
   const saveNombre = async () => {
     if (tempNombre.trim() && id_coleccion && id_coleccion !== 'nueva') {
@@ -781,10 +475,12 @@ const BuscadorColeccion = () => {
         setBackgroundProcessingId(null)
         setBackgroundProcessingSnapshot(null)
         setIsEliminarModalOpen(false)
-        if (id_usuario)
+        if (id_usuario) {
           navigate(`/landing-page/${id_usuario}`, { replace: true })
+        }
         return
       }
+      console.error('Error al eliminar colección:', res.status)
     } catch (e) {
       console.error(e)
     } finally {
@@ -792,26 +488,423 @@ const BuscadorColeccion = () => {
     }
   }
 
+  // ─────────────────────────────────────────
+  // 17. CALLBACKS: DOCUMENTOS
+  // ─────────────────────────────────────────
+
+  const getSignedUrl = async (path: string) => {
+    const token = await getAccessTokenSilently()
+    const res = await fetch(
+      `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    )
+    if (!res.ok) throw new Error('Error obteniendo URL')
+    const { url } = await res.json()
+    return url
+  }
+
   const handleOpenDocument = async (path: string) => {
     try {
-      const token = await getAccessTokenSilently()
-      const res = await fetch(
-        `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`,
-        {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      )
-      if (!res.ok) throw new Error('Error obteniendo URL')
-      const { url } = await res.json()
+      const url = await getSignedUrl(path)
       window.open(url, '_blank')
     } catch (e) {
       console.error('No se pudo abrir el documento', e)
     }
   }
 
+  // ─────────────────────────────────────────
+  // 18. CALLBACKS: FILTROS & ENTIDADES
+  // ─────────────────────────────────────────
+
+  const toggleEntidad = (label: string) => {
+    setEntidadesSeleccionadas(prev =>
+      prev.includes(label) ? prev.filter(n => n !== label) : [...prev, label]
+    )
+  }
+
+  const handleBuscar = () => {
+    const trimmed = busqueda.trim()
+    setSearchParams(trimmed ? { q: trimmed } : {})
+    setBusquedaEnviada(trimmed)
+    setPage(1) // Resetear página a 1
+    // ejecutarBusqueda será llamado por el effect debounce
+  }
+
+  // ─────────────────────────────────────────
+  // 19. CALLBACKS: MODALES
+  // ─────────────────────────────────────────
+
+  const openCollectionPipelineModal = () => {
+    if (id_coleccion && id_coleccion !== 'nueva') {
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    }
+    setModalPipelineEtapa(true)
+    setModalCargaOpen(true)
+  }
+
+  const handleOpenCurrentCollectionModal = () => {
+    openCollectionPipelineModal()
+  }
+
+  const handleOpenOtherCollection = () => {
+    if (visibleBackgroundProcessingId && id_usuario) {
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, visibleBackgroundProcessingId)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+      navigate(
+        `/${id_usuario}/colecciones/${visibleBackgroundProcessingId}/buscador`,
+        { state: { abrirModalCarga: true } }
+      )
+    }
+  }
+
+  // ─────────────────────────────────────────
+  // 20. EFFECTS: SINCRONIZACIÓN DE URL
+  // ─────────────────────────────────────────
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+
+    if (selectedEntityIds.length > 0) {
+      params.set('entities', selectedEntityIds.join(','))
+    } else {
+      params.delete('entities')
+    }
+
+    setSearchParams(params, { replace: true })
+  }, [selectedEntityIds, setSearchParams, location.search])
+
+  useEffect(() => {
+    clearStaleActiveCollectionForPage(id_coleccion)
+  }, [id_coleccion])
+
+  // ─────────────────────────────────────────
+  // 21. EFFECTS: CARGA INICIAL
+  // ─────────────────────────────────────────
+
+  useEffect(() => {
+    const iniciarCarga = async () => {
+      await cargarDatos()
+    }
+    void iniciarCarga()
+  }, [cargarDatos])
+
+  // ─────────────────────────────────────────
+  // 22. EFFECTS: ESTADO DE MODALES
+  // ─────────────────────────────────────────
+
+  useEffect(() => {
+    const state = location.state as { abrirModalCarga?: boolean } | null
+    if (!state?.abrirModalCarga) return
+
+    queueMicrotask(() => {
+      const isNueva = id_coleccion === 'nueva'
+      if (id_coleccion && !isNueva) {
+        localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+        localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+        setModalPipelineEtapa(true)
+      } else {
+        setModalPipelineEtapa(false)
+      }
+      setModalCargaOpen(true)
+      navigate(location.pathname, { replace: true, state: {} })
+    })
+  }, [location.pathname, location.state, navigate, id_coleccion])
+
+  // ─────────────────────────────────────────
+  // 23. EFFECTS: CARGA DE ENTIDADES
+  // ─────────────────────────────────────────
+
+  useEffect(() => {
+    if (
+      collectionProcessingStatus === 'graph_ready' ||
+      collectionProcessingStatus === 'partial_error'
+    ) {
+      setTimeout(() => {
+        void cargarEntidades()
+      }, 0)
+    }
+  }, [collectionProcessingStatus, cargarEntidades])
+
+  useEffect(() => {
+    if (!id_coleccion || id_coleccion === 'nueva') return
+
+    const estaLista =
+      collectionProcessingStatus === 'graph_ready' ||
+      collectionProcessingStatus === 'partial_error'
+    if (!estaLista) return
+
+    const fetchEntities = async () => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(
+          `${API_URL}/api/collections/${id_coleccion}/entities`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        )
+        if (res.ok) {
+          const data = await res.json()
+          setEntidades(data.entidades || [])
+          setTiposEntidad(data.tipos || [])
+        }
+      } catch (e) {
+        console.error('Error cargando entidades:', e)
+      }
+    }
+
+    void fetchEntities()
+  }, [id_coleccion, collectionProcessingStatus, getAccessTokenSilently])
+
+  // ─────────────────────────────────────────
+  // 24. EFFECTS: BÚSQUEDA CON DEBOUNCE
+  // ─────────────────────────────────────────
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      ejecutarBusqueda()
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [ejecutarBusqueda, page])
+
+  // ─────────────────────────────────────────
+  // 25. EFFECTS: POLLING COLECCIÓN ACTUAL
+  // ─────────────────────────────────────────
+
+  useEffect(() => {
+    if (
+      modalCargaOpen ||
+      !id_coleccion ||
+      id_coleccion === 'nueva' ||
+      isGrafoView
+    ) {
+      return
+    }
+
+    let cancelled = false
+    let intervalId: number | undefined
+
+    const stopPolling = () => {
+      cancelled = true
+      if (intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
+    }
+
+    const pollCollection = async (): Promise<boolean> => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (cancelled) return false
+        if (res.status === 404) {
+          redirectIfCollectionMissing()
+          stopPolling()
+          return false
+        }
+        if (!res.ok) return false
+        const data = await res.json()
+        const processing = isPipelineInProgress(data.processing_status)
+        const esperandoGrafo = isAwaitingGraphForCollection(
+          id_coleccion,
+          data.processing_status
+        )
+        setCollectionProcessingStatus(data.processing_status ?? 'idle')
+        setIsCollectionProcessing(processing)
+        if (processing) {
+          setCurrentProcessingSnapshot(
+            snapshotFromCollectionApi(data, id_coleccion)
+          )
+          if (isPipelineRunning(data.processing_status)) {
+            localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+            localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+          }
+        } else {
+          setCurrentProcessingSnapshot(null)
+        }
+        if (
+          !processing &&
+          localStorage.getItem(ACTIVE_COLLECTION_KEY) === id_coleccion &&
+          !esperandoGrafo
+        ) {
+          localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+          localStorage.removeItem(MODAL_ETAPA_KEY)
+        }
+        return processing || esperandoGrafo
+      } catch (e) {
+        console.error('Error polling colección:', e)
+        return false
+      }
+    }
+
+    void (async () => {
+      const keepPolling = await pollCollection()
+      if (cancelled || !keepPolling) return
+      intervalId = window.setInterval(async () => {
+        const stillActive = await pollCollection()
+        if (!stillActive) stopPolling()
+      }, 3000)
+    })()
+
+    return () => stopPolling()
+  }, [
+    id_coleccion,
+    modalCargaOpen,
+    isGrafoView,
+    getAccessTokenSilently,
+    redirectIfCollectionMissing,
+  ])
+
+  // ─────────────────────────────────────────
+  // 26. EFFECTS: POLLING DE BACKGROUND
+  // ─────────────────────────────────────────
+
+  useEffect(() => {
+    if (!shouldPollBackground) return
+
+    const trackedId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+    if (!trackedId) return
+
+    let cancelled = false
+    let intervalId: number | undefined
+
+    const stopPolling = () => {
+      cancelled = true
+      if (intervalId !== undefined) {
+        clearInterval(intervalId)
+        intervalId = undefined
+      }
+    }
+
+    const pollBackground = async () => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_URL}/api/collections/${trackedId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (cancelled) return
+        if (res.status === 404) {
+          clearActiveCollectionStorageIfMatch(trackedId)
+          setBackgroundProcessingId(null)
+          setBackgroundProcessingSnapshot(null)
+          stopPolling()
+          return
+        }
+        if (!res.ok) return
+        const data = await res.json()
+        if (isPipelineInProgress(data.processing_status)) {
+          setBackgroundProcessingId(trackedId)
+          setBackgroundProcessingSnapshot(
+            snapshotFromCollectionApi(data, trackedId)
+          )
+        } else if (
+          isAwaitingGraphGeneration(data.processing_status) &&
+          localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+        ) {
+          setBackgroundProcessingId(trackedId)
+          setBackgroundProcessingSnapshot(null)
+        } else {
+          localStorage.removeItem(ACTIVE_COLLECTION_KEY)
+          localStorage.removeItem(MODAL_ETAPA_KEY)
+          setBackgroundProcessingId(null)
+          setBackgroundProcessingSnapshot(null)
+          stopPolling()
+        }
+      } catch (e) {
+        console.error('Error polling colección en background:', e)
+      }
+    }
+
+    void pollBackground()
+    intervalId = window.setInterval(pollBackground, 3000)
+    return () => stopPolling()
+  }, [shouldPollBackground, getAccessTokenSilently])
+
+  // ─────────────────────────────────────────
+  // 27. COMPUTED: SNAPSHOTS PIPELINE
+  // ─────────────────────────────────────────
+
+  const currentPagePipelineSnapshot = useMemo(() => {
+    if (!id_coleccion || id_coleccion === 'nueva') return null
+    if (currentProcessingSnapshot?.collectionId === id_coleccion) {
+      return currentProcessingSnapshot
+    }
+    if (currentPageInPipeline) {
+      return snapshotFromCollectionApi(
+        {
+          name: nombreColeccion,
+          processing_status: collectionProcessingStatus,
+        },
+        id_coleccion
+      )
+    }
+    return null
+  }, [
+    id_coleccion,
+    currentProcessingSnapshot,
+    currentPageInPipeline,
+    collectionProcessingStatus,
+    nombreColeccion,
+  ])
+
+  const currentPipelineBannerView = useMemo(() => {
+    if (!currentPagePipelineSnapshot) return null
+    return getProcessingBannerView(currentPagePipelineSnapshot)
+  }, [currentPagePipelineSnapshot])
+
+  const otherPipelineBannerView = useMemo(() => {
+    if (
+      !isNuevaColeccionPage ||
+      !visibleBackgroundProcessingSnapshot ||
+      visibleBackgroundProcessingId === id_coleccion
+    ) {
+      return null
+    }
+    return getProcessingBannerView(visibleBackgroundProcessingSnapshot, {
+      showCollectionName: true,
+    })
+  }, [
+    isNuevaColeccionPage,
+    visibleBackgroundProcessingSnapshot,
+    visibleBackgroundProcessingId,
+    id_coleccion,
+  ])
+
+  const pendingGraphBannerView = useMemo(() => {
+    if (
+      modalCargaOpen ||
+      id_coleccion === 'nueva' ||
+      currentPageInPipeline ||
+      currentPipelineBannerView ||
+      !isAwaitingGraphGeneration(collectionProcessingStatus) ||
+      fuentes.length === 0 ||
+      isCollectionProcessing
+    ) {
+      return null
+    }
+    return getPendingGraphBannerView(nombreColeccion)
+  }, [
+    modalCargaOpen,
+    id_coleccion,
+    currentPageInPipeline,
+    currentPipelineBannerView,
+    collectionProcessingStatus,
+    fuentes.length,
+    isCollectionProcessing,
+    nombreColeccion,
+  ])
+
+  // ============================================
+  // RENDER
+  // ============================================
+
   return (
     <>
-      <div className={`bc-root${darkMode ? ' bc-dark' : ''}`}>
+      <div className={darkMode ? 'bc-root bc-dark' : 'bc-root'}>
+        {/* ──────────────────────────────────── */}
+        {/* SIDEBAR */}
+        {/* ──────────────────────────────────── */}
+
         <aside className="bc-sidebar">
           <div className="bc-sidebar-inner">
             <div className="bc-sidebar-header">
@@ -819,9 +912,9 @@ const BuscadorColeccion = () => {
                 <input
                   className="bc-sidebar-name-input"
                   value={tempNombre}
-                  onChange={(e) => setTempNombre(e.target.value)}
+                  onChange={e => setTempNombre(e.target.value)}
                   onBlur={saveNombre}
-                  onKeyDown={(e) => e.key === 'Enter' && saveNombre()}
+                  onKeyDown={e => e.key === 'Enter' && saveNombre()}
                   autoFocus
                 />
               ) : (
@@ -852,7 +945,7 @@ const BuscadorColeccion = () => {
                   alignItems: 'center',
                 }}
               >
-                <FileText size={15} />{' '}
+                <FileText size={15} />
                 <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
               </Link>
             ) : id_coleccion !== 'nueva' ? (
@@ -865,7 +958,7 @@ const BuscadorColeccion = () => {
                   alignItems: 'center',
                 }}
               >
-                <Network size={15} />{' '}
+                <Network size={15} />
                 <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
               </Link>
             ) : null}
@@ -885,7 +978,13 @@ const BuscadorColeccion = () => {
           </div>
         </aside>
 
+        {/* ──────────────────────────────────── */}
+        {/* MAIN CONTENT */}
+        {/* ──────────────────────────────────── */}
+
         <main className="bc-main">
+          {/* BANNERS DE PROGRESO */}
+
           {!modalCargaOpen && currentPipelineBannerView && (
             <div
               className="bc-alert-banner bc-processing-banner"
@@ -893,7 +992,7 @@ const BuscadorColeccion = () => {
               onClick={handleOpenCurrentCollectionModal}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => {
+              onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   handleOpenCurrentCollectionModal()
@@ -913,7 +1012,11 @@ const BuscadorColeccion = () => {
                   </p>
                   <div className="bc-processing-banner-progress-row">
                     <div
-                      className={`bc-processing-banner-track${currentPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`}
+                      className={
+                        currentPipelineBannerView.progressPercent === null
+                          ? 'bc-processing-banner-track is-indeterminate'
+                          : 'bc-processing-banner-track'
+                      }
                       aria-hidden
                     >
                       <div
@@ -938,6 +1041,7 @@ const BuscadorColeccion = () => {
               </div>
             </div>
           )}
+
           {!modalCargaOpen && otherPipelineBannerView && (
             <div
               className="bc-alert-banner bc-processing-banner"
@@ -945,7 +1049,7 @@ const BuscadorColeccion = () => {
               onClick={handleOpenOtherCollection}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => {
+              onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   handleOpenOtherCollection()
@@ -965,7 +1069,11 @@ const BuscadorColeccion = () => {
                   </p>
                   <div className="bc-processing-banner-progress-row">
                     <div
-                      className={`bc-processing-banner-track${otherPipelineBannerView.progressPercent === null ? ' is-indeterminate' : ''}`}
+                      className={
+                        otherPipelineBannerView.progressPercent === null
+                          ? 'bc-processing-banner-track is-indeterminate'
+                          : 'bc-processing-banner-track'
+                      }
                       aria-hidden
                     >
                       <div
@@ -990,6 +1098,7 @@ const BuscadorColeccion = () => {
               </div>
             </div>
           )}
+
           {!modalCargaOpen && pendingGraphBannerView && (
             <div
               className="bc-alert-banner bc-processing-banner bc-pending-graph-banner"
@@ -997,7 +1106,7 @@ const BuscadorColeccion = () => {
               onClick={handleOpenCurrentCollectionModal}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => {
+              onKeyDown={e => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   handleOpenCurrentCollectionModal()
@@ -1023,6 +1132,8 @@ const BuscadorColeccion = () => {
             </div>
           )}
 
+          {/* CONTENIDO PRINCIPAL */}
+
           {isGrafoView ? (
             <div
               style={{ width: '100%', height: '100%', position: 'relative' }}
@@ -1031,6 +1142,8 @@ const BuscadorColeccion = () => {
             </div>
           ) : (
             <>
+              {/* BARRA DE BÚSQUEDA */}
+
               <div className="bc-searchbar-wrap">
                 <div className="bc-searchbar">
                   <Search size={17} className="bc-searchbar-icon" />
@@ -1038,18 +1151,20 @@ const BuscadorColeccion = () => {
                     className="bc-searchbar-input"
                     placeholder="Consulta algo a tus documentos..."
                     value={busqueda}
-                    onChange={(e) => setBusqueda(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
+                    onChange={e => setBusqueda(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleBuscar()}
                   />
                   <button
-                    className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${selectedEntityIds.length > 0 ? 'has-filters' : ''}`}
+                    className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${
+                      hayFiltrosActivos ? 'has-filters' : ''
+                    }`}
                     onClick={() => setFiltroOpen(!filtroOpen)}
                   >
                     <SlidersHorizontal size={14} />
                     <span>Criterios de Búsqueda</span>
-                    {selectedEntityIds.length > 0 && (
+                    {entidadesSeleccionadas.length > 0 && (
                       <span className="bc-filter-badge">
-                        {selectedEntityIds.length}
+                        {entidadesSeleccionadas.length}
                       </span>
                     )}
                   </button>
@@ -1057,32 +1172,23 @@ const BuscadorColeccion = () => {
 
                 {filtroOpen && (
                   <ModalFiltros
-                    tiposEntidad={entitiesData?.tipos || []}
+                    tiposEntidad={tiposEntidad}
                     tipoFiltroUI={tipoFiltroUI}
                     setTipoFiltroUI={setTipoFiltroUI}
                     entitySearch={entitySearch}
                     setEntitySearch={setEntitySearch}
-                    entidades={entitiesData?.entidades || []}
+                    entidades={entidades}
                     entidadesFiltradas={entidadesFiltradas}
-                    entidadesSeleccionadas={entidadesSeleccionadasLabels}
-                    toggleEntidad={handleToggleEntidadPorLabel}
+                    entidadesSeleccionadas={entidadesSeleccionadas}
+                    toggleEntidad={toggleEntidad}
                     logicaEntidades={logicaEntidades}
                     setLogicaEntidades={setLogicaEntidades}
-                    setEntidadesSeleccionadas={(labelsActualizados) => {
-                      // Si limpian la selección, mapeamos de vuelta vaciando tus IDs originales
-                      if (labelsActualizados.length === 0) {
-                        setSelectedEntityIds([])
-                      } else {
-                        const nuevosIds =
-                          entitiesData?.entidades
-                            .filter((e) => labelsActualizados.includes(e.label))
-                            .map((e) => e.id) || []
-                        setSelectedEntityIds(nuevosIds)
-                      }
-                    }}
+                    setEntidadesSeleccionadas={setEntidadesSeleccionadas}
                   />
                 )}
               </div>
+
+              {/* ÁREA DE RESULTADOS */}
 
               <div className="bc-results-area">
                 {loading ? (
@@ -1095,93 +1201,107 @@ const BuscadorColeccion = () => {
                     <div className="bc-results-meta">
                       <span className="bc-results-count">
                         {totalResults} resultado{totalResults !== 1 ? 's' : ''}{' '}
-                        encontrados
-                        {searchTime > 0 && ` en ${searchTime}s`}
+                        obtenido{totalResults !== 1 ? 's' : ''}
+                        {searchTime > 0 && ` en ${searchTime.toFixed(2)} segundo${searchTime !== 1 ? 's' : ''}`}
                       </span>
                     </div>
                     <div className="bc-results-list">
-                      {resultados.map((r, idx) => (
-                        <article key={idx} className="bc-result-card">
+                      {resultados.map(resultado => (
+                        <article
+                          key={resultado.id_chunk}
+                          className="bc-result-card"
+                        >
                           <div className="bc-card-header">
                             <div className="bc-header-info">
                               <div className="bc-title-row">
-                                <FileText size={14} className="bc-doc-icon" />
-                                <h3 className="bc-result-title">{r.titulo}</h3>
+                                <FileText
+                                  size={14}
+                                  className="bc-doc-icon"
+                                />
+                                <h3 className="bc-result-title">
+                                  {resultado.titulo}
+                                </h3>
                               </div>
+
                               <div
-                                className={`bc-score-status ${r.score > 0.7 ? 'status-high' : r.score > 0.4 ? 'status-med' : 'status-low'}`}
+                                className={
+                                  resultado.score > 0.7
+                                    ? 'bc-score-status status-high'
+                                    : resultado.score > 0.4
+                                      ? 'bc-score-status status-med'
+                                      : 'bc-score-status status-low'
+                                }
                               >
                                 <CheckCircle2
                                   size={12}
                                   className="bc-status-icon"
                                 />
                                 <span className="bc-score-value">
-                                  {r.score > 0.7
+                                  {resultado.score > 0.7
                                     ? 'Alta coincidencia'
-                                    : r.score > 0.4
+                                    : resultado.score > 0.4
                                       ? 'Coincidencia media'
                                       : 'Coincidencia baja'}
                                 </span>
                               </div>
                             </div>
+
                             <button
-                              onClick={() => handleOpenDocument(r.storage_path)}
+                              onClick={() =>
+                                handleOpenDocument(resultado.storage_path)
+                              }
                               className="bc-external-btn"
                             >
                               <ExternalLink size={13} />
                               <span>Ver Documento</span>
                             </button>
                           </div>
+
                           <div className="bc-card-body">
-                            <p className="bc-result-excerpt">
+                            <p className="bc-result-fragment">
                               <Highlight
-                                text={r.fragmento}
-                                query={busquedaEnviada}
+                                text={resultado.fragmento}
+                                queries={[busquedaEnviada, ...entidadesSeleccionadas]}
                               />
                             </p>
                           </div>
+
                           <div className="bc-card-footer">
-                            {r.pagina && (
+                            <div className="bc-footer-tag">
+                              <Network size={12} />
+                              <span>Grafo IMFD</span>
+                            </div>
+                            {resultado.pagina && (
                               <div className="bc-footer-tag">
-                                <span>Página {r.pagina}</span>
+                                <span>Página {resultado.pagina}</span>
                               </div>
                             )}
                           </div>
                         </article>
                       ))}
                     </div>
-
-                    {/* --- NUEVA PAGINACIÓN INTEGRADA (ESTILO GOOGLE) --- */}
                     {totalPages > 1 && (
-                      <div className="bc-google-pagination">
+                      <div className="bc-pagination">
                         <button
-                          className="bc-page-nav-btn"
                           disabled={page === 1}
-                          onClick={() => cambiarPagina(page - 1)}
+                          onClick={() => {
+                            setPage(page - 1)
+                            ejecutarBusqueda()
+                          }}
                         >
-                          <ChevronLeft size={16} />
-                          <span>Anterior</span>
+                          Anterior
                         </button>
-
-                        <div className="bc-page-numbers">
-                          {paginasDisponibles.map((p) => (
-                            <button
-                              key={p}
-                              className={`bc-page-num-btn ${p === page ? 'is-active' : ''}`}
-                              onClick={() => cambiarPagina(p)}
-                            >
-                              {p}
-                            </button>
-                          ))}
-                        </div>
-
+                        <span>
+                          Página {page} de {totalPages}
+                        </span>
                         <button
-                          className="bc-page-nav-btn"
                           disabled={page === totalPages}
-                          onClick={() => cambiarPagina(page + 1)}
+                          onClick={() => {
+                            setPage(page + 1)
+                            ejecutarBusqueda()
+                          }}
                         >
-                          <span>Siguiente</span>
-                          <ChevronRight size={16} />
+                          Siguiente
                         </button>
                       </div>
                     )}
@@ -1212,11 +1332,15 @@ const BuscadorColeccion = () => {
         </main>
       </div>
 
+      {/* ──────────────────────────────────── */}
+      {/* MODALES */}
+      {/* ──────────────────────────────────── */}
+
       <ModalCarga
         key={
           id_coleccion === 'nueva'
             ? `nueva-${modalCargaOpen ? 'open' : 'closed'}`
-            : (id_coleccion ?? 'none')
+            : id_coleccion ?? 'none'
         }
         isOpen={modalCargaOpen}
         scopeCollectionId={id_coleccion ?? null}
@@ -1234,6 +1358,7 @@ const BuscadorColeccion = () => {
         onUploadSuccess={cargarDatos}
         darkMode={darkMode}
       />
+
       <ModalEliminarColeccion
         isOpen={isEliminarModalOpen}
         onClose={() => {
@@ -1243,6 +1368,7 @@ const BuscadorColeccion = () => {
         nombreColeccion={nombreColeccion}
         isConfirming={isDeletingCollection}
       />
+
       <ModalDocumentosDisponibles
         isOpen={isModalFuentesOpen}
         fuentes={fuentes}
