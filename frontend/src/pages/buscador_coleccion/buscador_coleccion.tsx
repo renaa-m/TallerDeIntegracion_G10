@@ -728,11 +728,12 @@ const BuscadorColeccion = () => {
   }
 
   // --- LÓGICA DE BLOQUE DE PÁGINAS ESTILO GOOGLE ---
+  // ASÍ DEBE QUEDAR CORREGIDO
   const paginasDisponibles = useMemo(() => {
     const maxVisibles = 5
     const paginas: number[] = []
     let inicio = Math.max(1, page - Math.floor(maxVisibles / 2))
-    let fin = Math.min(totalPages, inicio + maxVisibles - 1)
+    const fin = Math.min(totalPages, inicio + maxVisibles - 1) // <-- Cambiado 'let' por 'const'
 
     if (fin - inicio + 1 < maxVisibles) {
       inicio = Math.max(1, fin - maxVisibles + 1)
