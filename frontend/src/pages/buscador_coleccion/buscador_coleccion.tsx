@@ -1284,10 +1284,7 @@ const BuscadorColeccion = () => {
                       <div className="bc-pagination">
                         <button
                           disabled={page === 1}
-                          onClick={() => {
-                            setPage(page - 1)
-                            ejecutarBusqueda()
-                          }}
+                          onClick={() => setPage(p => p - 1)}
                         >
                           Anterior
                         </button>
@@ -1296,10 +1293,7 @@ const BuscadorColeccion = () => {
                         </span>
                         <button
                           disabled={page === totalPages}
-                          onClick={() => {
-                            setPage(page + 1)
-                            ejecutarBusqueda()
-                          }}
+                          onClick={() => setPage(p => p + 1)}
                         >
                           Siguiente
                         </button>
