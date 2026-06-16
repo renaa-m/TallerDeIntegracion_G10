@@ -18,7 +18,6 @@ import {
   FileText,
   CheckCircle2,
   Loader2,
-  X,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
@@ -77,10 +76,10 @@ interface CollectionEntities {
 // ============================================
 
 function Highlight({ text, queries }: { text: string; queries: string[] }) {
-  const terms = queries.filter(q => q && q.trim())
+  const terms = queries.filter((q) => q && q.trim())
   if (terms.length === 0) return <>{text}</>
 
-  const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  const escaped = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
   const regex = new RegExp(`(${escaped.join('|')})`, 'gi')
   const parts = text.split(regex)
 
@@ -93,7 +92,7 @@ function Highlight({ text, queries }: { text: string; queries: string[] }) {
           </mark>
         ) : (
           part
-        )
+        ),
       )}
     </>
   )
@@ -123,7 +122,7 @@ const BuscadorColeccion = () => {
 
   const isGrafoView = useMemo(
     () => location.pathname.endsWith('/grafo'),
-    [location.pathname]
+    [location.pathname],
   )
   const isNuevaColeccionPage = id_coleccion === 'nueva'
 
@@ -150,9 +149,7 @@ const BuscadorColeccion = () => {
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTime, setSearchTime] = useState<number>(0)
-  const [searchNotReadyMessage, setSearchNotReadyMessage] = useState<
-    string | null
-  >(null)
+  const [searchNotReadyMessage] = useState<string | null>(null)
   const [page, setPage] = useState<number>(1)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
@@ -241,21 +238,24 @@ const BuscadorColeccion = () => {
   // 12. TEMA & CONFIGURACIÓN
   // ─────────────────────────────────────────
 
-  const darkMode = typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+  const darkMode =
+    typeof window !== 'undefined' &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches
 
   // ─────────────────────────────────────────
   // 13. COMPUTED: FILTROS
   // ─────────────────────────────────────────
 
-  const entidadesFiltradas = useMemo(() =>
-    entidades.filter(e => {
-      const matchTipo = tipoFiltroUI === null || e.tipo === tipoFiltroUI
-      const matchSearch =
-        !entitySearch.trim() ||
-        e.label.toLowerCase().includes(entitySearch.toLowerCase())
-      return matchTipo && matchSearch
-    }),
-    [entidades, tipoFiltroUI, entitySearch]
+  const entidadesFiltradas = useMemo(
+    () =>
+      entidades.filter((e) => {
+        const matchTipo = tipoFiltroUI === null || e.tipo === tipoFiltroUI
+        const matchSearch =
+          !entitySearch.trim() ||
+          e.label.toLowerCase().includes(entitySearch.toLowerCase())
+        return matchTipo && matchSearch
+      }),
+    [entidades, tipoFiltroUI, entitySearch],
   )
 
   const hayFiltrosActivos =
@@ -284,7 +284,7 @@ const BuscadorColeccion = () => {
       const token = await getAccessTokenSilently()
       const res = await fetch(
         `${API_URL}/api/collections/${id_coleccion}/entities`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` } },
       )
 
       if (res.ok) {
@@ -306,7 +306,7 @@ const BuscadorColeccion = () => {
 
       const resColl = await fetch(
         `${API_URL}/api/collections/${id_coleccion}`,
-        { headers }
+        { headers },
       )
       if (resColl.status === 404) {
         redirectIfCollectionMissing()
@@ -322,7 +322,7 @@ const BuscadorColeccion = () => {
         setIsCollectionProcessing(processing)
         if (processing) {
           setCurrentProcessingSnapshot(
-            snapshotFromCollectionApi(data, id_coleccion)
+            snapshotFromCollectionApi(data, id_coleccion),
           )
         } else {
           setCurrentProcessingSnapshot(null)
@@ -333,7 +333,7 @@ const BuscadorColeccion = () => {
 
       const resDocs = await fetch(
         `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
-        { headers }
+        { headers },
       )
       if (resDocs.ok) {
         setFuentes(await resDocs.json())
@@ -341,7 +341,12 @@ const BuscadorColeccion = () => {
     } catch (e) {
       console.error('Error cargando datos:', e)
     }
-  }, [id_coleccion, isGrafoView, getAccessTokenSilently, redirectIfCollectionMissing])
+  }, [
+    id_coleccion,
+    isGrafoView,
+    getAccessTokenSilently,
+    redirectIfCollectionMissing,
+  ])
 
   // ─────────────────────────────────────────
   // 15. CALLBACKS: BÚSQUEDA
@@ -361,7 +366,7 @@ const BuscadorColeccion = () => {
 
     setLoading(true)
     const startTime = performance.now() // ← Inicia el cronómetro
-    
+
     try {
       const token = await getAccessTokenSilently()
 
@@ -398,26 +403,22 @@ const BuscadorColeccion = () => {
       if (!res.ok) throw new Error('Error en la búsqueda')
       const data = await res.json()
       console.log('SEARCH RESPONSE', data)
-      
+
       // Calcula el tiempo transcurrido en segundos
       const endTime = performance.now()
       const elapsedSeconds = (endTime - startTime) / 1000
-      
+
       // Asegurarse de que los datos se asignan correctamente
       setResultados(Array.isArray(data.resultados) ? data.resultados : [])
       setTotalResults(typeof data.total === 'number' ? data.total : 0)
-      setTotalPages(
-        typeof data.total_pages === 'number'
-          ? data.total_pages
-          : 1
-      )
+      setTotalPages(typeof data.total_pages === 'number' ? data.total_pages : 1)
       setSearchTime(elapsedSeconds)
-      
+
       console.log('Búsqueda completada:', {
         resultados: data.resultados?.length,
         total: data.total,
         pages: data.pages,
-        tiempo_segundos: elapsedSeconds.toFixed(2)
+        tiempo_segundos: elapsedSeconds.toFixed(2),
       })
     } catch (error) {
       console.error('Error en búsqueda:', error)
@@ -501,7 +502,7 @@ const BuscadorColeccion = () => {
     const token = await getAccessTokenSilently()
     const res = await fetch(
       `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}` } },
     )
     if (!res.ok) throw new Error('Error obteniendo URL')
     const { url } = await res.json()
@@ -522,8 +523,8 @@ const BuscadorColeccion = () => {
   // ─────────────────────────────────────────
 
   const toggleEntidad = (label: string) => {
-    setEntidadesSeleccionadas(prev =>
-      prev.includes(label) ? prev.filter(n => n !== label) : [...prev, label]
+    setEntidadesSeleccionadas((prev) =>
+      prev.includes(label) ? prev.filter((n) => n !== label) : [...prev, label],
     )
   }
 
@@ -558,7 +559,7 @@ const BuscadorColeccion = () => {
       localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
       navigate(
         `/${id_usuario}/colecciones/${visibleBackgroundProcessingId}/buscador`,
-        { state: { abrirModalCarga: true } }
+        { state: { abrirModalCarga: true } },
       )
     }
   }
@@ -644,7 +645,7 @@ const BuscadorColeccion = () => {
         const token = await getAccessTokenSilently()
         const res = await fetch(
           `${API_URL}/api/collections/${id_coleccion}/entities`,
-          { headers: { Authorization: `Bearer ${token}` } }
+          { headers: { Authorization: `Bearer ${token}` } },
         )
         if (res.ok) {
           const data = await res.json()
@@ -714,13 +715,13 @@ const BuscadorColeccion = () => {
         const processing = isPipelineInProgress(data.processing_status)
         const esperandoGrafo = isAwaitingGraphForCollection(
           id_coleccion,
-          data.processing_status
+          data.processing_status,
         )
         setCollectionProcessingStatus(data.processing_status ?? 'idle')
         setIsCollectionProcessing(processing)
         if (processing) {
           setCurrentProcessingSnapshot(
-            snapshotFromCollectionApi(data, id_coleccion)
+            snapshotFromCollectionApi(data, id_coleccion),
           )
           if (isPipelineRunning(data.processing_status)) {
             localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
@@ -803,7 +804,7 @@ const BuscadorColeccion = () => {
         if (isPipelineInProgress(data.processing_status)) {
           setBackgroundProcessingId(trackedId)
           setBackgroundProcessingSnapshot(
-            snapshotFromCollectionApi(data, trackedId)
+            snapshotFromCollectionApi(data, trackedId),
           )
         } else if (
           isAwaitingGraphGeneration(data.processing_status) &&
@@ -843,7 +844,7 @@ const BuscadorColeccion = () => {
           name: nombreColeccion,
           processing_status: collectionProcessingStatus,
         },
-        id_coleccion
+        id_coleccion,
       )
     }
     return null
@@ -920,9 +921,9 @@ const BuscadorColeccion = () => {
                 <input
                   className="bc-sidebar-name-input"
                   value={tempNombre}
-                  onChange={e => setTempNombre(e.target.value)}
+                  onChange={(e) => setTempNombre(e.target.value)}
                   onBlur={saveNombre}
-                  onKeyDown={e => e.key === 'Enter' && saveNombre()}
+                  onKeyDown={(e) => e.key === 'Enter' && saveNombre()}
                   autoFocus
                 />
               ) : (
@@ -1000,7 +1001,7 @@ const BuscadorColeccion = () => {
               onClick={handleOpenCurrentCollectionModal}
               role="button"
               tabIndex={0}
-              onKeyDown={e => {
+              onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   handleOpenCurrentCollectionModal()
@@ -1057,7 +1058,7 @@ const BuscadorColeccion = () => {
               onClick={handleOpenOtherCollection}
               role="button"
               tabIndex={0}
-              onKeyDown={e => {
+              onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   handleOpenOtherCollection()
@@ -1114,7 +1115,7 @@ const BuscadorColeccion = () => {
               onClick={handleOpenCurrentCollectionModal}
               role="button"
               tabIndex={0}
-              onKeyDown={e => {
+              onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault()
                   handleOpenCurrentCollectionModal()
@@ -1159,8 +1160,8 @@ const BuscadorColeccion = () => {
                     className="bc-searchbar-input"
                     placeholder="Consulta algo a tus documentos..."
                     value={busqueda}
-                    onChange={e => setBusqueda(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleBuscar()}
+                    onChange={(e) => setBusqueda(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
                   />
                   <button
                     className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${
@@ -1210,11 +1211,12 @@ const BuscadorColeccion = () => {
                       <span className="bc-results-count">
                         {totalResults} resultado{totalResults !== 1 ? 's' : ''}{' '}
                         obtenido{totalResults !== 1 ? 's' : ''}
-                        {searchTime > 0 && ` en ${searchTime.toFixed(2)} segundo${searchTime !== 1 ? 's' : ''}`}
+                        {searchTime > 0 &&
+                          ` en ${searchTime.toFixed(2)} segundo${searchTime !== 1 ? 's' : ''}`}
                       </span>
                     </div>
                     <div className="bc-results-list">
-                      {resultados.map(resultado => (
+                      {resultados.map((resultado) => (
                         <article
                           key={resultado.id_chunk}
                           className="bc-result-card"
@@ -1222,10 +1224,7 @@ const BuscadorColeccion = () => {
                           <div className="bc-card-header">
                             <div className="bc-header-info">
                               <div className="bc-title-row">
-                                <FileText
-                                  size={14}
-                                  className="bc-doc-icon"
-                                />
+                                <FileText size={14} className="bc-doc-icon" />
                                 <h3 className="bc-result-title">
                                   {resultado.titulo}
                                 </h3>
@@ -1269,16 +1268,15 @@ const BuscadorColeccion = () => {
                             <p className="bc-result-fragment">
                               <Highlight
                                 text={resultado.fragmento}
-                                queries={[busquedaEnviada, ...entidadesSeleccionadas]}
+                                queries={[
+                                  busquedaEnviada,
+                                  ...entidadesSeleccionadas,
+                                ]}
                               />
                             </p>
                           </div>
 
                           <div className="bc-card-footer">
-                            <div className="bc-footer-tag">
-                              <Network size={12} />
-                              <span>Grafo IMFD</span>
-                            </div>
                             {resultado.pagina && (
                               <div className="bc-footer-tag">
                                 <span>Página {resultado.pagina}</span>
@@ -1292,7 +1290,7 @@ const BuscadorColeccion = () => {
                       <div className="bc-pagination">
                         <button
                           disabled={page === 1}
-                          onClick={() => setPage(p => p - 1)}
+                          onClick={() => setPage((p) => p - 1)}
                         >
                           Anterior
                         </button>
@@ -1301,7 +1299,7 @@ const BuscadorColeccion = () => {
                         </span>
                         <button
                           disabled={page === totalPages}
-                          onClick={() => setPage(p => p + 1)}
+                          onClick={() => setPage((p) => p + 1)}
                         >
                           Siguiente
                         </button>
@@ -1342,7 +1340,7 @@ const BuscadorColeccion = () => {
         key={
           id_coleccion === 'nueva'
             ? `nueva-${modalCargaOpen ? 'open' : 'closed'}`
-            : id_coleccion ?? 'none'
+            : (id_coleccion ?? 'none')
         }
         isOpen={modalCargaOpen}
         scopeCollectionId={id_coleccion ?? null}
