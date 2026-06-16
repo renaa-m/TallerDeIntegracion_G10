@@ -432,31 +432,33 @@ describe('BuscadorColeccion', () => {
 
   test('highlight marca coincidencias de la búsqueda', async () => {
     jest.useFakeTimers()
-    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/search')) {
+    ;(globalThis.fetch as jest.Mock).mockImplementation(
+      (url: string | URL | Request) => {
+        if (typeof url === 'string' && url.includes('/api/search')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => searchResponse,
+          })
+        }
+        if (typeof url === 'string' && url.includes('/api/documentos')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => documentosResponse,
+          })
+        }
+        if (typeof url === 'string' && url.includes('/api/collections/')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => collectionResponse,
+          })
+        }
         return Promise.resolve({
-          ok: true,
-          json: async () => searchResponse,
+          ok: false,
+          status: 404,
+          json: async () => ({}),
         })
-      }
-      if (typeof url === 'string' && url.includes('/api/documentos')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => documentosResponse,
-        })
-      }
-      if (typeof url === 'string' && url.includes('/api/collections/')) {
-        return Promise.resolve({
-          ok: true,
-          json: async () => collectionResponse,
-        })
-      }
-      return Promise.resolve({
-        ok: false,
-        status: 404,
-        json: async () => ({}),
-      })
-    })
+      },
+    )
 
     mockQuery = 'grafos'
 
@@ -483,7 +485,7 @@ describe('BuscadorColeccion', () => {
   test('permite editar nombre de colección y guardar con Enter', async () => {
     // Implementamos una máquina de estados quirúrgica para el fetch de este test
     ;(globalThis.fetch as jest.Mock).mockImplementation(
-      (url: string, options?: any) => {
+      (url: string | URL | Request, options?: RequestInit) => {
         if (typeof url === 'string' && url.includes('/api/documentos')) {
           return Promise.resolve({
             ok: true,
@@ -560,7 +562,7 @@ describe('BuscadorColeccion', () => {
   test('abre modal de eliminar colección y confirma borrado', async () => {
     // Garantizamos que las promesas iniciales se resuelvan siempre con la colección limpia
     ;(globalThis.fetch as jest.Mock).mockImplementation(
-      (url: string, options?: any) => {
+      (url: string | URL | Request, options?: RequestInit) => {
         if (typeof url === 'string' && url.includes('/api/documentos')) {
           return Promise.resolve({
             ok: true,
