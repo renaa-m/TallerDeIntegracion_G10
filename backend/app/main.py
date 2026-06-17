@@ -6,7 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import health, collections, documentos, usuarios, search
+from app.api.routes import (
+    health,
+    collections,
+    documentos,
+    usuarios,
+    search,
+    internal_tasks,
+)
 from app.config import settings
 from app.services import processing_queue
 
@@ -42,6 +49,7 @@ app.include_router(collections.router)
 app.include_router(documentos.router)
 app.include_router(usuarios.router)
 app.include_router(search.router)
+app.include_router(internal_tasks.router)
 
 
 @app.on_event("startup")

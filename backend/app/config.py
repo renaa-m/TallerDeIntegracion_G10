@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     google_application_credentials: str = ""
     cloud_tasks_queue: str = ""
     cloud_tasks_location: str = ""
+    # URL pública del servicio Cloud Run (sin slash final). Target del HTTP task.
+    cloud_tasks_service_url: str = ""
+    # Service account que Cloud Tasks usa para firmar el OIDC token del worker.
+    cloud_tasks_invoker_sa: str = ""
 
     # HU-13: Upload resilience — configurable via .env, sensible defaults apply
     max_upload_retries: int = 3
