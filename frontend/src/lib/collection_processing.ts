@@ -173,6 +173,13 @@ export function getGraphUnavailableView(
           'Los documentos ya están en la colección. Genera el grafo para poder explorarlo aquí.',
         pending: false,
       }
+    case 'queued':
+      return {
+        title: 'El grafo se está preparando',
+        subtitle:
+          'Comenzará automáticamente cuando haya capacidad. Vuelve a comprobarlo en unos momentos.',
+        pending: true,
+      }
     case 'processing_text':
       return {
         title: 'El grafo se está generando',
@@ -228,6 +235,7 @@ export type CollectionProcessingSnapshot = {
 }
 
 const PIPELINE_STAGE_LABELS: Record<string, string> = {
+  queued: 'En preparación',
   processing_text: 'Extracción de texto',
   processing_graph: 'Construcción del grafo',
   awaiting_graph_confirmation: 'Confirmación de grafo',
@@ -288,6 +296,8 @@ export function getOverallPipelinePercent(
   snapshot: CollectionProcessingSnapshot,
 ): number | null {
   switch (snapshot.processingStatus) {
+    case 'queued':
+      return null
     case 'awaiting_graph_confirmation':
       return 50
     case 'processing_text': {
@@ -334,7 +344,10 @@ export function getProcessingBannerView(
   let progressCaption: string
   const overall = getOverallPipelinePercent(snapshot)
 
-  if (snapshot.processingStatus === 'awaiting_graph_confirmation') {
+  if (snapshot.processingStatus === 'queued') {
+    subtitle = 'Comenzará automáticamente cuando haya capacidad disponible.'
+    progressCaption = 'En preparación'
+  } else if (snapshot.processingStatus === 'awaiting_graph_confirmation') {
     subtitle =
       'El grafo se creará solo con los documentos que sí pasaron la extracción.'
     progressCaption = 'Confirmación requerida'

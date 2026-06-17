@@ -76,7 +76,7 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   graph_ready: '¡Grafo generado correctamente!',
   partial_error: '¡Grafo generado! Revisa qué documentos quedaron fuera.',
   cancelled: 'Procesamiento cancelado.',
-  queued: 'En cola — iniciará automáticamente cuando haya capacidad.',
+  queued: 'Preparando el procesamiento — comenzará automáticamente en breve...',
   error: 'Ocurrió un error durante el procesamiento.',
 }
 
@@ -1259,6 +1259,17 @@ const ModalCarga = ({
                     <Network size={14} /> Generar grafo
                   </button>
                 </>
+              )}
+
+              {pipelineStatus === 'queued' && (
+                <button
+                  className="mc-btn-cancel"
+                  type="button"
+                  onClick={handleCancel}
+                  disabled={isCancelling}
+                >
+                  {cancelButtonLabel}
+                </button>
               )}
 
               {(isPipelineRunning ||
