@@ -47,6 +47,7 @@ type PipelineStatus =
   | 'graph_ready'
   | 'partial_error'
   | 'cancelled'
+  | 'queued'
   | 'error'
 
 type FailedProcessingDocument = {
@@ -75,12 +76,14 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   graph_ready: '¡Grafo generado correctamente!',
   partial_error: '¡Grafo generado! Revisa qué documentos quedaron fuera.',
   cancelled: 'Procesamiento cancelado.',
+  queued: 'En cola — iniciará automáticamente cuando haya capacidad.',
   error: 'Ocurrió un error durante el procesamiento.',
 }
 
 /** El backend usa ``cancelled``; en la UI equivalen a “listo para generar de nuevo”. */
 function pipelineStatusFromApi(raw: string | undefined): PipelineStatus {
-  if (raw === 'cancelled' || raw === 'queued') return 'idle'
+  if (raw === 'cancelled') return 'idle'
+  if (raw === 'queued') return 'queued'
   if (
     raw === 'idle' ||
     raw === 'processing_text' ||

@@ -4,17 +4,17 @@ export const PIPELINE_RUNNING_STATUSES = new Set([
   'processing_graph',
 ])
 
-/** Incluye pausa por confirmación de grafo (sin cola). */
+/** Incluye pausa por confirmación de grafo y colecciones en cola. */
 export const PIPELINE_IN_PROGRESS_STATUSES = new Set([
   'processing_text',
   'processing_graph',
   'awaiting_graph_confirmation',
+  'queued',
 ])
 
 export const ACTIVE_COLLECTION_KEY = 'active_collection_id'
 export const MODAL_ETAPA_KEY = 'modal_carga_etapa'
 
-/** Legacy: el backend ya no encola; tratar como idle. */
 export function isPipelineQueued(status: string | undefined | null): boolean {
   return status === 'queued'
 }
@@ -263,7 +263,7 @@ export function snapshotFromCollectionApi(
   collectionId: string,
 ): CollectionProcessingSnapshot {
   const rawStatus = data.processing_status ?? 'idle'
-  const processingStatus = rawStatus === 'queued' ? 'idle' : rawStatus
+  const processingStatus = rawStatus
   return {
     collectionId,
     collectionName: data.name ?? 'Colección',
