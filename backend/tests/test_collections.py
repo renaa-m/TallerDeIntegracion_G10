@@ -235,7 +235,7 @@ class TestProcesarColeccion:
         assert data["processing_status"] == "processing_text"
         mock_request.assert_called_once()
 
-    def test_procesar_coleccion_retorna_409_si_slot_ocupado(self, client):
+    def test_procesar_coleccion_retorna_429_si_cola_llena(self, client):
         from app.services.processing_queue import ProcessingSlotBusyError
 
         blocking = {
@@ -259,9 +259,8 @@ class TestProcesarColeccion:
         ):
             response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
 
-        assert response.status_code == 409
+        assert response.status_code == 429
         assert "Otra colección" in response.json()["detail"]
-        assert "Se está procesando" in response.json()["detail"]
 
     def test_procesar_coleccion_en_procesamiento_retorna_409(self, client):
         coleccion_procesando = {**MOCK_COLLECTION, "processing_status": "processing_text"}
