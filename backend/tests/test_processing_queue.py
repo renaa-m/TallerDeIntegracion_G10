@@ -1,6 +1,6 @@
 """Tests de la cola de procesamiento multi-usuario."""
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
