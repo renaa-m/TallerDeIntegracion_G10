@@ -253,8 +253,7 @@ export type CollectionProgressFields = {
 export function formatCollectionProgressLabel(
   snapshot: CollectionProcessingSnapshot,
 ): string {
-  const stage =
-    PIPELINE_STAGE_LABELS[snapshot.processingStatus] ?? 'Procesando'
+  const stage = PIPELINE_STAGE_LABELS[snapshot.processingStatus] ?? 'Procesando'
   const overall = getOverallPipelinePercent(snapshot)
 
   if (overall !== null) {
