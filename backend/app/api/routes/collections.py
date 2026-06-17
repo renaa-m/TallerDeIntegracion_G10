@@ -618,12 +618,24 @@ async def get_collection_graph(
             detail="Error al descargar el grafo desde el almacenamiento.",
         ) from exc
 
-    cytoscape = graph_transformer.qm_to_cytoscape(qm_bytes.decode("utf-8"))
+    # --- RESOLUCIÓN DEL CONFLICTO ---
+    # Obtenemos las fuentes para que el frontend pueda abrir los documentos (Feature)
+    chunk_sources = supabase_client.get_chunk_sources_by_collection(
+        str(collection_id)
+    )
+    
+    # Transformamos el grafo incluyendo las fuentes
+    cytoscape_data = graph_transformer.qm_to_cytoscape(
+        qm_bytes.decode("utf-8"), 
+        chunk_sources=chunk_sources
+    )
+    
+    # Retornamos la respuesta unificada con el modelo correcto
     return CytoscapeGraph(
         ready=True,
         processing_status=status,
         message=None,
-        elements=CytoscapeElements(**cytoscape["elements"]),
+        elements=CytoscapeElements(**cytoscape_data["elements"]),
     )
 
 

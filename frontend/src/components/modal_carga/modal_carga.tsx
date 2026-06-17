@@ -80,6 +80,11 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   error: 'Ocurrió un error durante el procesamiento.',
 }
 
+const LANGUAGE_OPTIONS = [
+  { value: 'es', label: 'Español' },
+  { value: 'en', label: 'English' },
+] as const
+
 /** El backend usa ``cancelled``; en la UI equivalen a “listo para generar de nuevo”. */
 function pipelineStatusFromApi(raw: string | undefined): PipelineStatus {
   if (raw === 'cancelled') return 'idle'
@@ -201,6 +206,8 @@ const ModalCarga = ({
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedCount, setUploadedCount] = useState(0)
   const [nombreColeccion, setNombreColeccion] = useState('')
+  /* Idioma español por defecto, pero se puede extender para soportar otros idiomas en el futuro. */
+  const [idioma, setIdioma] = useState<string>('es')
   const [selectedEntities, setSelectedEntities] = useState<string[]>([])
   const [error, setError] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -691,6 +698,7 @@ const ModalCarga = ({
         body: JSON.stringify({
           name: nombreColeccion || 'Nueva colección',
           description: '',
+          language: idioma, // <--- Agregar esto
         }),
       })
       if (!res.ok) {
@@ -1090,6 +1098,26 @@ const ModalCarga = ({
                 disabled={isUploadingLocked}
               />
             </div>
+
+            {/* 4. Selector de Idioma integrado */}
+            <div className="mc-language-selector" style={{ marginTop: '1rem' }}>
+              <label className="mc-label-custom">
+                Idioma de los documentos
+              </label>
+              <select
+                className="mc-input"
+                value={idioma}
+                onChange={(e) => setIdioma(e.target.value)}
+                disabled={isUploadingLocked}
+              >
+                {LANGUAGE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="mc-footer">
               <button
                 className="mc-btn-cancel"

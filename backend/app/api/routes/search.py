@@ -19,12 +19,14 @@ async def search(
     request: SearchRequest,
     user_id: str = Depends(get_current_user),
 ):
-    """Búsqueda semántica sobre los chunks de una colección procesada.
+    """Búsqueda sobre los chunks de una colección procesada.
 
-    Devuelve resultados paginados (10 por página). El filtro de min_score y la
-    paginación se ejecutan en SQL; cada fila incluye total_count para evitar
-    un segundo query. Los resultados incluyen storage_path; para obtener una URL
-    abierta del documento usar GET /api/documentos/signed-url?path=<storage_path>.
+    Soporta dos modos combinables:
+    - Semántica: query en lenguaje natural → embedding → ranking por similitud coseno.
+    - Por entidad: nombres_entidades en filtros → pre-filtro ILIKE sobre chunk_text.
+
+    Se puede usar uno solo o ambos. Sin query ni entidades devuelve lista vacía.
+    Resultados paginados (10/página). El total_count viene de SQL window function.
     """
     collection = supabase_client.get_collection_by_id(str(request.coleccion_id))
     if not collection or collection["user_id"] != user_id:
@@ -43,19 +45,29 @@ async def search(
             ),
         )
 
-    try:
-        query_embedding: list[float] = await asyncio.to_thread(generate_embedding, request.query)
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Error al generar el embedding de la consulta: {exc}",
-        ) from exc
-
     filtros = request.filtros
+    tiene_query = bool(request.query and request.query.strip())
+    entity_names = filtros.nombres_entidades if filtros else None
+    tiene_entidades = bool(entity_names)
+
+    if not tiene_query and not tiene_entidades:
+        return SearchResponse(resultados=[], total=0, page=request.page, total_pages=0)
+
+    query_embedding: list[float] | None = None
+    if tiene_query:
+        try:
+            query_embedding = await asyncio.to_thread(generate_embedding, request.query)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Error al generar el embedding de la consulta: {exc}",
+            ) from exc
+
     rango = filtros.rango_años if filtros else None
     year_min = rango[0] if rango and len(rango) >= 1 else None
     year_max = rango[1] if rango and len(rango) >= 2 else None
     entity_types = [filtros.tipo_entidad] if filtros and filtros.tipo_entidad else None
+    entity_logic = filtros.logica_entidades if filtros else "OR"
 
     page_results = await asyncio.to_thread(
         supabase_client.search_chunks,
@@ -67,6 +79,8 @@ async def search(
         year_min,
         year_max,
         request.min_score,
+        entity_names,
+        entity_logic,
     )
 
     total = int(page_results[0]["total_count"]) if page_results else 0
