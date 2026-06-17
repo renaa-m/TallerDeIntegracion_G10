@@ -47,6 +47,21 @@ app.include_router(search.router)
 @app.on_event("startup")
 def _recover_processing_queue_on_startup() -> None:
     processing_queue.recover_orphaned_processing()
+    _warn_if_wukong_missing()
+
+
+def _warn_if_wukong_missing() -> None:
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        import wukong_engine  # noqa: F401
+    except ImportError:
+        log.error(
+            "wukong_engine NO está instalado. "
+            "Ejecuta: cd backend && pip install -e ./wukong-engine "
+            "— el grafo no se podrá generar hasta instalarlo."
+        )
 
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"

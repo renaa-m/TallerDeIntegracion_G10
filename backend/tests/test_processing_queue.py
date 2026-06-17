@@ -70,12 +70,14 @@ class TestRequestProcess:
             patch("app.services.processing_queue._active_job_count", return_value=1),
             patch("app.services.processing_queue.supabase_client.set_collection_queued") as mock_enqueue,
             patch("app.services.processing_queue._dispatch_process_job") as mock_dispatch,
+            patch("app.services.processing_queue._try_dequeue_next") as mock_dequeue,
         ):
             status = processing_queue.request_process(COL_B, USER_A, bg)
 
         assert status == "queued"
         mock_enqueue.assert_called_once_with(COL_B, "process", payload=None)
         mock_dispatch.assert_not_called()
+        mock_dequeue.assert_called_once()
 
     def test_encola_cuando_global_lleno(self):
         bg = MagicMock()
@@ -297,24 +299,30 @@ class TestTryDequeueNext:
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestRecoverOrphanedProcessing:
-    def test_jobs_activos_se_resetean_a_idle(self):
+    def test_jobs_activos_se_reanudan_tras_reinicio(self):
         stale = [
-            {"id": COL_A, "processing_status": "processing_text"},
-            {"id": COL_B, "processing_status": "processing_graph"},
+            {
+                "id": COL_A,
+                "user_id": USER_A,
+                "processing_status": "processing_text",
+            },
+            {
+                "id": COL_B,
+                "user_id": USER_B,
+                "processing_status": "processing_graph",
+            },
         ]
         with (
             patch("app.services.processing_queue.supabase_client.list_collections_by_processing_statuses",
                   return_value=stale),
-            patch("app.services.processing_queue.supabase_client.clear_collection_queue_metadata") as mock_clear,
-            patch("app.services.processing_queue.supabase_client.update_collection_processing_status") as mock_upd,
+            patch("app.services.processing_queue.try_resume_stale_job") as mock_resume,
             patch("app.services.processing_queue._try_dequeue_next"),
         ):
             processing_queue.recover_orphaned_processing()
 
-        assert mock_clear.call_count == 2
-        calls = mock_upd.call_args_list
-        statuses = [c.args[1] for c in calls]
-        assert all(s == "idle" for s in statuses)
+        assert mock_resume.call_count == 2
+        mock_resume.assert_any_call(COL_A, USER_A)
+        mock_resume.assert_any_call(COL_B, USER_B)
 
     def test_jobs_queued_no_se_resetean(self):
         stale = [{"id": COL_C, "processing_status": "queued"}]
@@ -381,6 +389,81 @@ class TestRunJobDequeue:
             processing_queue._run_continue_graph_job(COL_A, USER_A)
 
         mock_dequeue.assert_called_once()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reconciliación / nudge
+# ──────────────────────────────────────────────────────────────────────────────
+
+class TestReconcileAndNudge:
+    def test_reconcile_libera_slot_fantasma(self):
+        with processing_queue._running_jobs_guard:
+            processing_queue._running_jobs[COL_A] = USER_A
+        with patch(
+            "app.services.processing_queue.supabase_client.get_collection_by_id",
+            return_value={"id": COL_A, "processing_status": "idle"},
+        ):
+            processing_queue._reconcile_running_jobs()
+        assert COL_A not in processing_queue._running_jobs
+
+    def test_reconcile_conserva_slot_activo_en_db(self):
+        with processing_queue._running_jobs_guard:
+            processing_queue._running_jobs[COL_A] = USER_A
+        with patch(
+            "app.services.processing_queue.supabase_client.get_collection_by_id",
+            return_value={"id": COL_A, "processing_status": "processing_text"},
+        ):
+            processing_queue._reconcile_running_jobs()
+        assert processing_queue._running_jobs[COL_A] == USER_A
+
+    def test_nudge_reconcilia_y_desencola(self):
+        with (
+            patch("app.services.processing_queue._reconcile_running_jobs") as mock_reconcile,
+            patch("app.services.processing_queue._try_dequeue_next") as mock_dequeue,
+        ):
+            processing_queue.nudge_processing_queue()
+        mock_reconcile.assert_called_once()
+        mock_dequeue.assert_called_once()
+
+    def test_try_resume_salta_directo_a_wukong_si_texto_ya_extraido(self):
+        row = {
+            "id": COL_A,
+            "processing_status": "processing_text",
+            "queue_payload": None,
+        }
+        with (
+            patch("app.services.processing_queue._reconcile_running_jobs"),
+            patch("app.services.processing_queue._is_job_alive", return_value=False),
+            patch("app.services.processing_queue.supabase_client.get_collection", return_value=row),
+            patch(
+                "app.services.processing_queue.supabase_client.get_document_texts_by_collection",
+                return_value=[{"document_id": "d1", "extracted_text": "hola"}],
+            ),
+            patch("app.services.processing_queue.supabase_client.update_collection_processing_status") as mock_upd,
+            patch("app.services.processing_queue._can_dispatch_for_user", return_value=True),
+            patch("app.services.processing_queue._dispatch_continue_graph_job") as mock_dispatch,
+            patch("app.services.processing_queue._dispatch_process_job") as mock_process,
+        ):
+            assert processing_queue.try_resume_stale_job(COL_A, USER_A) is True
+        mock_upd.assert_called_once_with(COL_A, "processing_graph")
+        mock_dispatch.assert_called_once_with(COL_A, None, user_id=USER_A)
+        mock_process.assert_not_called()
+
+    def test_try_resume_despacha_wukong_si_processing_graph_huérfano(self):
+        row = {
+            "id": COL_A,
+            "processing_status": "processing_graph",
+            "queue_payload": None,
+        }
+        with (
+            patch("app.services.processing_queue._reconcile_running_jobs"),
+            patch("app.services.processing_queue._is_job_alive", return_value=False),
+            patch("app.services.processing_queue.supabase_client.get_collection", return_value=row),
+            patch("app.services.processing_queue._can_dispatch_for_user", return_value=True),
+            patch("app.services.processing_queue._dispatch_continue_graph_job") as mock_dispatch,
+        ):
+            assert processing_queue.try_resume_stale_job(COL_A, USER_A) is True
+        mock_dispatch.assert_called_once_with(COL_A, None, user_id=USER_A)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

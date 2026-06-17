@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import {
   useNavigate,
   useParams,
@@ -138,6 +138,11 @@ const BuscadorColeccion = () => {
   const [currentProcessingSnapshot, setCurrentProcessingSnapshot] =
     useState<CollectionProcessingSnapshot | null>(null)
   const [scopedCollectionId, setScopedCollectionId] = useState(id_coleccion)
+  const [collectionInitialLoadDone, setCollectionInitialLoadDone] =
+    useState(false)
+  const collectionMissingRef = useRef(false)
+  const collectionProcessingStatusRef = useRef(collectionProcessingStatus)
+  collectionProcessingStatusRef.current = collectionProcessingStatus
 
   // ─────────────────────────────────────────
   // 4. ESTADO: BÚSQUEDA
@@ -218,6 +223,8 @@ const BuscadorColeccion = () => {
     setCollectionProcessingStatus('idle')
     setBackgroundProcessingId(null)
     setBackgroundProcessingSnapshot(null)
+    setCollectionInitialLoadDone(false)
+    collectionMissingRef.current = false
   }
 
   // ─────────────────────────────────────────
@@ -266,14 +273,19 @@ const BuscadorColeccion = () => {
   // ─────────────────────────────────────────
 
   const redirectIfCollectionMissing = useCallback(() => {
+    if (collectionMissingRef.current) return
+    collectionMissingRef.current = true
     clearActiveCollectionStorageIfMatch(id_coleccion)
     setIsCollectionProcessing(false)
     setCurrentProcessingSnapshot(null)
     setCollectionProcessingStatus('idle')
     setBackgroundProcessingId(null)
     setBackgroundProcessingSnapshot(null)
+    setNombreColeccion('Colección no encontrada')
     if (id_usuario) {
       navigate(`/landing-page/${id_usuario}`, { replace: true })
+    } else {
+      navigate('/', { replace: true })
     }
   }, [id_coleccion, id_usuario, navigate])
 
@@ -299,6 +311,7 @@ const BuscadorColeccion = () => {
 
   const cargarDatos = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva') return
+    if (collectionMissingRef.current) return
 
     try {
       const token = await getAccessTokenSilently()
@@ -324,6 +337,10 @@ const BuscadorColeccion = () => {
           setCurrentProcessingSnapshot(
             snapshotFromCollectionApi(data, id_coleccion),
           )
+          if (isPipelineRunning(status) || status === 'queued') {
+            localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+            localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+          }
         } else {
           setCurrentProcessingSnapshot(null)
         }
@@ -340,6 +357,8 @@ const BuscadorColeccion = () => {
       }
     } catch (e) {
       console.error('Error cargando datos:', e)
+    } finally {
+      setCollectionInitialLoadDone(true)
     }
   }, [
     id_coleccion,
@@ -679,10 +698,22 @@ const BuscadorColeccion = () => {
       modalCargaOpen ||
       !id_coleccion ||
       id_coleccion === 'nueva' ||
-      isGrafoView
+      isGrafoView ||
+      !collectionInitialLoadDone ||
+      collectionMissingRef.current
     ) {
       return
     }
+
+    const needsPolling =
+      isCollectionProcessing ||
+      isPipelineInProgress(collectionProcessingStatusRef.current) ||
+      isAwaitingGraphForCollection(
+        id_coleccion,
+        collectionProcessingStatusRef.current,
+      )
+
+    if (!needsPolling) return
 
     let cancelled = false
     let intervalId: number | undefined
@@ -696,6 +727,7 @@ const BuscadorColeccion = () => {
     }
 
     const pollCollection = async (): Promise<boolean> => {
+      if (collectionMissingRef.current) return false
       try {
         const token = await getAccessTokenSilently()
         const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
@@ -759,6 +791,8 @@ const BuscadorColeccion = () => {
     id_coleccion,
     modalCargaOpen,
     isGrafoView,
+    collectionInitialLoadDone,
+    isCollectionProcessing,
     getAccessTokenSilently,
     redirectIfCollectionMissing,
   ])
@@ -837,23 +871,8 @@ const BuscadorColeccion = () => {
     if (currentProcessingSnapshot?.collectionId === id_coleccion) {
       return currentProcessingSnapshot
     }
-    if (currentPageInPipeline) {
-      return snapshotFromCollectionApi(
-        {
-          name: nombreColeccion,
-          processing_status: collectionProcessingStatus,
-        },
-        id_coleccion,
-      )
-    }
     return null
-  }, [
-    id_coleccion,
-    currentProcessingSnapshot,
-    currentPageInPipeline,
-    collectionProcessingStatus,
-    nombreColeccion,
-  ])
+  }, [id_coleccion, currentProcessingSnapshot])
 
   const currentPipelineBannerView = useMemo(() => {
     if (!currentPagePipelineSnapshot) return null
@@ -1348,6 +1367,9 @@ const BuscadorColeccion = () => {
         onClose={() => {
           setModalCargaOpen(false)
           setModalPipelineEtapa(false)
+          if (id_coleccion && id_coleccion !== 'nueva') {
+            void cargarDatos()
+          }
           if (isNuevaColeccionPage) {
             const tracked = localStorage.getItem(ACTIVE_COLLECTION_KEY)
             setBackgroundProcessingId(tracked)

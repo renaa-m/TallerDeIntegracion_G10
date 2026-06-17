@@ -220,6 +220,11 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
 
         if _skip_if_user_cancelled(collection_id, "iniciar grafo tras extracción"):
             return
+        logger.info(
+            "Colección %s: extracción completada (%d doc(s)); iniciando Wukong",
+            collection_id,
+            n_extracted,
+        )
         process_graph_collection(
             collection_id,
             custom_data_model=custom_data_model,

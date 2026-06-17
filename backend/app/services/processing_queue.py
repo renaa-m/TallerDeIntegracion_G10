@@ -53,6 +53,7 @@ _SLOT_HELD = frozenset(
 
 # collection_id → user_id de los jobs que están corriendo ahora mismo
 _running_jobs: dict[str, str] = {}
+_job_threads: dict[str, threading.Thread] = {}
 _running_jobs_guard = threading.Lock()
 
 
@@ -68,6 +69,13 @@ def _mark_job_running(collection_id: str, user_id: str) -> None:
 def _mark_job_finished(collection_id: str) -> None:
     with _running_jobs_guard:
         _running_jobs.pop(collection_id, None)
+        _job_threads.pop(collection_id, None)
+
+
+def _is_job_alive(collection_id: str) -> bool:
+    with _running_jobs_guard:
+        thread = _job_threads.get(collection_id)
+    return thread is not None and thread.is_alive()
 
 
 def _active_job_count() -> int:
@@ -91,6 +99,48 @@ def _reserve_job_slot(collection_id: str, user_id: str) -> None:
 
 def _release_job_slot(collection_id: str) -> None:
     _mark_job_finished(collection_id)
+
+
+def _reconcile_running_jobs() -> None:
+    """Libera slots en memoria cuyo job ya no está activo en DB o cuyo thread murió.
+
+    Tras un reload de uvicorn, reinicio o crash, ``_running_jobs`` puede quedar
+    con entradas fantasma que impiden desencolar colecciones en ``queued``.
+    """
+    with _running_jobs_guard:
+        collection_ids = list(_running_jobs.keys())
+
+    for collection_id in collection_ids:
+        try:
+            row = supabase_client.get_collection_by_id(collection_id)
+        except Exception as exc:
+            logger.warning(
+                "Reconciliación omitida para colección %s: %s",
+                collection_id,
+                exc,
+            )
+            continue
+
+        db_status = row.get("processing_status") if row else None
+        with _running_jobs_guard:
+            thread = _job_threads.get(collection_id)
+        thread_alive = thread is not None and thread.is_alive()
+        db_active = db_status in ACTIVE_STATUSES
+
+        if row is None or not db_active:
+            _release_job_slot(collection_id)
+            logger.info(
+                "Reconciliación: slot liberado para %s (DB=%s)",
+                collection_id,
+                db_status or "missing",
+            )
+        elif thread is not None and not thread_alive:
+            _release_job_slot(collection_id)
+            logger.warning(
+                "Reconciliación: job huérfano %s (DB=%s, thread muerto)",
+                collection_id,
+                db_status,
+            )
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -119,6 +169,8 @@ def _try_dequeue_next() -> None:
     Itera los próximos candidatos en orden FIFO hasta encontrar uno cuyo
     usuario no tenga job activo. Si ninguno califica, no hace nada.
     """
+    _reconcile_running_jobs()
+
     if _active_job_count() >= MAX_CONCURRENT_JOBS:
         return
 
@@ -136,21 +188,19 @@ def _try_dequeue_next() -> None:
         queue_payload = candidate.get("queue_payload") or {}
         custom_model = queue_payload.get("custom_data_model") if queue_payload else None
 
+        supabase_client.clear_collection_queue_metadata(collection_id)
+        next_status = (
+            "processing_graph" if queue_action == "continue_graph" else "processing_text"
+        )
+        supabase_client.update_collection_processing_status(collection_id, next_status)
+
         _reserve_job_slot(collection_id, user_id)
         try:
-            supabase_client.clear_collection_queue_metadata(collection_id)
-
             if queue_action == "continue_graph":
-                supabase_client.update_collection_processing_status(
-                    collection_id, "processing_graph"
-                )
                 _dispatch_continue_graph_job(
                     collection_id, custom_model, user_id=user_id
                 )
             else:
-                supabase_client.update_collection_processing_status(
-                    collection_id, "processing_text"
-                )
                 _dispatch_process_job(collection_id, custom_model, user_id=user_id)
         except Exception:
             _release_job_slot(collection_id)
@@ -178,6 +228,8 @@ def _dispatch_process_job(
         daemon=True,
         name=f"process-job-{collection_id}",
     )
+    with _running_jobs_guard:
+        _job_threads[collection_id] = thread
     thread.start()
 
 
@@ -193,6 +245,8 @@ def _dispatch_continue_graph_job(
         daemon=True,
         name=f"continue-graph-{collection_id}",
     )
+    with _running_jobs_guard:
+        _job_threads[collection_id] = thread
     thread.start()
 
 
@@ -217,6 +271,8 @@ def request_process(
         ProcessingSlotBusyError — el usuario ya tiene MAX_QUEUED_PER_USER jobs en cola.
     """
     del background_tasks
+
+    _reconcile_running_jobs()
 
     queued_count = supabase_client.count_user_queued_collections(user_id)
     if queued_count >= MAX_QUEUED_PER_USER:
@@ -248,6 +304,10 @@ def request_process(
         _active_job_count(),
         queued_count + 1,
     )
+    try:
+        _try_dequeue_next()
+    except Exception as exc:
+        logger.warning("No se pudo desencolar tras encolar %s: %s", collection_id, exc)
     return "queued"
 
 
@@ -267,6 +327,8 @@ def request_continue_graph(
         ProcessingSlotBusyError — el usuario ya tiene MAX_QUEUED_PER_USER jobs en cola.
     """
     del background_tasks
+
+    _reconcile_running_jobs()
 
     queued_count = supabase_client.count_user_queued_collections(user_id)
     if queued_count >= MAX_QUEUED_PER_USER:
@@ -297,6 +359,10 @@ def request_continue_graph(
     supabase_client.set_collection_queued(
         collection_id, "continue_graph", payload=payload
     )
+    try:
+        _try_dequeue_next()
+    except Exception as exc:
+        logger.warning("No se pudo desencolar tras encolar %s: %s", collection_id, exc)
     return "queued"
 
 
@@ -345,11 +411,12 @@ def _run_continue_graph_job(
 # ──────────────────────────────────────────────────────────────────────────────
 
 def recover_orphaned_processing() -> None:
-    """Tras reinicio: resetea jobs en ejecución huérfanos; preserva los encolados.
+    """Tras reinicio: reanuda jobs huérfanos en DB; despacha los encolados.
 
-    - processing_text / processing_graph → idle (el thread murió con el proceso)
+    - processing_text / processing_graph → reanuda el thread si no hay uno vivo
     - queued → se mantiene en queued y se intenta despachar el primero disponible
     """
+    _reconcile_running_jobs()
     try:
         stale = supabase_client.list_collections_by_processing_statuses(
             ("processing_text", "processing_graph", "queued")
@@ -363,29 +430,28 @@ def recover_orphaned_processing() -> None:
     for row in stale:
         collection_id = row["id"]
         status = row.get("processing_status")
+        user_id = row.get("user_id")
 
-        if status in ACTIVE_STATUSES:
-            logger.warning(
-                "Recuperación: colección %s en %s tras reinicio; marcando idle",
-                collection_id,
-                status,
-            )
-            supabase_client.clear_collection_queue_metadata(collection_id)
-            supabase_client.update_collection_processing_status(
-                collection_id,
-                "idle",
-                error_message=(
-                    "Procesamiento interrumpido al reiniciar el servidor. "
-                    "Puedes generar el grafo de nuevo."
-                ),
-            )
-        elif status == "queued":
+        if status == "queued":
             logger.info(
                 "Recuperación: colección %s quedó encolada; se intentará despachar.",
                 collection_id,
             )
+            continue
 
-    # Intenta despachar jobs que quedaron encolados
+        if status in ACTIVE_STATUSES and user_id:
+            logger.warning(
+                "Recuperación: reanudando colección %s en %s tras reinicio",
+                collection_id,
+                status,
+            )
+            try:
+                try_resume_stale_job(collection_id, user_id)
+            except Exception as exc:
+                logger.warning(
+                    "No se pudo reanudar colección %s: %s", collection_id, exc
+                )
+
     try:
         _try_dequeue_next()
     except Exception as exc:
@@ -427,3 +493,114 @@ def clear_legacy_queued_collections(user_id: str) -> None:
 def busy_detail_message(blocking: dict[str, Any]) -> str:
     name = blocking.get("name") or "Cola llena"
     return name
+
+
+def is_job_running(collection_id: str) -> bool:
+    """True si hay un thread de procesamiento vivo para esta colección."""
+    return _is_job_alive(collection_id)
+
+
+def nudge_processing_queue() -> None:
+    """Reconcilia slots en memoria e intenta desencolar jobs pendientes.
+
+    Útil cuando una colección quedó en ``queued`` sin worker activo que
+    dispare el dequeue (p. ej. slots fantasma tras reload o al volver a la UI).
+    """
+    try:
+        _reconcile_running_jobs()
+        _try_dequeue_next()
+    except Exception as exc:
+        logger.warning("Nudge de cola de procesamiento falló: %s", exc)
+
+
+def _custom_model_from_row(row: dict) -> dict | None:
+    payload = row.get("queue_payload") or {}
+    if isinstance(payload, dict):
+        return payload.get("custom_data_model")
+    return None
+
+
+def _can_dispatch_for_user(user_id: str, collection_id: str) -> bool:
+    with _running_jobs_guard:
+        in_running = collection_id in _running_jobs
+        busy_users = set(_running_jobs.values())
+        active_count = len(_running_jobs)
+    if user_id in busy_users and not in_running:
+        return False
+    if active_count >= MAX_CONCURRENT_JOBS and not in_running:
+        return False
+    return True
+
+
+def try_resume_stale_job(collection_id: str, user_id: str) -> bool:
+    """Reanuda un job en DB (processing_*) cuyo thread murió (reload, crash).
+
+    Returns:
+        True si se despachó un worker nuevo o se nudgió la cola.
+    """
+    _reconcile_running_jobs()
+    if _is_job_alive(collection_id):
+        return False
+
+    row = supabase_client.get_collection(collection_id, user_id)
+    if not row:
+        return False
+
+    status = row.get("processing_status")
+    if status == "queued" and row.get("queue_action"):
+        nudge_processing_queue()
+        return True
+
+    if status not in ACTIVE_STATUSES:
+        return False
+
+    if not _can_dispatch_for_user(user_id, collection_id):
+        logger.info(
+            "Reanudación omitida para %s: sin capacidad de slot ahora mismo",
+            collection_id,
+        )
+        return False
+
+    custom_model = _custom_model_from_row(row)
+    _reserve_job_slot(collection_id, user_id)
+    try:
+        if status == "processing_graph":
+            logger.info("Reanudando fase Wukong para colección %s", collection_id)
+            _dispatch_continue_graph_job(
+                collection_id, custom_model, user_id=user_id
+            )
+        elif status == "processing_text":
+            texts = supabase_client.get_document_texts_by_collection(collection_id)
+            if texts:
+                logger.info(
+                    "Reanudando Wukong (extracción ya hecha) para colección %s",
+                    collection_id,
+                )
+                supabase_client.update_collection_processing_status(
+                    collection_id, "processing_graph"
+                )
+                _dispatch_continue_graph_job(
+                    collection_id, custom_model, user_id=user_id
+                )
+            else:
+                logger.info(
+                    "Reanudando pipeline completo para colección %s",
+                    collection_id,
+                )
+                _dispatch_process_job(collection_id, custom_model, user_id=user_id)
+        else:
+            _dispatch_process_job(collection_id, custom_model, user_id=user_id)
+        return True
+    except Exception:
+        _release_job_slot(collection_id)
+        raise
+
+
+def ensure_collection_processing(collection_id: str, user_id: str) -> None:
+    """Desencola o reanuda el procesamiento de una colección si quedó colgada."""
+    try:
+        try_resume_stale_job(collection_id, user_id)
+    except Exception as exc:
+        logger.warning(
+            "ensure_collection_processing falló para %s: %s", collection_id, exc
+        )
