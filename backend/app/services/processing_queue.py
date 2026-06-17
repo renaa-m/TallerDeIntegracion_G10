@@ -282,7 +282,10 @@ def _run_process_job(
         wukong_runner.process_collection(collection_id, custom_data_model)
     finally:
         _mark_job_finished(collection_id)
-        _try_dequeue_next()
+        try:
+            _try_dequeue_next()
+        except Exception as exc:
+            logger.warning("Error al despachar cola tras job %s: %s", collection_id, exc)
 
 
 def _run_continue_graph_job(
@@ -299,7 +302,10 @@ def _run_continue_graph_job(
         )
     finally:
         _mark_job_finished(collection_id)
-        _try_dequeue_next()
+        try:
+            _try_dequeue_next()
+        except Exception as exc:
+            logger.warning("Error al despachar cola tras job %s: %s", collection_id, exc)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -348,7 +354,10 @@ def recover_orphaned_processing() -> None:
             )
 
     # Intenta despachar jobs que quedaron encolados
-    _try_dequeue_next()
+    try:
+        _try_dequeue_next()
+    except Exception as exc:
+        logger.warning("No se pudo despachar cola tras reinicio: %s", exc)
 
 
 # ──────────────────────────────────────────────────────────────────────────────

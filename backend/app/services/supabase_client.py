@@ -364,20 +364,32 @@ def count_active_processing_jobs() -> int:
 
 
 def get_next_queued_jobs(limit: int = 10) -> list[dict]:
-    """Jobs encolados globalmente, ordenados por queued_at (FIFO).
+    """Jobs encolados globalmente, ordenados por FIFO.
 
+    Usa queued_at si existe (migración 011), sino cae a updated_at.
     Retorna los campos necesarios para el dequeue: id, user_id,
     queue_action y queue_payload.
     """
     client = _get_service_client()
-    response = (
-        client.table("collections")
-        .select("id, user_id, queue_action, queue_payload")
-        .eq("processing_status", "queued")
-        .order("queued_at", desc=False)
-        .limit(limit)
-        .execute()
-    )
+    try:
+        response = (
+            client.table("collections")
+            .select("id, user_id, queue_action, queue_payload")
+            .eq("processing_status", "queued")
+            .order("queued_at", desc=False)
+            .limit(limit)
+            .execute()
+        )
+    except Exception:
+        # Fallback: queued_at aún no existe (migración pendiente); ordenar por updated_at
+        response = (
+            client.table("collections")
+            .select("id, user_id, queue_action, queue_payload")
+            .eq("processing_status", "queued")
+            .order("updated_at", desc=False)
+            .limit(limit)
+            .execute()
+        )
     return response.data or []
 
 
