@@ -522,9 +522,7 @@ describe('BuscadorColeccion', () => {
 
     await screen.findByRole('heading', { name: 'Colección Test' })
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /renombrar colecci/i }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: /renombrar colecci/i }))
 
     const input = screen.getByLabelText(/^nombre$/i)
     fireEvent.change(input, { target: { value: 'Nuevo nombre' } })
@@ -673,9 +671,7 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    expect(
-      await screen.findByText(/Extracción de Texto/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/Extracción de Texto/i)).toBeInTheDocument()
     expect(screen.getByText(/2 de 4 documentos/i)).toBeInTheDocument()
 
     fireEvent.click(screen.getByText('Ver detalle'))
@@ -792,9 +788,11 @@ describe('BuscadorColeccion', () => {
     }
     localStorage.setItem('active_collection_id', 'collection-bg')
     localStorage.setItem('modal_carga_etapa', 'pipeline')
-
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/collections/collection-bg')) {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-bg')
+      ) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -813,17 +811,13 @@ describe('BuscadorColeccion', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /cerrar carga/i }))
 
-    expect(
-      await screen.findByText(/Extracción de Texto/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/Extracción de Texto/i)).toBeInTheDocument()
     expect(
       screen.queryByText(/empieza subiendo documentos/i),
     ).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: /añadir fuentes/i }),
     ).not.toBeInTheDocument()
-    expect(
-      screen.getByText(/preparando tu colección/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/preparando tu colección/i)).toBeInTheDocument()
   })
 })

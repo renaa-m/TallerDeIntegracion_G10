@@ -191,9 +191,7 @@ describe('LandingPage', () => {
 
     await screen.findByText('Coleccion Uno')
 
-    fireEvent.click(
-      screen.getByRole('button', { name: /abrir colecci.*uno/i }),
-    )
+    fireEvent.click(screen.getByRole('button', { name: /abrir colecci.*uno/i }))
 
     expect(mockNavigate).toHaveBeenCalledWith(
       '/user123/colecciones/collection-1/buscador',

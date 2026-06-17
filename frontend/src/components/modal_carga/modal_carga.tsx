@@ -1087,10 +1087,7 @@ const ModalCarga = ({
           </>
         ) : (
           <div className="mc-pipeline">
-            <div
-              className="mc-steps"
-              onMouseLeave={() => setStepHelpTip(null)}
-            >
+            <div className="mc-steps" onMouseLeave={() => setStepHelpTip(null)}>
               {['processing_text', 'processing_graph', 'graph_ready'].map(
                 (s, idx) => {
                   const stepLabel = ['Extracción', 'Construcción', 'Listo'][idx]

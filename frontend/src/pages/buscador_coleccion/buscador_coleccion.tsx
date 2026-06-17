@@ -390,8 +390,7 @@ const BuscadorColeccion = () => {
     : nombreColeccion
   const canEditCollectionName =
     !isNuevaColeccionPage && id_coleccion !== 'nueva'
-  const canDeleteCollection =
-    !isNuevaColeccionPage && id_coleccion !== 'nueva'
+  const canDeleteCollection = !isNuevaColeccionPage && id_coleccion !== 'nueva'
   const isSearchDisabled = isNuevaColeccionPage
   const isNuevaBackgroundProcessing =
     isNuevaColeccionPage && !modalCargaOpen && !!visibleBackgroundProcessingId
@@ -1284,86 +1283,86 @@ const BuscadorColeccion = () => {
                       {resultados.map((resultado) => {
                         const matchLevel = getMatchLevel(resultado.score)
                         return (
-                        <article
-                          key={resultado.id_chunk}
-                          className="bc-result-card"
-                        >
-                          <div className="bc-card-header">
-                            <div className="bc-header-info">
-                              <div className="bc-title-row">
-                                <FileText size={14} className="bc-doc-icon" />
-                                <h3 className="bc-result-title">
-                                  {resultado.titulo}
-                                </h3>
-                              </div>
+                          <article
+                            key={resultado.id_chunk}
+                            className="bc-result-card"
+                          >
+                            <div className="bc-card-header">
+                              <div className="bc-header-info">
+                                <div className="bc-title-row">
+                                  <FileText size={14} className="bc-doc-icon" />
+                                  <h3 className="bc-result-title">
+                                    {resultado.titulo}
+                                  </h3>
+                                </div>
 
-                              <div className="bc-score-row">
-                                <div
-                                  className={`bc-score-status ${matchLevel.statusClass}`}
-                                >
-                                  <CheckCircle2
-                                    size={12}
-                                    className="bc-status-icon"
-                                  />
-                                  <span className="bc-score-value">
-                                    {matchLevel.label}
+                                <div className="bc-score-row">
+                                  <div
+                                    className={`bc-score-status ${matchLevel.statusClass}`}
+                                  >
+                                    <CheckCircle2
+                                      size={12}
+                                      className="bc-status-icon"
+                                    />
+                                    <span className="bc-score-value">
+                                      {matchLevel.label}
+                                    </span>
+                                  </div>
+                                  <span className="bc-score-help-wrap">
+                                    <button
+                                      type="button"
+                                      className="bc-score-help-btn"
+                                      aria-label={`Qué significa ${matchLevel.label}`}
+                                      aria-describedby={`bc-score-tip-${resultado.id_chunk}`}
+                                    >
+                                      <HelpCircle
+                                        size={13}
+                                        strokeWidth={1.75}
+                                        aria-hidden
+                                      />
+                                    </button>
+                                    <span
+                                      id={`bc-score-tip-${resultado.id_chunk}`}
+                                      className="bc-score-tooltip"
+                                      role="tooltip"
+                                    >
+                                      {matchLevel.hint}
+                                    </span>
                                   </span>
                                 </div>
-                                <span className="bc-score-help-wrap">
-                                  <button
-                                    type="button"
-                                    className="bc-score-help-btn"
-                                    aria-label={`Qué significa ${matchLevel.label}`}
-                                    aria-describedby={`bc-score-tip-${resultado.id_chunk}`}
-                                  >
-                                    <HelpCircle
-                                      size={13}
-                                      strokeWidth={1.75}
-                                      aria-hidden
-                                    />
-                                  </button>
-                                  <span
-                                    id={`bc-score-tip-${resultado.id_chunk}`}
-                                    className="bc-score-tooltip"
-                                    role="tooltip"
-                                  >
-                                    {matchLevel.hint}
-                                  </span>
-                                </span>
                               </div>
+
+                              <button
+                                onClick={() =>
+                                  handleOpenDocument(resultado.storage_path)
+                                }
+                                className="bc-external-btn"
+                              >
+                                <ExternalLink size={13} />
+                                <span>Ver Documento</span>
+                              </button>
                             </div>
 
-                            <button
-                              onClick={() =>
-                                handleOpenDocument(resultado.storage_path)
-                              }
-                              className="bc-external-btn"
-                            >
-                              <ExternalLink size={13} />
-                              <span>Ver Documento</span>
-                            </button>
-                          </div>
+                            <div className="bc-card-body">
+                              <p className="bc-result-fragment">
+                                <Highlight
+                                  text={resultado.fragmento}
+                                  queries={[
+                                    busquedaEnviada,
+                                    ...entidadesSeleccionadas,
+                                  ]}
+                                />
+                              </p>
+                            </div>
 
-                          <div className="bc-card-body">
-                            <p className="bc-result-fragment">
-                              <Highlight
-                                text={resultado.fragmento}
-                                queries={[
-                                  busquedaEnviada,
-                                  ...entidadesSeleccionadas,
-                                ]}
-                              />
-                            </p>
-                          </div>
-
-                          <div className="bc-card-footer">
-                            {resultado.pagina && (
-                              <div className="bc-footer-tag">
-                                <span>Página {resultado.pagina}</span>
-                              </div>
-                            )}
-                          </div>
-                        </article>
+                            <div className="bc-card-footer">
+                              {resultado.pagina && (
+                                <div className="bc-footer-tag">
+                                  <span>Página {resultado.pagina}</span>
+                                </div>
+                              )}
+                            </div>
+                          </article>
                         )
                       })}
                     </div>

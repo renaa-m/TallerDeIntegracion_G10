@@ -2,7 +2,14 @@ import './landing_page.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
-import { ChevronLeft, ChevronRight, FolderPlus, Pencil, Trash2, Loader2 } from 'lucide-react'
+import {
+  ChevronLeft,
+  ChevronRight,
+  FolderPlus,
+  Pencil,
+  Trash2,
+  Loader2,
+} from 'lucide-react'
 import AppLoading from '../../components/ui/app_loading'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
 import ModalRenombrarColeccion from '../../components/modal_renombrar_coleccion/modal_renombrar_coleccion'
@@ -338,163 +345,179 @@ function LandingPage() {
     <div className="landing-page">
       <div className="landing-page-content">
         <main className="container">
-        <section className="welcome">
-          {!tieneColecciones && !cargandoColecciones && (
-            <span className="badge">Bienvenido/a</span>
+          <section className="welcome">
+            {!tieneColecciones && !cargandoColecciones && (
+              <span className="badge">Bienvenido/a</span>
+            )}
+
+            <h1 className="title">¡Hola, {displayName}!</h1>
+
+            <p className="subtitle">
+              {tieneColecciones
+                ? '¿Qué quieres explorar hoy?'
+                : 'Crea tu primera colección y empieza a reunir tus documentos en un solo lugar.'}
+            </p>
+
+            <button
+              type="button"
+              className="landing-cta"
+              onClick={handleIniciar}
+            >
+              <FolderPlus size={18} aria-hidden />
+              {ctaLabel}
+            </button>
+          </section>
+
+          {!cargandoColecciones && colecciones.length === 0 && (
+            <p className="collections-empty-message">
+              No tienes colecciones todavía. Usa el botón de arriba para crear
+              la primera.
+            </p>
           )}
+        </main>
 
-          <h1 className="title">¡Hola, {displayName}!</h1>
-
-          <p className="subtitle">
-            {tieneColecciones
-              ? '¿Qué quieres explorar hoy?'
-              : 'Crea tu primera colección y empieza a reunir tus documentos en un solo lugar.'}
-          </p>
-
-          <button type="button" className="landing-cta" onClick={handleIniciar}>
-            <FolderPlus size={18} aria-hidden />
-            {ctaLabel}
-          </button>
-        </section>
-
-        {!cargandoColecciones && colecciones.length === 0 && (
-          <p className="collections-empty-message">
-            No tienes colecciones todavía. Usa el botón de arriba para crear la
-            primera.
-          </p>
-        )}
-      </main>
-
-      {(cargandoColecciones || colecciones.length > 0) && (
-        <section className="collections-panel" aria-label="Tus Colecciones">
-          <div className="collections-panel-shell">
-            <div className="collections-panel-header">
-              <div className="collections-panel-heading">
-                <h2 className="collections-title">Tus Colecciones</h2>
-                {tieneColecciones && colecciones.length > 3 && (
-                  <p className="collections-panel-hint">
-                    Desliza para ver más
-                  </p>
+        {(cargandoColecciones || colecciones.length > 0) && (
+          <section className="collections-panel" aria-label="Tus Colecciones">
+            <div className="collections-panel-shell">
+              <div className="collections-panel-header">
+                <div className="collections-panel-heading">
+                  <h2 className="collections-title">Tus Colecciones</h2>
+                  {tieneColecciones && colecciones.length > 3 && (
+                    <p className="collections-panel-hint">
+                      Desliza para ver más
+                    </p>
+                  )}
+                </div>
+                {tieneColecciones && (
+                  <span className="collections-count">
+                    {colecciones.length}{' '}
+                    {colecciones.length === 1 ? 'Colección' : 'Colecciones'}
+                  </span>
                 )}
               </div>
-              {tieneColecciones && (
-                <span className="collections-count">
-                  {colecciones.length}{' '}
-                  {colecciones.length === 1 ? 'Colección' : 'Colecciones'}
-                </span>
+
+              {cargandoColecciones ? (
+                <div className="collections-panel-body collections-panel-body-loading">
+                  <AppLoading message="Cargando colecciones..." compact />
+                </div>
+              ) : (
+                <div className="collections-panel-body">
+                  <div className="collections-carousel">
+                    <button
+                      type="button"
+                      className="collections-nav collections-nav-prev"
+                      aria-label="Ver colecciones anteriores"
+                      onClick={() => scrollCollections('left')}
+                      disabled={!collectionsScroll.canLeft}
+                    >
+                      <ChevronLeft size={20} aria-hidden />
+                    </button>
+
+                    <div
+                      ref={collectionsScrollerRef}
+                      className="collections-scroller"
+                      tabIndex={0}
+                    >
+                      <ul className="collections-track">
+                        {colecciones.map((coleccion) => {
+                          const progressLabel =
+                            getCollectionCardProgressLabel(coleccion)
+
+                          return (
+                            <li key={coleccion.id}>
+                              <article className="card">
+                                <div className="card-actions">
+                                  <button
+                                    type="button"
+                                    className="card-icon-btn"
+                                    aria-label="Editar Colección"
+                                    onClick={() =>
+                                      setColeccionAEditar(coleccion)
+                                    }
+                                  >
+                                    <Pencil size={18} />
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    className="card-icon-btn card-icon-delete"
+                                    aria-label="Eliminar Colección"
+                                    disabled={deletingIds.has(coleccion.id)}
+                                    onClick={() =>
+                                      setColeccionAEliminar(coleccion)
+                                    }
+                                  >
+                                    {deletingIds.has(coleccion.id) ? (
+                                      <Loader2
+                                        size={18}
+                                        className="landing-delete-spin"
+                                      />
+                                    ) : (
+                                      <Trash2 size={18} />
+                                    )}
+                                  </button>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  className="card-open"
+                                  aria-label={`Abrir Colección ${coleccion.name}`}
+                                  onClick={() =>
+                                    abrirColeccionExistente(coleccion.id)
+                                  }
+                                >
+                                  <div className="card-body">
+                                    <h3>{coleccion.name}</h3>
+                                    <p className="card-date">
+                                      Creada el{' '}
+                                      {formatCollectionDate(
+                                        coleccion.created_at,
+                                      )}
+                                    </p>
+                                    {(() => {
+                                      if (!progressLabel) return null
+                                      return (
+                                        <p
+                                          className="card-progress"
+                                          role="status"
+                                        >
+                                          {isPipelineRunning(
+                                            coleccion.processing_status,
+                                          ) && (
+                                            <Loader2
+                                              size={14}
+                                              className="card-progress-spin"
+                                              aria-hidden
+                                            />
+                                          )}
+                                          <span>{progressLabel}</span>
+                                        </p>
+                                      )
+                                    })()}
+                                  </div>
+                                </button>
+                              </article>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="collections-nav collections-nav-next"
+                      aria-label="Ver más colecciones"
+                      onClick={() => scrollCollections('right')}
+                      disabled={!collectionsScroll.canRight}
+                    >
+                      <ChevronRight size={20} aria-hidden />
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
-
-            {cargandoColecciones ? (
-              <div className="collections-panel-body collections-panel-body-loading">
-                <AppLoading message="Cargando colecciones..." compact />
-              </div>
-            ) : (
-              <div className="collections-panel-body">
-                <div className="collections-carousel">
-                  <button
-                    type="button"
-                    className="collections-nav collections-nav-prev"
-                    aria-label="Ver colecciones anteriores"
-                    onClick={() => scrollCollections('left')}
-                    disabled={!collectionsScroll.canLeft}
-                  >
-                    <ChevronLeft size={20} aria-hidden />
-                  </button>
-
-                  <div
-                    ref={collectionsScrollerRef}
-                    className="collections-scroller"
-                    tabIndex={0}
-                  >
-                    <ul className="collections-track">
-                      {colecciones.map((coleccion) => {
-                  const progressLabel = getCollectionCardProgressLabel(coleccion)
-
-                  return (
-                    <li key={coleccion.id}>
-                      <article className="card">
-                        <div className="card-actions">
-                          <button
-                            type="button"
-                            className="card-icon-btn"
-                            aria-label="Editar Colección"
-                            onClick={() => setColeccionAEditar(coleccion)}
-                          >
-                            <Pencil size={18} />
-                          </button>
-
-                          <button
-                            type="button"
-                            className="card-icon-btn card-icon-delete"
-                            aria-label="Eliminar Colección"
-                            disabled={deletingIds.has(coleccion.id)}
-                            onClick={() => setColeccionAEliminar(coleccion)}
-                          >
-                            {deletingIds.has(coleccion.id) ? (
-                              <Loader2
-                                size={18}
-                                className="landing-delete-spin"
-                              />
-                            ) : (
-                              <Trash2 size={18} />
-                            )}
-                          </button>
-                        </div>
-
-                        <button
-                          type="button"
-                          className="card-open"
-                          aria-label={`Abrir Colección ${coleccion.name}`}
-                          onClick={() => abrirColeccionExistente(coleccion.id)}
-                        >
-                          <div className="card-body">
-                            <h3>{coleccion.name}</h3>
-                            <p className="card-date">
-                              Creada el{' '}
-                              {formatCollectionDate(coleccion.created_at)}
-                            </p>
-                            {(() => {
-                              if (!progressLabel) return null
-                              return (
-                                <p className="card-progress" role="status">
-                                  {isPipelineRunning(
-                                    coleccion.processing_status,
-                                  ) && (
-                                    <Loader2
-                                      size={14}
-                                      className="card-progress-spin"
-                                      aria-hidden
-                                    />
-                                  )}
-                                  <span>{progressLabel}</span>
-                                </p>
-                              )
-                            })()}
-                          </div>
-                        </button>
-                      </article>
-                    </li>
-                  )
-                })}
-                    </ul>
-                  </div>
-
-                  <button
-                    type="button"
-                    className="collections-nav collections-nav-next"
-                    aria-label="Ver más colecciones"
-                    onClick={() => scrollCollections('right')}
-                    disabled={!collectionsScroll.canRight}
-                  >
-                    <ChevronRight size={20} aria-hidden />
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-      )}
+          </section>
+        )}
       </div>
 
       <ModalRenombrarColeccion
@@ -511,16 +534,11 @@ function LandingPage() {
         isOpen={coleccionAEliminar !== null}
         nombreColeccion={coleccionAEliminar?.name}
         isConfirming={
-          coleccionAEliminar
-            ? deletingIds.has(coleccionAEliminar.id)
-            : false
+          coleccionAEliminar ? deletingIds.has(coleccionAEliminar.id) : false
         }
         onConfirm={() => void confirmarEliminacion()}
         onClose={() => {
-          if (
-            !coleccionAEliminar ||
-            !deletingIds.has(coleccionAEliminar.id)
-          ) {
+          if (!coleccionAEliminar || !deletingIds.has(coleccionAEliminar.id)) {
             setColeccionAEliminar(null)
           }
         }}
