@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import './modal_renombrar_coleccion.css'
 
 interface ModalRenombrarColeccionProps {
@@ -9,22 +9,13 @@ interface ModalRenombrarColeccionProps {
   onClose: () => void
 }
 
-function ModalRenombrarColeccion({
-  isOpen,
+function ModalRenombrarColeccionContent({
   nombreActual,
   isSaving = false,
   onConfirm,
   onClose,
-}: ModalRenombrarColeccionProps) {
+}: Omit<ModalRenombrarColeccionProps, 'isOpen'>) {
   const [nombre, setNombre] = useState(nombreActual)
-
-  useEffect(() => {
-    if (isOpen) {
-      setNombre(nombreActual)
-    }
-  }, [isOpen, nombreActual])
-
-  if (!isOpen) return null
 
   const trimmed = nombre.trim()
   const canSave = trimmed.length > 0 && trimmed !== nombreActual.trim()
@@ -88,6 +79,26 @@ function ModalRenombrarColeccion({
         </div>
       </div>
     </div>
+  )
+}
+
+function ModalRenombrarColeccion({
+  isOpen,
+  nombreActual,
+  isSaving = false,
+  onConfirm,
+  onClose,
+}: ModalRenombrarColeccionProps) {
+  if (!isOpen) return null
+
+  return (
+    <ModalRenombrarColeccionContent
+      key={nombreActual}
+      nombreActual={nombreActual}
+      isSaving={isSaving}
+      onConfirm={onConfirm}
+      onClose={onClose}
+    />
   )
 }
 
