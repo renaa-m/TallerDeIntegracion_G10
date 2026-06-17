@@ -200,7 +200,7 @@ def _normalize_legacy_queued(collection_id: str, status: str) -> str:
 
 def _slot_busy_http_exception(exc: ProcessingSlotBusyError) -> HTTPException:
     return HTTPException(
-        status_code=409,
+        status_code=429,
         detail=processing_queue.busy_detail_message(exc.blocking),
     )
 
@@ -354,13 +354,16 @@ async def process_collection(
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
 
+    detail = (
+        "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible. "
+        "Consulte GET /api/collections/{id} para seguir el estado."
+        if status == "queued"
+        else "Procesamiento iniciado. Consulte GET /api/collections/{id} para seguir el avance."
+    )
     return ProcessCollectionResponse(
         collection_id=collection_id,
         processing_status=status,
-        detail=(
-            "Procesamiento iniciado. Consulte GET /api/collections/{id} "
-            "para seguir el avance."
-        ),
+        detail=detail,
     )
 
 
@@ -406,10 +409,15 @@ async def continue_graph_collection(
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
 
+    detail = (
+        "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible."
+        if status == "queued"
+        else "Construcción de grafo iniciada."
+    )
     return ProcessCollectionResponse(
         collection_id=collection_id,
         processing_status=status,
-        detail="Construcción de grafo iniciada.",
+        detail=detail,
     )
 
 @router.post(
@@ -454,10 +462,15 @@ async def continue_graph_with_custom_model(
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
 
+    detail = (
+        "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible."
+        if status == "queued"
+        else "Construcción de grafo con modelo personalizado iniciada."
+    )
     return GenerateGraphResponse(
         collection_id=collection_id,
         processing_status=status,
-        detail="Construcción de grafo con modelo personalizado iniciada.",
+        detail=detail,
     )
 
 @router.post(
@@ -521,13 +534,19 @@ async def generate_graph(
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
 
+    detail = (
+        "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible. "
+        "Consulte GET /api/collections/{id} para seguir el estado."
+        if status == "queued"
+        else (
+            "Procesamiento con modelo personalizado iniciado. "
+            "Consulte GET /api/collections/{id} para seguir el avance."
+        )
+    )
     return GenerateGraphResponse(
         collection_id=collection_id,
         processing_status=status,
-        detail=(
-            "Procesamiento con modelo personalizado iniciado. "
-            "Consulte GET /api/collections/{id} para seguir el avance."
-        ),
+        detail=detail,
     )
 
 

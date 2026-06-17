@@ -312,12 +312,15 @@ def set_collection_queued(
     *,
     payload: dict | None = None,
 ) -> dict | None:
+    from datetime import datetime, timezone
+
     client = _get_service_client()
     row: dict = {
         "processing_status": "queued",
         "queue_action": queue_action,
         "queue_payload": payload,
         "processing_error_message": None,
+        "queued_at": datetime.now(timezone.utc).isoformat(),
     }
     response = (
         client.table("collections")
@@ -331,8 +334,51 @@ def set_collection_queued(
 def clear_collection_queue_metadata(collection_id: str) -> None:
     client = _get_service_client()
     client.table("collections").update(
-        {"queue_action": None, "queue_payload": None}
+        {"queue_action": None, "queue_payload": None, "queued_at": None}
     ).eq("id", collection_id).execute()
+
+
+def count_user_queued_collections(user_id: str) -> int:
+    """Cantidad de colecciones en estado queued para un usuario."""
+    client = _get_service_client()
+    response = (
+        client.table("collections")
+        .select("id", count="exact")
+        .eq("user_id", user_id)
+        .eq("processing_status", "queued")
+        .execute()
+    )
+    return response.count or 0
+
+
+def count_active_processing_jobs() -> int:
+    """Cantidad de colecciones en procesamiento activo a nivel global."""
+    client = _get_service_client()
+    response = (
+        client.table("collections")
+        .select("id", count="exact")
+        .in_("processing_status", ["processing_text", "processing_graph"])
+        .execute()
+    )
+    return response.count or 0
+
+
+def get_next_queued_jobs(limit: int = 10) -> list[dict]:
+    """Jobs encolados globalmente, ordenados por queued_at (FIFO).
+
+    Retorna los campos necesarios para el dequeue: id, user_id,
+    queue_action y queue_payload.
+    """
+    client = _get_service_client()
+    response = (
+        client.table("collections")
+        .select("id, user_id, queue_action, queue_payload")
+        .eq("processing_status", "queued")
+        .order("queued_at", desc=False)
+        .limit(limit)
+        .execute()
+    )
+    return response.data or []
 
 
 def update_collection_progress(
