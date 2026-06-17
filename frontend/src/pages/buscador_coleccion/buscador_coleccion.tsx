@@ -286,7 +286,10 @@ const BuscadorColeccion = () => {
           setCurrentProcessingSnapshot(
             snapshotFromCollectionApi(data, id_coleccion),
           )
-          if (isPipelineRunning(data.processing_status)) {
+          if (
+            isPipelineRunning(data.processing_status) ||
+            data.processing_status === 'queued'
+          ) {
             localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
             localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
           }
