@@ -342,7 +342,8 @@ class TestRunJobDequeue:
                   side_effect=Exception("fallo")),
             patch("app.services.processing_queue._try_dequeue_next") as mock_dequeue,
         ):
-            processing_queue._run_process_job(COL_A, USER_A)
+            with pytest.raises(Exception, match="fallo"):
+                processing_queue._run_process_job(COL_A, USER_A)
 
         mock_dequeue.assert_called_once()
 
