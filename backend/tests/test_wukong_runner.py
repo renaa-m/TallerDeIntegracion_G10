@@ -148,12 +148,12 @@ class TestProcessCollection:
     @patch("app.services.wukong_runner._build_wukong_workdir", return_value=1)
     @patch("app.services.wukong_runner.process_pdf_document")
     @patch("app.services.wukong_runner.process_txt_document")
-    def test_awaiting_graph_confirmation_cuando_algun_doc_falla(
+    def test_continua_grafo_con_docs_validos_cuando_algun_doc_falla(
         self,
         mock_process_txt,
         mock_process_pdf,
-        _mock_build,
-        _mock_run_wukong,
+        mock_build,
+        mock_run_wukong,
         mock_sb,
         _mock_qm,
     ):
@@ -161,6 +161,13 @@ class TestProcessCollection:
         mock_sb.get_documents_by_collection.return_value = [
             _make_doc("doc1", file_type="pdf"),
             _make_doc("doc2", file_type="txt"),
+        ]
+        mock_sb.get_document_texts_by_collection.return_value = [
+            {
+                "document_id": "doc2",
+                "extracted_text": "texto ok",
+                "extraction_method": "direct_read",
+            }
         ]
         mock_process_pdf.return_value = {
             "status": "error",
@@ -175,17 +182,11 @@ class TestProcessCollection:
             call.args[1]
             for call in mock_sb.update_collection_processing_status.call_args_list
         ]
-        assert statuses[-1] == "awaiting_graph_confirmation"
-        final_kwargs = mock_sb.update_collection_processing_status.call_args_list[
-            -1
-        ].kwargs
-        assert "doc1.pdf" in (final_kwargs.get("error_message") or "")
-        assert "Puedes continuar" not in (final_kwargs.get("error_message") or "")
-        assert "solo con 1 documento(s)" in (final_kwargs.get("error_message") or "")
-
-        _mock_build.assert_not_called()
-        _mock_run_wukong.assert_not_called()
-        _mock_qm.assert_not_called()
+        assert "processing_graph" in statuses
+        assert statuses[-1] == "partial_error"
+        mock_build.assert_called_once()
+        mock_run_wukong.assert_called_once()
+        _mock_qm.assert_called_once()
 
     @patch("app.services.wukong_runner.supabase_client")
     @patch("app.services.wukong_runner.process_pdf_document")
