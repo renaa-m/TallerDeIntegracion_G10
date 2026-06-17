@@ -6,7 +6,7 @@ import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.middleware.cloud_tasks_auth import verify_cloud_tasks_caller
 from app.services import processing_queue
