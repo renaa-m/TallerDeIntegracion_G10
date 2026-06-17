@@ -185,10 +185,18 @@ def _graph_unavailable_detail(status: str) -> str:
     )
 
 
-def _normalize_legacy_queued(collection_id: str, status: str) -> str:
-    """Estado ``queued`` ya no se usa; restablecer a idle."""
+def _normalize_legacy_queued(collection_id: str, collection: dict) -> str:
+    """Limpia entradas ``queued`` obsoletas (sin queue_action) dejándolas en idle.
+
+    Las entradas con queue_action son del sistema de colas actual y no se tocan.
+    """
+    status = collection.get("processing_status", "idle")
     if status != "queued":
         return status
+    if collection.get("queue_action"):
+        # Cola activa del sistema nuevo — no modificar.
+        return "queued"
+    # Entrada legacy sin queue_action: limpiar a idle.
     supabase_client.clear_collection_queue_metadata(str(collection_id))
     supabase_client.update_collection_processing_status(
         str(collection_id),
@@ -313,10 +321,13 @@ async def process_collection(
     if collection is None:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
-    current_status = _normalize_legacy_queued(
-        str(collection_id),
-        collection.get("processing_status", "idle"),
-    )
+    current_status = _normalize_legacy_queued(str(collection_id), collection)
+    if current_status == "queued":
+        return ProcessCollectionResponse(
+            collection_id=collection_id,
+            processing_status="queued",
+            detail="La colección ya está en cola. Iniciará automáticamente cuando haya capacidad.",
+        )
     if current_status in _ACTIVE_PIPELINE_STATUSES:
         raise HTTPException(
             status_code=409,
@@ -390,10 +401,13 @@ async def continue_graph_collection(
     if collection is None:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
-    current_status = _normalize_legacy_queued(
-        str(collection_id),
-        collection.get("processing_status", "idle"),
-    )
+    current_status = _normalize_legacy_queued(str(collection_id), collection)
+    if current_status == "queued":
+        return ProcessCollectionResponse(
+            collection_id=collection_id,
+            processing_status="queued",
+            detail="La colección ya está en cola. Iniciará automáticamente cuando haya capacidad.",
+        )
     if current_status != "awaiting_graph_confirmation":
         raise HTTPException(
             status_code=409,
@@ -439,11 +453,13 @@ async def continue_graph_with_custom_model(
     if collection is None:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
-    current_status = _normalize_legacy_queued(
-        str(collection_id),
-        collection.get("processing_status", "idle"),
-    )
-
+    current_status = _normalize_legacy_queued(str(collection_id), collection)
+    if current_status == "queued":
+        return GenerateGraphResponse(
+            collection_id=collection_id,
+            processing_status="queued",
+            detail="La colección ya está en cola. Iniciará automáticamente cuando haya capacidad.",
+        )
     if current_status != "awaiting_graph_confirmation":
         raise HTTPException(
             status_code=409,
@@ -500,10 +516,13 @@ async def generate_graph(
     if collection is None:
         raise HTTPException(status_code=404, detail="Colección no encontrada.")
 
-    current_status = _normalize_legacy_queued(
-        str(collection_id),
-        collection.get("processing_status", "idle"),
-    )
+    current_status = _normalize_legacy_queued(str(collection_id), collection)
+    if current_status == "queued":
+        return GenerateGraphResponse(
+            collection_id=collection_id,
+            processing_status="queued",
+            detail="La colección ya está en cola. Iniciará automáticamente cuando haya capacidad.",
+        )
     if current_status in _ACTIVE_PIPELINE_STATUSES:
         raise HTTPException(
             status_code=409,

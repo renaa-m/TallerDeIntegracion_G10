@@ -190,6 +190,7 @@ const ModalCarga = ({
   const [graphProgress, setGraphProgress] =
     useState<StepProgress>(EMPTY_PROGRESS)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [isSubmittingPipeline, setIsSubmittingPipeline] = useState(false)
 
   const isUploadingLocked = isUploading || isCancelling
   const resolvedCollectionId = useMemo(
@@ -758,7 +759,8 @@ const ModalCarga = ({
   }
 
   const handleIniciarPipeline = async () => {
-    if (!resolvedCollectionId) return
+    if (!resolvedCollectionId || isSubmittingPipeline) return
+    setIsSubmittingPipeline(true)
     setPipelineError('')
     try {
       const token = await getAccessTokenSilently()
@@ -791,6 +793,8 @@ const ModalCarga = ({
       setPipelineError(
         e instanceof Error ? e.message : 'Error al iniciar el procesamiento',
       )
+    } finally {
+      setIsSubmittingPipeline(false)
     }
   }
 
@@ -1257,9 +1261,10 @@ const ModalCarga = ({
                   <button
                     className="mc-btn-upload"
                     onClick={handleIniciarPipeline}
-                    disabled={isCancelling}
+                    disabled={isCancelling || isSubmittingPipeline}
                   >
-                    <Network size={14} /> Generar grafo
+                    <Network size={14} />{' '}
+                    {isSubmittingPipeline ? 'Iniciando...' : 'Generar grafo'}
                   </button>
                 </>
               )}
@@ -1325,9 +1330,9 @@ const ModalCarga = ({
                     className="mc-btn-upload"
                     type="button"
                     onClick={handleIniciarPipeline}
-                    disabled={isCancelling}
+                    disabled={isCancelling || isSubmittingPipeline}
                   >
-                    Reintentar
+                    {isSubmittingPipeline ? 'Iniciando...' : 'Reintentar'}
                   </button>
                 </>
               )}
