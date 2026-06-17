@@ -98,6 +98,33 @@ function pipelineStatusFromApi(raw: string | undefined): PipelineStatus {
   return 'idle'
 }
 
+/** Evita que un GET en vuelo (anterior al POST) pise queued/processing con idle. */
+function shouldApplyApiPipelineStatus(
+  localStatus: PipelineStatus,
+  apiRawStatus: string | undefined,
+): boolean {
+  const apiRaw = apiRawStatus ?? 'idle'
+  if (pipelineStatusFromApi(apiRaw) === localStatus) return true
+
+  const localActive =
+    isPipelineInProgress(localStatus) || localStatus === 'queued'
+  const apiActive = isPipelineInProgress(apiRaw) || apiRaw === 'queued'
+
+  return !(localActive && !apiActive && apiRaw === 'idle')
+}
+
+function resolveEffectiveProcessingStatus(
+  localStatus: PipelineStatus,
+  apiRawStatus: string | undefined,
+): string {
+  if (shouldApplyApiPipelineStatus(localStatus, apiRawStatus)) {
+    return apiRawStatus ?? 'idle'
+  }
+  if (localStatus === 'queued') return 'queued'
+  if (isPipelineInProgress(localStatus)) return localStatus
+  return apiRawStatus ?? 'idle'
+}
+
 function getPipelineStatusLabel(
   status: PipelineStatus,
   textProgress: StepProgress,
@@ -192,6 +219,17 @@ const ModalCarga = ({
   const [isCancelling, setIsCancelling] = useState(false)
   const [isSubmittingPipeline, setIsSubmittingPipeline] = useState(false)
 
+  const pipelineStatusRef = useRef<PipelineStatus>('idle')
+  const isSubmittingPipelineRef = useRef(false)
+
+  useEffect(() => {
+    pipelineStatusRef.current = pipelineStatus
+  }, [pipelineStatus])
+
+  useEffect(() => {
+    isSubmittingPipelineRef.current = isSubmittingPipeline
+  }, [isSubmittingPipeline])
+
   const isUploadingLocked = isUploading || isCancelling
   const resolvedCollectionId = useMemo(
     () => resolveModalCollectionId(scopeCollectionId, activeCollectionId),
@@ -240,7 +278,7 @@ const ModalCarga = ({
   // --- 1. Sincronización: colección de la ruta o sesión en /nueva ---
   useEffect(() => {
     const syncStatus = async () => {
-      if (!isOpen || isCancelling) return
+      if (!isOpen || isCancelling || isSubmittingPipelineRef.current) return
 
       const collectionId =
         scopeCollectionId && scopeCollectionId !== 'nueva'
@@ -279,21 +317,32 @@ const ModalCarga = ({
             failed: data.graph_failed_documents ?? [],
           })
           const status = pipelineStatusFromApi(data.processing_status)
-          setPipelineStatus(status)
-          onProcessingChange?.(isPipelineInProgress(data.processing_status))
+          const effectiveStatus = resolveEffectiveProcessingStatus(
+            pipelineStatusRef.current,
+            data.processing_status,
+          )
+          if (
+            shouldApplyApiPipelineStatus(
+              pipelineStatusRef.current,
+              data.processing_status,
+            )
+          ) {
+            setPipelineStatus(status)
+            onProcessingChange?.(isPipelineInProgress(data.processing_status))
+          }
 
-          if (isPipelineInProgress(data.processing_status)) {
+          if (isPipelineInProgress(effectiveStatus)) {
             localStorage.setItem(ACTIVE_COLLECTION_KEY, collectionId)
             localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
           }
 
           if (
-            data.processing_status === 'partial_error' ||
-            data.processing_status === 'error' ||
-            data.processing_status === 'awaiting_graph_confirmation'
+            effectiveStatus === 'partial_error' ||
+            effectiveStatus === 'error' ||
+            effectiveStatus === 'awaiting_graph_confirmation'
           ) {
             setPipelineError(data.processing_error_message ?? '')
-          } else if (data.processing_status === 'graph_ready') {
+          } else if (effectiveStatus === 'graph_ready') {
             setPipelineError('')
           } else if (status !== 'error' && status !== 'partial_error') {
             setPipelineError('')
@@ -302,11 +351,11 @@ const ModalCarga = ({
           const savedId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
           const savedEtapa = localStorage.getItem(MODAL_ETAPA_KEY) as Etapa
           if (
-            !isPipelineInProgress(data.processing_status) &&
+            !isPipelineInProgress(effectiveStatus) &&
             savedId === collectionId
           ) {
             const esperandoGrafo =
-              data.processing_status === 'idle' && savedEtapa === 'pipeline'
+              effectiveStatus === 'idle' && savedEtapa === 'pipeline'
             if (!esperandoGrafo) {
               clearActiveCollectionStorage()
               onProcessingChange?.(false)
@@ -314,7 +363,7 @@ const ModalCarga = ({
           }
 
           let documentCount = 0
-          if ((data.processing_status ?? 'idle') === 'idle') {
+          if (effectiveStatus === 'idle') {
             try {
               const docsRes = await fetch(
                 `${API_BASE}/api/documentos?coleccion_id=${collectionId}`,
@@ -331,7 +380,7 @@ const ModalCarga = ({
 
           const openPipeline =
             forcePipelineEtapa ||
-            shouldOpenPipelineModal(data.processing_status, {
+            shouldOpenPipelineModal(effectiveStatus, {
               documentCount,
               savedModalEtapa: savedEtapa,
             })
@@ -557,8 +606,15 @@ const ModalCarga = ({
           failed: data.graph_failed_documents ?? [],
         })
         const status = pipelineStatusFromApi(data.processing_status)
-        setPipelineStatus(status)
-        onProcessingChange?.(isPipelineInProgress(data.processing_status))
+        if (
+          shouldApplyApiPipelineStatus(
+            pipelineStatusRef.current,
+            data.processing_status,
+          )
+        ) {
+          setPipelineStatus(status)
+          onProcessingChange?.(isPipelineInProgress(data.processing_status))
+        }
         if (
           status === 'graph_ready' ||
           status === 'partial_error' ||
@@ -758,6 +814,19 @@ const ModalCarga = ({
     }
   }
 
+  const applyPipelineStatusFromApi = useCallback(
+    (rawStatus: string | undefined, collectionId: string) => {
+      const nextStatus = pipelineStatusFromApi(rawStatus)
+      pipelineStatusRef.current = nextStatus
+      setPipelineStatus(nextStatus)
+      if (isPipelineInProgress(rawStatus)) {
+        persistBackgroundProcessing(collectionId)
+      }
+      onProcessingChange?.(isPipelineInProgress(rawStatus))
+    },
+    [onProcessingChange, persistBackgroundProcessing],
+  )
+
   const handleIniciarPipeline = async () => {
     if (!resolvedCollectionId || isSubmittingPipeline) return
     setIsSubmittingPipeline(true)
@@ -784,11 +853,7 @@ const ModalCarga = ({
             : 'Error al iniciar Wukong',
         )
       }
-      setPipelineStatus(pipelineStatusFromApi(data.processing_status))
-      if (isPipelineInProgress(data.processing_status)) {
-        persistBackgroundProcessing(resolvedCollectionId)
-      }
-      onProcessingChange?.(isPipelineInProgress(data.processing_status))
+      applyPipelineStatusFromApi(data.processing_status, resolvedCollectionId)
     } catch (e: unknown) {
       setPipelineError(
         e instanceof Error ? e.message : 'Error al iniciar el procesamiento',
@@ -868,11 +933,7 @@ const ModalCarga = ({
         )
       }
 
-      setPipelineStatus(pipelineStatusFromApi(data.processing_status))
-      if (isPipelineInProgress(data.processing_status)) {
-        persistBackgroundProcessing(resolvedCollectionId)
-      }
-      onProcessingChange?.(isPipelineInProgress(data.processing_status))
+      applyPipelineStatusFromApi(data.processing_status, resolvedCollectionId)
     } catch (e: unknown) {
       setPipelineError(
         e instanceof Error ? e.message : 'Error al continuar con el grafo',

@@ -16,6 +16,15 @@ COL_C = str(uuid4())
 BLOCKING = {"id": COL_A, "name": "Colección A", "processing_status": "processing_text"}
 
 
+@pytest.fixture(autouse=True)
+def clear_running_jobs():
+    with processing_queue._running_jobs_guard:
+        processing_queue._running_jobs.clear()
+    yield
+    with processing_queue._running_jobs_guard:
+        processing_queue._running_jobs.clear()
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # request_process
 # ──────────────────────────────────────────────────────────────────────────────
@@ -35,6 +44,23 @@ class TestRequestProcess:
         assert status == "processing_text"
         mock_upd.assert_called_once_with(COL_B, "processing_text")
         mock_dispatch.assert_called_once_with(COL_B, None, user_id=USER_A)
+        assert USER_A in processing_queue._users_with_active_jobs()
+
+    def test_segunda_peticion_encola_tras_reservar_slot_sincrono(self):
+        """Sin reserva síncrona, dos POST seguidos del mismo usuario arrancarían dos jobs."""
+        bg = MagicMock()
+        with (
+            patch("app.services.processing_queue.supabase_client.count_user_queued_collections", return_value=0),
+            patch("app.services.processing_queue.supabase_client.update_collection_processing_status"),
+            patch("app.services.processing_queue.supabase_client.set_collection_queued") as mock_enqueue,
+            patch("app.services.processing_queue._dispatch_process_job"),
+        ):
+            status1 = processing_queue.request_process(COL_A, USER_A, bg)
+            status2 = processing_queue.request_process(COL_B, USER_A, bg)
+
+        assert status1 == "processing_text"
+        assert status2 == "queued"
+        mock_enqueue.assert_called_once_with(COL_B, "process", payload=None)
 
     def test_encola_cuando_usuario_ocupado(self):
         bg = MagicMock()

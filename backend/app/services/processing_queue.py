@@ -80,6 +80,19 @@ def _users_with_active_jobs() -> set[str]:
         return set(_running_jobs.values())
 
 
+def _reserve_job_slot(collection_id: str, user_id: str) -> None:
+    """Reserva el slot en memoria de forma síncrona, antes de arrancar el thread.
+
+    Sin esto, dos peticiones consecutivas pueden pasar el chequeo de ``user_busy``
+    antes de que el thread llame a ``_mark_job_running``.
+    """
+    _mark_job_running(collection_id, user_id)
+
+
+def _release_job_slot(collection_id: str) -> None:
+    _mark_job_finished(collection_id)
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Excepciones públicas
 # ──────────────────────────────────────────────────────────────────────────────
@@ -123,18 +136,25 @@ def _try_dequeue_next() -> None:
         queue_payload = candidate.get("queue_payload") or {}
         custom_model = queue_payload.get("custom_data_model") if queue_payload else None
 
-        supabase_client.clear_collection_queue_metadata(collection_id)
+        _reserve_job_slot(collection_id, user_id)
+        try:
+            supabase_client.clear_collection_queue_metadata(collection_id)
 
-        if queue_action == "continue_graph":
-            supabase_client.update_collection_processing_status(
-                collection_id, "processing_graph"
-            )
-            _dispatch_continue_graph_job(collection_id, custom_model, user_id=user_id)
-        else:
-            supabase_client.update_collection_processing_status(
-                collection_id, "processing_text"
-            )
-            _dispatch_process_job(collection_id, custom_model, user_id=user_id)
+            if queue_action == "continue_graph":
+                supabase_client.update_collection_processing_status(
+                    collection_id, "processing_graph"
+                )
+                _dispatch_continue_graph_job(
+                    collection_id, custom_model, user_id=user_id
+                )
+            else:
+                supabase_client.update_collection_processing_status(
+                    collection_id, "processing_text"
+                )
+                _dispatch_process_job(collection_id, custom_model, user_id=user_id)
+        except Exception:
+            _release_job_slot(collection_id)
+            raise
 
         busy_users.add(user_id)
 
@@ -208,10 +228,15 @@ def request_process(
     global_full = _active_job_count() >= MAX_CONCURRENT_JOBS
 
     if not user_busy and not global_full:
-        supabase_client.update_collection_processing_status(
-            collection_id, "processing_text"
-        )
-        _dispatch_process_job(collection_id, custom_data_model, user_id=user_id)
+        _reserve_job_slot(collection_id, user_id)
+        try:
+            supabase_client.update_collection_processing_status(
+                collection_id, "processing_text"
+            )
+            _dispatch_process_job(collection_id, custom_data_model, user_id=user_id)
+        except Exception:
+            _release_job_slot(collection_id)
+            raise
         return "processing_text"
 
     payload = {"custom_data_model": custom_data_model} if custom_data_model else None
@@ -255,10 +280,17 @@ def request_continue_graph(
     global_full = _active_job_count() >= MAX_CONCURRENT_JOBS
 
     if not user_busy and not global_full:
-        supabase_client.update_collection_processing_status(
-            collection_id, "processing_graph"
-        )
-        _dispatch_continue_graph_job(collection_id, custom_data_model, user_id=user_id)
+        _reserve_job_slot(collection_id, user_id)
+        try:
+            supabase_client.update_collection_processing_status(
+                collection_id, "processing_graph"
+            )
+            _dispatch_continue_graph_job(
+                collection_id, custom_data_model, user_id=user_id
+            )
+        except Exception:
+            _release_job_slot(collection_id)
+            raise
         return "processing_graph"
 
     payload = {"custom_data_model": custom_data_model} if custom_data_model else None
