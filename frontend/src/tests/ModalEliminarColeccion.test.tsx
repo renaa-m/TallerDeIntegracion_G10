@@ -27,7 +27,7 @@ describe('ModalEliminarColeccion', () => {
   test('renderiza el modal cuando isOpen es true', () => {
     renderModal()
 
-    expect(screen.getByText('Eliminar archivo')).toBeInTheDocument()
+    expect(screen.getByText('Eliminar Colección')).toBeInTheDocument()
 
     expect(
       screen.getByText('Esta acción no se puede deshacer.'),
@@ -49,7 +49,7 @@ describe('ModalEliminarColeccion', () => {
   test('no renderiza nada cuando isOpen es false', () => {
     renderModal({ isOpen: false })
 
-    expect(screen.queryByText('Eliminar archivo')).not.toBeInTheDocument()
+    expect(screen.queryByText('Eliminar Colección')).not.toBeInTheDocument()
   })
 
   test('muestra nombre de colección cuando existe', () => {

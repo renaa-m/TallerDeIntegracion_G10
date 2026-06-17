@@ -1,4 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  type KeyboardEvent,
+} from 'react'
 import {
   useNavigate,
   useParams,
@@ -18,12 +24,15 @@ import {
   FileText,
   CheckCircle2,
   Loader2,
+  ChevronRight,
+  HelpCircle,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
 // Componentes
 import ModalCarga from '../../components/modal_carga/modal_carga'
 import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/modal_eliminar_coleccion'
+import ModalRenombrarColeccion from '../../components/modal_renombrar_coleccion/modal_renombrar_coleccion'
 import ModalDocumentosDisponibles from '../../components/modal_documentos_disponibles/modal_documentos_disponibles'
 import ModalFiltros from '../../components/modal_filtro/modal_filtro'
 
@@ -46,6 +55,34 @@ import {
 import './buscador_coleccion.css'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
+
+const SEARCH_SEMANTIC_HELP =
+  'La búsqueda semántica interpreta el significado de tu consulta, no solo palabras exactas. Encuentra fragmentos relacionados aunque no repitan tu texto.'
+
+const SEARCH_SEMANTIC_HELP_HINT =
+  'Pasa el cursor sobre (?) para saber qué es la búsqueda semántica.'
+
+function getMatchLevel(score: number) {
+  if (score > 0.7) {
+    return {
+      label: 'Alta coincidencia',
+      hint: 'Muy relacionado con tu consulta.',
+      statusClass: 'status-high',
+    }
+  }
+  if (score > 0.4) {
+    return {
+      label: 'Coincidencia media',
+      hint: 'Relacionado en parte con tu consulta.',
+      statusClass: 'status-med',
+    }
+  }
+  return {
+    label: 'Coincidencia baja',
+    hint: 'Relación débil; puede ser útil revisarlo.',
+    statusClass: 'status-low',
+  }
+}
 
 // ============================================
 // TIPOS
@@ -98,6 +135,92 @@ function Highlight({ text, queries }: { text: string; queries: string[] }) {
   )
 }
 
+type ProcessingStatusBannerProps = {
+  title: string
+  subtitle: string
+  actionLabel: string
+  onActivate: () => void
+  progressPercent?: number | null
+  progressCaption?: string
+  pendingGraph?: boolean
+}
+
+function ProcessingStatusBanner({
+  title,
+  subtitle,
+  actionLabel,
+  onActivate,
+  progressPercent = null,
+  progressCaption,
+  pendingGraph = false,
+}: ProcessingStatusBannerProps) {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onActivate()
+    }
+  }
+
+  return (
+    <div
+      className={`bc-processing-banner${pendingGraph ? ' bc-processing-banner-pending' : ''}`}
+      onClick={onActivate}
+      onKeyDown={handleKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label={`${title}. ${actionLabel}`}
+    >
+      <div className="bc-processing-banner-accent" aria-hidden />
+      <div className="bc-processing-banner-body">
+        <div className="bc-processing-banner-top">
+          <div className="bc-processing-banner-icon">
+            {pendingGraph ? (
+              <Network size={16} aria-hidden />
+            ) : (
+              <Loader2 size={16} className="bc-spin" aria-hidden />
+            )}
+          </div>
+          <div className="bc-processing-banner-meta">
+            <span className="bc-processing-banner-title">{title}</span>
+            <p className="bc-processing-banner-desc">{subtitle}</p>
+          </div>
+          <span className="bc-processing-banner-cta">
+            {actionLabel}
+            <ChevronRight size={14} aria-hidden />
+          </span>
+        </div>
+
+        {!pendingGraph && (
+          <div className="bc-processing-banner-progress-row">
+            <div
+              className={
+                progressPercent === null
+                  ? 'bc-processing-banner-track is-indeterminate'
+                  : 'bc-processing-banner-track'
+              }
+              aria-hidden
+            >
+              <div
+                className="bc-processing-banner-fill"
+                style={
+                  progressPercent !== null
+                    ? { width: `${progressPercent}%` }
+                    : undefined
+                }
+              />
+            </div>
+            {progressCaption && (
+              <span className="bc-processing-banner-percent">
+                {progressCaption}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ============================================
 // COMPONENTE PRINCIPAL
 // ============================================
@@ -131,7 +254,6 @@ const BuscadorColeccion = () => {
   // ─────────────────────────────────────────
 
   const [nombreColeccion, setNombreColeccion] = useState('Cargando...')
-  const [tempNombre, setTempNombre] = useState('')
   const [collectionProcessingStatus, setCollectionProcessingStatus] =
     useState('idle')
   const [isCollectionProcessing, setIsCollectionProcessing] = useState(false)
@@ -172,6 +294,7 @@ const BuscadorColeccion = () => {
   const [tipoFiltroUI, setTipoFiltroUI] = useState<string | null>(null)
   const [entitySearch, setEntitySearch] = useState('')
   const [filtroOpen, setFiltroOpen] = useState(false)
+  const [semanticHelpActive, setSemanticHelpActive] = useState(false)
 
   // ─────────────────────────────────────────
   // 6. ESTADO: DOCUMENTOS
@@ -194,8 +317,9 @@ const BuscadorColeccion = () => {
   const [modalPipelineEtapa, setModalPipelineEtapa] = useState(false)
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
+  const [isRenombrarModalOpen, setIsRenombrarModalOpen] = useState(false)
+  const [guardandoNombre, setGuardandoNombre] = useState(false)
   const [isDeletingCollection, setIsDeletingCollection] = useState(false)
-  const [isEditingName, setIsEditingName] = useState(false)
 
   // ─────────────────────────────────────────
   // 9. ESTADO: BACKGROUND PROCESSING
@@ -261,8 +385,23 @@ const BuscadorColeccion = () => {
   const hayFiltrosActivos =
     entidadesSeleccionadas.length > 0 || !!fechaDesde || !!fechaHasta
 
-  // ─────────────────────────────────────────
-  // 14. CALLBACKS: CARGA DE DATOS
+  const sidebarCollectionName = isNuevaColeccionPage
+    ? 'Nueva Colección'
+    : nombreColeccion
+  const canEditCollectionName =
+    !isNuevaColeccionPage && id_coleccion !== 'nueva'
+  const canDeleteCollection =
+    !isNuevaColeccionPage && id_coleccion !== 'nueva'
+  const isSearchDisabled = isNuevaColeccionPage
+  const isNuevaBackgroundProcessing =
+    isNuevaColeccionPage && !modalCargaOpen && !!visibleBackgroundProcessingId
+  const showNuevaOnboarding =
+    isNuevaColeccionPage && !modalCargaOpen && !isNuevaBackgroundProcessing
+
+  const handleOpenAddSources = () => {
+    setModalPipelineEtapa(false)
+    setModalCargaOpen(true)
+  }
   // ─────────────────────────────────────────
 
   const redirectIfCollectionMissing = useCallback(() => {
@@ -315,7 +454,6 @@ const BuscadorColeccion = () => {
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
-        setTempNombre(data.name)
         const status = data.processing_status ?? 'idle'
         setCollectionProcessingStatus(status)
         const processing = isPipelineInProgress(status)
@@ -443,24 +581,29 @@ const BuscadorColeccion = () => {
   // 16. CALLBACKS: EDICIÓN & ELIMINACIÓN
   // ─────────────────────────────────────────
 
-  const saveNombre = async () => {
-    if (tempNombre.trim() && id_coleccion && id_coleccion !== 'nueva') {
-      try {
-        const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ name: tempNombre }),
-        })
-        if (res.ok) setNombreColeccion(tempNombre)
-      } catch (e) {
-        console.error(e)
+  const confirmarRenombrar = async (nuevoNombre: string) => {
+    if (!id_coleccion || id_coleccion === 'nueva' || guardandoNombre) return
+
+    setGuardandoNombre(true)
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ name: nuevoNombre }),
+      })
+      if (res.ok) {
+        setNombreColeccion(nuevoNombre)
+        setIsRenombrarModalOpen(false)
       }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setGuardandoNombre(false)
     }
-    setIsEditingName(false)
   }
 
   const handleDelete = async () => {
@@ -854,7 +997,9 @@ const BuscadorColeccion = () => {
 
   const currentPipelineBannerView = useMemo(() => {
     if (!currentPagePipelineSnapshot) return null
-    return getProcessingBannerView(currentPagePipelineSnapshot)
+    return getProcessingBannerView(currentPagePipelineSnapshot, {
+      showCollectionName: false,
+    })
   }, [currentPagePipelineSnapshot])
 
   const otherPipelineBannerView = useMemo(() => {
@@ -913,29 +1058,21 @@ const BuscadorColeccion = () => {
         <aside className="bc-sidebar">
           <div className="bc-sidebar-inner">
             <div className="bc-sidebar-header">
-              {isEditingName ? (
-                <input
-                  className="bc-sidebar-name-input"
-                  value={tempNombre}
-                  onChange={(e) => setTempNombre(e.target.value)}
-                  onBlur={saveNombre}
-                  onKeyDown={(e) => e.key === 'Enter' && saveNombre()}
-                  autoFocus
-                />
-              ) : (
-                <div
-                  className="bc-sidebar-title-group"
-                  onClick={() => setIsEditingName(true)}
-                >
-                  <h2 className="bc-sidebar-collection-name">
-                    {nombreColeccion}
-                  </h2>
-                  <Edit2 size={12} className="bc-edit-icon" />
-                </div>
-              )}
-              <span className="bc-sidebar-collection-label">
-                Colección actual
-              </span>
+              <div className="bc-sidebar-title-group">
+                <h2 className="bc-sidebar-collection-name">
+                  {sidebarCollectionName}
+                </h2>
+                {canEditCollectionName && (
+                  <button
+                    type="button"
+                    className="bc-edit-name-btn"
+                    onClick={() => setIsRenombrarModalOpen(true)}
+                    aria-label="Renombrar colección"
+                  >
+                    <Edit2 size={16} strokeWidth={1.75} aria-hidden />
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="bc-sidebar-divider" />
@@ -943,43 +1080,44 @@ const BuscadorColeccion = () => {
             {isGrafoView ? (
               <Link
                 to={`/${id_usuario}/colecciones/${id_coleccion}/buscador`}
-                className="bc-add-btn"
-                style={{
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                }}
+                className="bc-add-btn bc-add-btn-link"
               >
                 <FileText size={15} />
-                <span style={{ marginLeft: '4px' }}>Consultar Documentos</span>
+                <span>Consultar Documentos</span>
               </Link>
             ) : id_coleccion !== 'nueva' ? (
               <Link
                 to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`}
-                className="bc-add-btn"
-                style={{
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                }}
+                className="bc-add-btn bc-add-btn-link"
               >
                 <Network size={15} />
-                <span style={{ marginLeft: '4px' }}>Ver Grafo</span>
+                <span>Ver Grafo</span>
               </Link>
             ) : null}
 
             <button
-              className="bc-add-btn"
+              type="button"
+              className="bc-add-btn bc-add-btn-secondary"
               onClick={() => setIsModalFuentesOpen(true)}
+              disabled={isNuevaColeccionPage}
+              title={
+                isNuevaColeccionPage
+                  ? 'Sube documentos primero para ver la lista'
+                  : undefined
+              }
             >
               <Files size={15} /> <span>Ver Documentos</span>
             </button>
-            <button
-              className="bc-delete-collection-btn"
-              onClick={() => setIsEliminarModalOpen(true)}
-            >
-              <Trash2 size={14} /> <span>Borrar colección</span>
-            </button>
+
+            {canDeleteCollection && (
+              <button
+                type="button"
+                className="bc-delete-collection-btn"
+                onClick={() => setIsEliminarModalOpen(true)}
+              >
+                <Trash2 size={14} /> <span>Borrar Colección</span>
+              </button>
+            )}
           </div>
         </aside>
 
@@ -991,150 +1129,35 @@ const BuscadorColeccion = () => {
           {/* BANNERS DE PROGRESO */}
 
           {!modalCargaOpen && currentPipelineBannerView && (
-            <div
-              className="bc-alert-banner bc-processing-banner"
-              style={{ cursor: 'pointer' }}
-              onClick={handleOpenCurrentCollectionModal}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  handleOpenCurrentCollectionModal()
-                }
-              }}
-            >
-              <div className="bc-alert-content bc-processing-banner-main">
-                <div className="bc-alert-icon-wrap">
-                  <Loader2 size={14} className="bc-alert-icon bc-spin" />
-                </div>
-                <div className="bc-alert-text bc-processing-banner-text">
-                  <span className="bc-alert-title">
-                    {currentPipelineBannerView.title}
-                  </span>
-                  <p className="bc-alert-desc">
-                    {currentPipelineBannerView.subtitle}
-                  </p>
-                  <div className="bc-processing-banner-progress-row">
-                    <div
-                      className={
-                        currentPipelineBannerView.progressPercent === null
-                          ? 'bc-processing-banner-track is-indeterminate'
-                          : 'bc-processing-banner-track'
-                      }
-                      aria-hidden
-                    >
-                      <div
-                        className="bc-processing-banner-fill"
-                        style={
-                          currentPipelineBannerView.progressPercent !== null
-                            ? {
-                                width: `${currentPipelineBannerView.progressPercent}%`,
-                              }
-                            : undefined
-                        }
-                      />
-                    </div>
-                    <span className="bc-processing-banner-percent">
-                      {currentPipelineBannerView.progressCaption}
-                    </span>
-                  </div>
-                  <span className="bc-processing-banner-action">
-                    Clic para ver detalle
-                  </span>
-                </div>
-              </div>
-            </div>
+            <ProcessingStatusBanner
+              title={currentPipelineBannerView.title}
+              subtitle={currentPipelineBannerView.subtitle}
+              progressPercent={currentPipelineBannerView.progressPercent}
+              progressCaption={currentPipelineBannerView.progressCaption}
+              actionLabel="Ver detalle"
+              onActivate={handleOpenCurrentCollectionModal}
+            />
           )}
 
           {!modalCargaOpen && otherPipelineBannerView && (
-            <div
-              className="bc-alert-banner bc-processing-banner"
-              style={{ cursor: 'pointer' }}
-              onClick={handleOpenOtherCollection}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  handleOpenOtherCollection()
-                }
-              }}
-            >
-              <div className="bc-alert-content bc-processing-banner-main">
-                <div className="bc-alert-icon-wrap">
-                  <Loader2 size={14} className="bc-alert-icon bc-spin" />
-                </div>
-                <div className="bc-alert-text bc-processing-banner-text">
-                  <span className="bc-alert-title">
-                    {otherPipelineBannerView.title}
-                  </span>
-                  <p className="bc-alert-desc">
-                    {otherPipelineBannerView.subtitle}
-                  </p>
-                  <div className="bc-processing-banner-progress-row">
-                    <div
-                      className={
-                        otherPipelineBannerView.progressPercent === null
-                          ? 'bc-processing-banner-track is-indeterminate'
-                          : 'bc-processing-banner-track'
-                      }
-                      aria-hidden
-                    >
-                      <div
-                        className="bc-processing-banner-fill"
-                        style={
-                          otherPipelineBannerView.progressPercent !== null
-                            ? {
-                                width: `${otherPipelineBannerView.progressPercent}%`,
-                              }
-                            : undefined
-                        }
-                      />
-                    </div>
-                    <span className="bc-processing-banner-percent">
-                      {otherPipelineBannerView.progressCaption}
-                    </span>
-                  </div>
-                  <span className="bc-processing-banner-action">
-                    Clic para ir a esa colección
-                  </span>
-                </div>
-              </div>
-            </div>
+            <ProcessingStatusBanner
+              title={otherPipelineBannerView.title}
+              subtitle={otherPipelineBannerView.subtitle}
+              progressPercent={otherPipelineBannerView.progressPercent}
+              progressCaption={otherPipelineBannerView.progressCaption}
+              actionLabel="Ir a colección"
+              onActivate={handleOpenOtherCollection}
+            />
           )}
 
           {!modalCargaOpen && pendingGraphBannerView && (
-            <div
-              className="bc-alert-banner bc-processing-banner bc-pending-graph-banner"
-              style={{ cursor: 'pointer' }}
-              onClick={handleOpenCurrentCollectionModal}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  handleOpenCurrentCollectionModal()
-                }
-              }}
-            >
-              <div className="bc-alert-content bc-processing-banner-main">
-                <div className="bc-alert-icon-wrap">
-                  <Network size={14} className="bc-alert-icon" />
-                </div>
-                <div className="bc-alert-text bc-processing-banner-text">
-                  <span className="bc-alert-title">
-                    {pendingGraphBannerView.title}
-                  </span>
-                  <p className="bc-alert-desc">
-                    {pendingGraphBannerView.subtitle}
-                  </p>
-                  <span className="bc-processing-banner-action">
-                    {pendingGraphBannerView.actionLabel}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <ProcessingStatusBanner
+              title={pendingGraphBannerView.title}
+              subtitle={pendingGraphBannerView.subtitle}
+              actionLabel={pendingGraphBannerView.actionLabel}
+              onActivate={handleOpenCurrentCollectionModal}
+              pendingGraph
+            />
           )}
 
           {/* CONTENIDO PRINCIPAL */}
@@ -1149,21 +1172,54 @@ const BuscadorColeccion = () => {
             <>
               {/* BARRA DE BÚSQUEDA */}
 
-              <div className="bc-searchbar-wrap">
+              <div
+                className={`bc-searchbar-wrap${isSearchDisabled ? ' is-disabled' : ''}`}
+              >
                 <div className="bc-searchbar">
                   <Search size={17} className="bc-searchbar-icon" />
                   <input
                     className="bc-searchbar-input"
-                    placeholder="Consulta algo a tus documentos..."
+                    placeholder={
+                      isSearchDisabled
+                        ? 'Disponible cuando la colección esté creada'
+                        : 'Consulta algo a tus documentos...'
+                    }
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleBuscar()}
+                    onKeyDown={(e) =>
+                      e.key === 'Enter' && !isSearchDisabled && handleBuscar()
+                    }
+                    disabled={isSearchDisabled}
+                    aria-disabled={isSearchDisabled}
                   />
                   <button
+                    type="button"
+                    className="bc-search-help-btn"
+                    aria-label="Qué es la búsqueda semántica"
+                    aria-describedby="bc-semantic-help-slot"
+                    onMouseEnter={() => setSemanticHelpActive(true)}
+                    onMouseLeave={() => setSemanticHelpActive(false)}
+                    onFocus={() => setSemanticHelpActive(true)}
+                    onBlur={() => setSemanticHelpActive(false)}
+                    disabled={isSearchDisabled}
+                  >
+                    <HelpCircle size={15} strokeWidth={1.75} aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    className="bc-search-submit-btn"
+                    onClick={handleBuscar}
+                    disabled={isSearchDisabled}
+                  >
+                    Buscar
+                  </button>
+                  <button
+                    type="button"
                     className={`bc-filter-btn ${filtroOpen ? 'active' : ''} ${
                       hayFiltrosActivos ? 'has-filters' : ''
                     }`}
                     onClick={() => setFiltroOpen(!filtroOpen)}
+                    disabled={isSearchDisabled}
                   >
                     <SlidersHorizontal size={14} />
                     <span>Criterios de Búsqueda</span>
@@ -1174,6 +1230,19 @@ const BuscadorColeccion = () => {
                     )}
                   </button>
                 </div>
+
+                {!isSearchDisabled && (
+                  <p
+                    id="bc-semantic-help-slot"
+                    className={`bc-search-help-slot${semanticHelpActive ? ' is-active' : ''}`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {semanticHelpActive
+                      ? SEARCH_SEMANTIC_HELP
+                      : SEARCH_SEMANTIC_HELP_HINT}
+                  </p>
+                )}
 
                 {filtroOpen && (
                   <ModalFiltros
@@ -1199,7 +1268,7 @@ const BuscadorColeccion = () => {
                 {loading ? (
                   <div className="bc-empty">
                     <Loader2 className="bc-spin" size={30} />
-                    <p>Consultando el grafo de conocimiento...</p>
+                    <p>Buscando en tus documentos...</p>
                   </div>
                 ) : resultados.length > 0 ? (
                   <>
@@ -1212,7 +1281,9 @@ const BuscadorColeccion = () => {
                       </span>
                     </div>
                     <div className="bc-results-list">
-                      {resultados.map((resultado) => (
+                      {resultados.map((resultado) => {
+                        const matchLevel = getMatchLevel(resultado.score)
+                        return (
                         <article
                           key={resultado.id_chunk}
                           className="bc-result-card"
@@ -1226,25 +1297,38 @@ const BuscadorColeccion = () => {
                                 </h3>
                               </div>
 
-                              <div
-                                className={
-                                  resultado.score > 0.7
-                                    ? 'bc-score-status status-high'
-                                    : resultado.score > 0.4
-                                      ? 'bc-score-status status-med'
-                                      : 'bc-score-status status-low'
-                                }
-                              >
-                                <CheckCircle2
-                                  size={12}
-                                  className="bc-status-icon"
-                                />
-                                <span className="bc-score-value">
-                                  {resultado.score > 0.7
-                                    ? 'Alta coincidencia'
-                                    : resultado.score > 0.4
-                                      ? 'Coincidencia media'
-                                      : 'Coincidencia baja'}
+                              <div className="bc-score-row">
+                                <div
+                                  className={`bc-score-status ${matchLevel.statusClass}`}
+                                >
+                                  <CheckCircle2
+                                    size={12}
+                                    className="bc-status-icon"
+                                  />
+                                  <span className="bc-score-value">
+                                    {matchLevel.label}
+                                  </span>
+                                </div>
+                                <span className="bc-score-help-wrap">
+                                  <button
+                                    type="button"
+                                    className="bc-score-help-btn"
+                                    aria-label={`Qué significa ${matchLevel.label}`}
+                                    aria-describedby={`bc-score-tip-${resultado.id_chunk}`}
+                                  >
+                                    <HelpCircle
+                                      size={13}
+                                      strokeWidth={1.75}
+                                      aria-hidden
+                                    />
+                                  </button>
+                                  <span
+                                    id={`bc-score-tip-${resultado.id_chunk}`}
+                                    className="bc-score-tooltip"
+                                    role="tooltip"
+                                  >
+                                    {matchLevel.hint}
+                                  </span>
                                 </span>
                               </div>
                             </div>
@@ -1280,7 +1364,8 @@ const BuscadorColeccion = () => {
                             )}
                           </div>
                         </article>
-                      ))}
+                        )
+                      })}
                     </div>
                     {totalPages > 1 && (
                       <div className="bc-pagination">
@@ -1308,18 +1393,35 @@ const BuscadorColeccion = () => {
                       <Search size={30} />
                     </div>
                     <h3 className="bc-empty-title">
-                      {searchNotReadyMessage
-                        ? 'Búsqueda no disponible aún'
-                        : 'Sin resultados todavía'}
+                      {showNuevaOnboarding
+                        ? 'Empieza Subiendo Documentos'
+                        : isNuevaBackgroundProcessing
+                          ? 'Preparando Tu Colección'
+                          : searchNotReadyMessage
+                            ? 'Búsqueda No Disponible Aún'
+                            : 'Sin Resultados Todavía'}
                     </h3>
                     <p className="bc-empty-sub">
-                      {searchNotReadyMessage ??
-                        (busquedaEnviada
-                          ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
-                          : !isGraphViewable(collectionProcessingStatus)
-                            ? 'Genera el grafo de la colección para habilitar la búsqueda semántica.'
-                            : 'Haz una consulta para explorar los documentos de esta colección.')}
+                      {showNuevaOnboarding
+                        ? 'Añade PDF o TXT para crear tu colección. Después podrás generar el grafo y buscar en tus documentos.'
+                        : isNuevaBackgroundProcessing
+                          ? 'Tus documentos se están procesando en segundo plano. Sigue el avance en la barra superior; la búsqueda estará disponible cuando termine el grafo.'
+                          : (searchNotReadyMessage ??
+                            (busquedaEnviada
+                              ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
+                              : !isGraphViewable(collectionProcessingStatus)
+                                ? 'Genera el grafo de la colección para habilitar la búsqueda semántica.'
+                                : 'Haz una consulta para explorar los documentos de esta colección.'))}
                     </p>
+                    {showNuevaOnboarding && (
+                      <button
+                        type="button"
+                        className="imfd-btn-primary bc-empty-cta"
+                        onClick={handleOpenAddSources}
+                      >
+                        Añadir Fuentes
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -1363,6 +1465,16 @@ const BuscadorColeccion = () => {
         onConfirm={handleDelete}
         nombreColeccion={nombreColeccion}
         isConfirming={isDeletingCollection}
+      />
+
+      <ModalRenombrarColeccion
+        isOpen={isRenombrarModalOpen}
+        nombreActual={nombreColeccion}
+        isSaving={guardandoNombre}
+        onConfirm={confirmarRenombrar}
+        onClose={() => {
+          if (!guardandoNombre) setIsRenombrarModalOpen(false)
+        }}
       />
 
       <ModalDocumentosDisponibles

@@ -1,31 +1,6 @@
-/* LoginPage.css */
-
-:root {
-  /* MODO CLARO: Basado en tu referencia */
-  --bg-gradient: linear-gradient(180deg, #f8ffa1 0%, #f6d5ee 55%, #ffffff 100%);
-  --card-bg: rgba(255, 255, 255, 0.75);
-  --text-main: #111111;
-  --text-sub: #4f4f5c;
-  --accent: #aba3f6;
-  --border-color: rgba(171, 163, 246, 0.3);
-  --btn-text: #111111;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* MODO OSCURO: Basado en la imagen que subiste */
-    --bg-gradient: radial-gradient(circle at center, #243166 0%, #1a1a2e 100%);
-    --card-bg: rgba(23, 23, 35, 0.7);
-    --text-main: #ffffff;
-    --text-sub: #94a3b8;
-    --accent: #a8a3f6;
-    --border-color: rgba(168, 163, 246, 0.2);
-    --btn-text: #111111;
-  }
-}
+/* LoginPage.css — tokens globales en styles/design-tokens.css */
 
 .login-page-wrapper {
-  /* Forzamos el fondo total */
   position: fixed;
   top: 0;
   left: 0;
@@ -43,7 +18,7 @@
 .login-card {
   width: 100%;
   max-width: 420px;
-  background-color: var(--card-bg);
+  background-color: var(--surface);
   border: 1px solid var(--border-color);
   border-radius: 32px;
   padding: 48px 32px;
@@ -81,24 +56,11 @@
   line-height: 1.5;
 }
 
-.primary-btn {
+.login-card .imfd-btn-primary {
   width: 100%;
-  background-color: var(--accent);
-  color: var(--btn-text);
-  border: none;
   padding: 18px;
   border-radius: 18px;
-  font-size: 16px;
   font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-shadow: 0 10px 25px rgba(171, 163, 246, 0.3);
-}
-
-.primary-btn:hover {
-  transform: translateY(-2px);
-  opacity: 0.95;
-  box-shadow: 0 15px 30px rgba(171, 163, 246, 0.4);
 }
 
 .footer-brand {
@@ -111,11 +73,11 @@
   opacity: 0.8;
 }
 
-/* Ajustes para móviles */
 @media (max-width: 480px) {
   .login-card {
     padding: 40px 24px;
   }
+
   .login-title {
     font-size: 28px;
   }

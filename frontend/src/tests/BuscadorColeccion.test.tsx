@@ -257,7 +257,9 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-    expect(screen.getByText('Colección actual')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Colección Test' }),
+    ).toBeInTheDocument()
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${API_BASE}/api/collections/collection-123`,
@@ -298,7 +300,7 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-    expect(screen.getByText('Sin resultados todavía')).toBeInTheDocument()
+    expect(screen.getByText('Sin Resultados Todavía')).toBeInTheDocument()
     expect(
       screen.getByText(
         'Genera el grafo de la colección para habilitar la búsqueda semántica.',
@@ -482,7 +484,7 @@ describe('BuscadorColeccion', () => {
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
   })
 
-  test('permite editar nombre de colección y guardar con Enter', async () => {
+  test('permite renombrar colección desde el modal', async () => {
     // Implementamos una máquina de estados quirúrgica para el fetch de este test
     ;(globalThis.fetch as jest.Mock).mockImplementation(
       (url: string | URL | Request, options?: RequestInit) => {
@@ -518,10 +520,13 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    const title = await screen.findByText('Colección Test')
-    fireEvent.click(title)
+    await screen.findByRole('heading', { name: 'Colección Test' })
 
-    const input = screen.getByDisplayValue('Colección Test')
+    fireEvent.click(
+      screen.getByRole('button', { name: /renombrar colecci/i }),
+    )
+
+    const input = screen.getByLabelText(/^nombre$/i)
     fireEvent.change(input, { target: { value: 'Nuevo nombre' } })
 
     await act(async () => {
@@ -669,10 +674,11 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(
-      await screen.findByText(/Se está procesando «Colección en curso»/),
+      await screen.findByText(/Extracción de Texto/i),
     ).toBeInTheDocument()
+    expect(screen.getByText(/2 de 4 documentos/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Clic para ver detalle'))
+    fireEvent.click(screen.getByText('Ver detalle'))
 
     expect(screen.getByTestId('modal-carga')).toBeInTheDocument()
     expect(mockNavigate).not.toHaveBeenCalled()
@@ -752,5 +758,72 @@ describe('BuscadorColeccion', () => {
 
     // Verificamos que el contador se haya congelado por completo
     expect(llamadasFinales.length).toBe(llamadasTrasPrimerIntervalo)
+  })
+
+  test('flujo nueva coleccion muestra onboarding y deshabilita acciones', async () => {
+    mockParams = {
+      id_usuario: 'user-123',
+      id_coleccion: 'nueva',
+    }
+
+    renderPage()
+
+    expect(screen.getByText('Nueva Colección')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Nueva Colección' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Borrar Colección')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /buscar/i })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: /cerrar carga/i }))
+
+    expect(
+      await screen.findByText(/empieza subiendo documentos/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /añadir fuentes/i }),
+    ).toBeInTheDocument()
+  })
+
+  test('nueva coleccion con procesamiento en background no muestra onboarding de subida', async () => {
+    mockParams = {
+      id_usuario: 'user-123',
+      id_coleccion: 'nueva',
+    }
+    localStorage.setItem('active_collection_id', 'collection-bg')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/collections/collection-bg')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-bg',
+            name: 'Dina',
+            processing_status: 'processing_text',
+            text_progress_total: 3,
+            text_progress_processed: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /cerrar carga/i }))
+
+    expect(
+      await screen.findByText(/Extracción de Texto/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/empieza subiendo documentos/i),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /añadir fuentes/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/preparando tu colección/i),
+    ).toBeInTheDocument()
   })
 })

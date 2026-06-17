@@ -92,10 +92,9 @@ export function getPendingGraphBannerView(
   collectionName: string,
 ): PendingGraphBannerView {
   return {
-    title: `${collectionName} — Grafo pendiente`,
-    subtitle:
-      'Los documentos ya están cargados. Genera el grafo para habilitar la búsqueda.',
-    actionLabel: 'Clic para generar grafo',
+    title: 'Grafo Pendiente',
+    subtitle: `${collectionName} ya tiene documentos. Genera el grafo para habilitar la búsqueda.`,
+    actionLabel: 'Generar grafo',
   }
 }
 
@@ -228,9 +227,9 @@ export type CollectionProcessingSnapshot = {
 }
 
 const PIPELINE_STAGE_LABELS: Record<string, string> = {
-  processing_text: 'Extracción de texto',
-  processing_graph: 'Construcción del grafo',
-  awaiting_graph_confirmation: 'Confirmación de grafo',
+  processing_text: 'Extracción de Texto',
+  processing_graph: 'Construcción del Grafo',
+  awaiting_graph_confirmation: 'Confirmación de Grafo',
 }
 
 export type CollectionProgressFields = {
@@ -324,10 +323,10 @@ export function getProcessingBannerView(
 ): ProcessingBannerView {
   const stageLabel =
     PIPELINE_STAGE_LABELS[snapshot.processingStatus] ?? 'Procesando'
-  const showName = options?.showCollectionName !== false
+  const showName = options?.showCollectionName === true
 
   const title = showName
-    ? `Se está procesando «${snapshot.collectionName}» — ${stageLabel}`
+    ? `«${snapshot.collectionName}» — ${stageLabel}`
     : stageLabel
 
   let subtitle: string
@@ -335,25 +334,20 @@ export function getProcessingBannerView(
   const overall = getOverallPipelinePercent(snapshot)
 
   if (snapshot.processingStatus === 'awaiting_graph_confirmation') {
-    subtitle =
-      'El grafo se creará solo con los documentos que sí pasaron la extracción.'
-    progressCaption = 'Confirmación requerida'
+    subtitle = 'Revisa qué documentos incluir antes de crear el grafo.'
+    progressCaption = 'Paso 2 de 2'
   } else if (snapshot.processingStatus === 'processing_text') {
-    const step = getStepProgressPercent(
-      snapshot.textProgressProcessed,
-      snapshot.textProgressTotal,
-    )
-    subtitle = `Extracción de documentos · ${step}%`
-    progressCaption =
-      overall !== null ? `${overall}% del pipeline` : 'Calculando progreso…'
+    subtitle =
+      snapshot.textProgressTotal > 0
+        ? `${snapshot.textProgressProcessed} de ${snapshot.textProgressTotal} documentos`
+        : 'Preparando extracción…'
+    progressCaption = overall !== null ? `${overall}%` : '—'
   } else if (snapshot.processingStatus === 'processing_graph') {
-    const step = getStepProgressPercent(
-      snapshot.graphProgressProcessed,
-      snapshot.graphProgressTotal,
-    )
-    subtitle = `Construcción del grafo · ${step}%`
-    progressCaption =
-      overall !== null ? `${overall}% del pipeline` : 'Calculando progreso…'
+    subtitle =
+      snapshot.graphProgressTotal > 0
+        ? `${snapshot.graphProgressProcessed} de ${snapshot.graphProgressTotal} pasos del grafo`
+        : 'Construyendo relaciones…'
+    progressCaption = overall !== null ? `${overall}%` : '—'
   } else {
     subtitle = 'Procesando en segundo plano'
     progressCaption = overall !== null ? `${overall}%` : '—'

@@ -21,6 +21,7 @@
 12. [Integración con MillenniumDB](#integración-con-millenniumdb)
 13. [Docker](#docker)
 14. [Equipo](#equipo)
+15. [Sistema de diseño UI](#sistema-de-diseño-ui)
 
 ---
 
@@ -355,8 +356,11 @@ TallerDeIntegracion_G10/
 │   │   ├── App.tsx
 │   │   ├── App.css
 │   │   ├── index.css
+│   │   ├── styles/
+│   │   │   └── design-tokens.css   # Tokens IMFD compartidos (colores, layout, botones)
 │   │   ├── pages/              # landing, login, buscador_coleccion, navbar, …
 │   │   ├── components/         # modales (carga, documentos, eliminar, …)
+│   │   │   └── ui/             # AppLoading y utilidades visuales compartidas
 │   │   └── assets/
 │   ├── public/
 │   ├── index.html
@@ -658,6 +662,150 @@ Con frontend integrado en el mismo contenedor: compila antes `npm run build` en 
 docker build -t imfd-explorer:latest .
 docker run -p 8080:8080 --env-file backend/.env imfd-explorer:latest
 ```
+
+---
+
+## Sistema de diseño UI
+
+La interfaz de **NotebookIMFD** sigue una paleta y reglas compartidas definidas en `frontend/src/styles/design-tokens.css`. Ese archivo es la **fuente de verdad** para colores, espaciado de layout y componentes base. Se importa una sola vez desde `main.tsx`, antes de `index.css`.
+
+### Identidad visual (marca IMFD)
+
+| Token | Valor (referencia) | Uso |
+|---|---|---|
+| `--imfd-navy` | `#243166` | Fondos oscuros, identidad institucional |
+| `--imfd-yellow` / `--imfd-yellow-bright` | `#f8ffa1` / `#fbffa1` | Acentos de carga, highlights |
+| `--imfd-pink` | `#f6d5ee` | Gradientes, estados suaves |
+| `--imfd-accent` | `#aba3f6` | Botones primarios, bordes, foco |
+| `--danger` | `#ef4444` | Eliminar, alertas destructivas |
+
+**Modo claro:** gradiente vertical amarillo → rosa → blanco (`--bg-gradient`).
+
+**Modo oscuro:** gradiente radial azul (`--imfd-navy` → `#1a1a2e`), activado con `@media (prefers-color-scheme: dark)`.
+
+> Regla: no hardcodear `#7c3aed`, `#aa3bff` ni amarillos fuera de paleta en pantallas nuevas. Usar siempre variables CSS del design system.
+
+### Layout global
+
+| Regla | Valor | Dónde aplica |
+|---|---|---|
+| Altura navbar | `--navbar-height: 72px` | `navbar.css`, spacer en `App.tsx`, `buscador_coleccion.css` |
+| Scroll principal | `overflow: auto` en `<main>` | Permite listar muchas colecciones en landing |
+| Contenido interno full-height | `overflow: hidden` en `.bc-root` | Buscador y vistas que ocupan todo el viewport útil |
+
+### Tipografía
+
+| Rol | Familia | Tamaños de referencia |
+|---|---|---|
+| UI general | `DM Sans` (`--font-sans`) | 14–18px cuerpo |
+| Títulos de modales | `DM Serif Display` (`--font-display`) | 20–22px |
+| Hero landing | `DM Sans` bold | 52px → 40px → 32px (responsive) |
+| Título de sección | `DM Sans` bold | 32px landing / 28px tablet |
+| Título de card | `DM Sans` bold | 20px (no igualar al título de sección) |
+
+### Componentes compartidos
+
+| Clase / componente | Archivo | Cuándo usarlo |
+|---|---|---|
+| `.imfd-btn-primary` | `design-tokens.css` | CTA principal (login, landing, acciones afirmativas) |
+| `<AppLoading />` | `components/ui/app_loading.tsx` | Auth, callback, carga de listas (prop `compact` en bloques internos) |
+| `ModalRenombrarColeccion` | `components/modal_renombrar_coleccion/` | Renombrar colección (sustituye `window.prompt`) |
+| `ModalEliminarColeccion` | `components/modal_eliminar_coleccion/` | Confirmación destructiva (sustituye `window.confirm`) |
+
+### Reglas de interacción
+
+1. **No usar diálogos nativos** (`prompt`, `confirm`, `alert`) en flujos de producto; usar modales del design system.
+2. **Copy contextual en landing:** si el usuario no tiene colecciones → botón **Iniciar**; si ya tiene → **Nueva colección** y subtítulo orientado a retomar trabajo.
+3. **Badge de bienvenida:** texto inclusivo **Bienvenido/a** (no asumir género).
+4. **Cards de colección:** botón interno `Abrir colección …` separado de acciones editar/eliminar (evita botones anidados inaccesibles).
+5. **Estados de foco:** botones primarios e iconos deben tener `:focus-visible` con `--accent`.
+
+### Radios y sombras
+
+| Token | Valor | Uso típico |
+|---|---|---|
+| `--radius-sm` | `12px` | Inputs, chips |
+| `--radius-md` | `16px` | Botón primario |
+| `--radius-lg` | `24px` | Cards, modales |
+| `--radius-pill` | `999px` | Badges, icon buttons |
+| `--shadow-accent` | sombra lila | CTA primario |
+| `--shadow-card` | sombra suave | Hover de cards |
+
+### Grid del landing (colecciones)
+
+| Breakpoint | Columnas |
+|---|---|
+| `> 1024px` | 3 |
+| `641px – 1024px` | 2 |
+| `≤ 640px` | 1 |
+
+### Flujo `/colecciones/nueva/buscador` (buscador — creación)
+
+Esta ruta combina el **ModalCarga** (paso 1) con el layout del buscador detrás. Reglas acordadas en `fix/frontend`:
+
+| Situación | Comportamiento UI |
+|---|---|
+| Sidebar — título | Mostrar **Nueva colección**, nunca "Cargando…" |
+| Sidebar — etiqueta | **Creación en curso** (no "Colección actual") |
+| Renombrar inline | **Oculto** en `nueva` (solo renombrar en modal de carga o tras crear UUID) |
+| Borrar colección | **Oculto** en `nueva` (no hay recurso persistido aún) |
+| Ver documentos | Botón **deshabilitado** hasta que exista colección |
+| Barra de búsqueda | **Deshabilitada** en `nueva`; placeholder explicativo |
+| Botón **Buscar** | Visible junto al input; deshabilitado en `nueva` |
+| Empty state (modal cerrado) | Onboarding: **Empieza subiendo documentos** + CTA **Añadir fuentes** |
+| Loader de búsqueda | Copy: **Buscando en tus documentos…** (no "grafo de conocimiento") |
+
+**Estilo sidebar:** botones `.bc-add-btn` alineados a tokens IMFD (lila suave, sin sombra neo-brutalista amarilla). Filtros usan accent `#aba3f6`.
+
+**Capitalización:** preferir oración en botones — p. ej. "Criterios de búsqueda", "Ver documentos", "Ver grafo".
+
+### Modal `ModalCarga` (`components/modal_carga/`)
+
+Ventana de **subida de archivos** y **procesamiento del grafo** (`Procesar grafo`). La monta `buscador_coleccion.tsx` cuando `modalCargaOpen === true`.
+
+| Etapa | Título modal | Contenido |
+|---|---|---|
+| `subida` | Añadir fuentes | Dropzone, lista de archivos, nombre de colección, idioma |
+| `pipeline` | Procesar grafo | Pasos Extracción → Construcción → Listo, barras de progreso, entidades |
+
+**Reglas UI (fix/frontend):**
+
+- Tokens del panel: `--mc-*` derivados de `design-tokens.css` (claro y `.dark`).
+- **Entidades a extraer:** fondo `--mc-surface-2`, texto `--mc-text-1` legible; estado seleccionado con borde `--mc-accent`. No usar cajas navy fijas en modo claro.
+- **Pasos del pipeline:** clase `pending` en pasos inactivos; bordes/fondos con `--mc-border` / `--mc-surface-2`.
+- **CTA principal** (`.mc-btn-upload`): accent IMFD `#aba3f6`, sin sombra neo-brutalista navy.
+- **Barra de progreso:** fill `--mc-accent`, no azul `#2563eb`.
+- Texto de ayuda de entidades: `--mc-text-2` (contraste mínimo AA sobre el panel).
+
+### Modo oscuro — checklist para pantallas nuevas
+
+Al crear o refactorizar una vista, verificar que **no queden colores fijos** en:
+
+- Fondos de cards y popups (`var(--surface)`, `var(--card-bg)`)
+- Texto secundario (`var(--text-2)`, `var(--text-3)`)
+- Bordes (`var(--border)`)
+- Botones icono (`var(--icon-btn-bg)`)
+
+El navbar, login, landing, buscador (`/nueva` y existentes), modales de eliminar/renombrar y el popup de errores del landing ya consumen tokens y respetan `prefers-color-scheme`.
+
+### Archivos tocados en la unificación UI (rama `fix/frontend`)
+
+- `frontend/src/styles/design-tokens.css` — tokens y `.imfd-btn-primary`
+- `frontend/src/pages/landing_page/*` — layout, dark mode, modales, copy dinámico
+- `frontend/src/pages/buscador_coleccion/*` — flujo `nueva`, searchbar, empty onboarding, tokens
+- `frontend/src/components/modal_carga/*` — pipeline, entidades, progreso, tokens IMFD
+- `frontend/src/components/modal_filtro/modal_filtros.module.css` — accent `#aba3f6`
+- `frontend/src/pages/navbar/navbar.css` — accent alineado a `#aba3f6`
+- `frontend/src/pages/login_page/*` — botón compartido, sin `:root` duplicado
+- `frontend/src/App.tsx` — spacer 72px, scroll en main, loading unificado
+- `frontend/src/components/ui/app_loading.*` — spinner de carga compartido
+
+### Cómo extender el sistema
+
+1. Añadir tokens nuevos solo en `design-tokens.css` (con variante dark si aplica).
+2. Prefijar estilos de página con clase raíz (ej. `.landing-page`) para no pisar globals.
+3. Reutilizar modales existentes antes de crear uno nuevo.
+4. Documentar aquí cualquier regla nueva acordada por el equipo.
 
 ---
 

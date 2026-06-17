@@ -3,6 +3,7 @@ import './modal_eliminar_coleccion.css'
 interface ModalEliminarColeccionProps {
   isOpen: boolean
   nombreColeccion?: string
+  titulo?: string
   isConfirming?: boolean
   onConfirm: () => void
   onClose: () => void
@@ -11,6 +12,7 @@ interface ModalEliminarColeccionProps {
 function ModalEliminarColeccion({
   isOpen,
   nombreColeccion,
+  titulo = 'Eliminar Colección',
   isConfirming = false,
   onConfirm,
   onClose,
@@ -39,7 +41,7 @@ function ModalEliminarColeccion({
           </svg>
         </div>
 
-        <h3 className="mea-title">Eliminar archivo</h3>
+        <h3 className="mea-title">{titulo}</h3>
 
         <p className="mea-text">
           ¿Estás seguro de que quieres eliminar{' '}

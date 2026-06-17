@@ -56,9 +56,9 @@
 }
 
 .filterChip.selected {
-  background: var(--accent-light, rgba(139, 92, 246, 0.1));
-  border-color: var(--accent, #8b5cf6);
-  color: var(--accent, #8b5cf6);
+  background: var(--accent-light, rgba(171, 163, 246, 0.12));
+  border-color: var(--accent, #aba3f6);
+  color: var(--accent, #aba3f6);
 }
 
 .filterDivider {
@@ -81,7 +81,7 @@
 }
 
 .filterTagInput:focus {
-  border-color: var(--accent, #8b5cf6);
+  border-color: var(--accent, #aba3f6);
 }
 
 .entityScrollList {

@@ -34,6 +34,9 @@
   align-items: center;
   text-align: center;
   gap: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.12),
     0 4px 16px rgba(0, 0, 0, 0.06);
@@ -93,17 +96,19 @@
 
 /* ── TEXTO ───────────────────────────────────────────────────────────────── */
 .mea-title {
-  font-family: 'DM Serif Display', Georgia, serif;
+  font-family: var(--font-sans);
   font-size: 20px;
+  font-weight: 700;
   color: var(--text-1, #111111);
   margin: 0 0 12px;
-  line-height: 1.2;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
 .mea-text {
-  font-family: 'DM Sans', sans-serif;
   font-size: 14px;
-  line-height: 1.65;
+  font-weight: 500;
+  line-height: 1.6;
   color: var(--text-2, #4f4f5c);
   margin: 0 0 8px;
 }
@@ -111,16 +116,14 @@
 .mea-filename {
   font-weight: 700;
   color: var(--text-1, #111111);
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .mea-warning {
-  font-family: 'DM Sans', sans-serif;
   font-size: 12px;
   font-weight: 600;
   color: #ef4444;
   margin: 0 0 28px;
-  opacity: 0.85;
 }
 
 /* ── ACCIONES ────────────────────────────────────────────────────────────── */
@@ -134,9 +137,8 @@
   flex: 1;
   padding: 11px 16px;
   border-radius: 13px;
-  font-family: 'DM Sans', sans-serif;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.18s ease;
   border: 1.5px solid transparent;
@@ -174,6 +176,36 @@
 }
 
 /* ── DARK MODE ───────────────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  .mea-box {
+    background: var(--surface, #141d35);
+    border-color: var(--border, #1e2d50);
+  }
+
+  .mea-title {
+    color: var(--text-1, #dce4f5);
+  }
+
+  .mea-text {
+    color: var(--text-2, #8394b4);
+  }
+
+  .mea-filename {
+    color: var(--text-1, #dce4f5);
+  }
+
+  .mea-btn-cancel {
+    border-color: var(--border, #1e2d50);
+    color: var(--text-2, #8394b4);
+  }
+
+  .mea-btn-cancel:hover {
+    background: var(--surface-2, #0d1426);
+    border-color: var(--accent, #aba3f6);
+    color: var(--text-1, #dce4f5);
+  }
+}
+
 .bc-dark .mea-box {
   background: var(--surface, #141d35);
   border-color: var(--border, #1e2d50);

@@ -110,7 +110,6 @@ describe('ModalCarga', () => {
     })
 
     expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
-    expect(screen.getByText('Listo para procesar')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /generar grafo/i }),
     ).toBeInTheDocument()
@@ -304,7 +303,6 @@ describe('ModalCarga', () => {
     expect(
       screen.getByText('Construye el grafo de conocimiento'),
     ).toBeInTheDocument()
-    expect(screen.getByText('Listo para procesar')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /generar grafo/i }),
     ).toBeInTheDocument()

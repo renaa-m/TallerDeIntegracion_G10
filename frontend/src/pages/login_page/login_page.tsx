@@ -26,7 +26,7 @@ const LoginPage = () => {
           Plataforma de Investigación en Humanidades Digitales del IMFD.
         </p>
 
-        <button className="primary-btn" onClick={handleLogin}>
+        <button className="imfd-btn-primary" onClick={handleLogin}>
           Iniciar Sesión
         </button>
 

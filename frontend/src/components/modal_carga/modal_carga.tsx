@@ -9,6 +9,7 @@ import {
   Network,
   CheckCircle2,
   AlertCircle,
+  HelpCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import './modal_carga.css'
@@ -67,7 +68,7 @@ const EMPTY_PROGRESS: StepProgress = {
 }
 
 const PIPELINE_LABELS: Record<PipelineStatus, string> = {
-  idle: 'Listo para procesar',
+  idle: '',
   processing_text: 'Extrayendo texto de los documentos...',
   processing_graph: 'Construyendo grafo con Wukong...',
   awaiting_graph_confirmation:
@@ -77,6 +78,20 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   cancelled: 'Procesamiento cancelado.',
   error: 'Ocurrió un error durante el procesamiento.',
 }
+
+const PIPELINE_STEP_HELP: Record<
+  'processing_text' | 'processing_graph' | 'graph_ready',
+  string
+> = {
+  processing_text:
+    'Lee tus documentos y extrae el texto para poder analizarlo después.',
+  processing_graph:
+    'Detecta entidades y relaciones en el texto y construye el grafo de conocimiento.',
+  graph_ready:
+    'Proceso completado. Ya puedes buscar en la colección y explorar el grafo.',
+}
+
+type PipelineStepKey = keyof typeof PIPELINE_STEP_HELP
 
 const LANGUAGE_OPTIONS = [
   { value: 'es', label: 'Español' },
@@ -194,6 +209,7 @@ const ModalCarga = ({
   const [graphProgress, setGraphProgress] =
     useState<StepProgress>(EMPTY_PROGRESS)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [stepHelpTip, setStepHelpTip] = useState<PipelineStepKey | null>(null)
 
   const isUploadingLocked = isUploading || isCancelling
   const resolvedCollectionId = useMemo(
@@ -633,7 +649,7 @@ const ModalCarga = ({
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          name: nombreColeccion || 'Nueva colección',
+          name: nombreColeccion || 'Nueva Colección',
           description: '',
           language: idioma, // <--- Agregar esto
         }),
@@ -909,7 +925,7 @@ const ModalCarga = ({
           </div>
         )}
         <div className="mc-header">
-          <div>
+          <div className="mc-header-main">
             <h2 className="mc-title">
               {resolvedEtapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}
             </h2>
@@ -1029,7 +1045,7 @@ const ModalCarga = ({
             </div>
 
             {/* 4. Selector de Idioma integrado */}
-            <div className="mc-language-selector" style={{ marginTop: '1rem' }}>
+            <div className="mc-language-selector">
               <label className="mc-label-custom">
                 Idioma de los documentos
               </label>
@@ -1071,7 +1087,10 @@ const ModalCarga = ({
           </>
         ) : (
           <div className="mc-pipeline">
-            <div className="mc-steps">
+            <div
+              className="mc-steps"
+              onMouseLeave={() => setStepHelpTip(null)}
+            >
               {['processing_text', 'processing_graph', 'graph_ready'].map(
                 (s, idx) => {
                   const stepLabel = ['Extracción', 'Construcción', 'Listo'][idx]
@@ -1091,10 +1110,11 @@ const ModalCarga = ({
                     !isCancelling &&
                     s === pipelineStatus &&
                     pipelineStatus !== 'graph_ready'
+                  const isPending = !isActive && !isDone
                   return (
                     <div
                       key={s}
-                      className={`mc-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
+                      className={`mc-step${isActive ? ' active' : ''}${isDone ? ' done' : ''}${isPending ? ' pending' : ''}`}
                     >
                       <div className="mc-step-icon">
                         {isActive ? (
@@ -1106,16 +1126,43 @@ const ModalCarga = ({
                         )}
                       </div>
                       <span className="mc-step-label">{stepLabel}</span>
+                      <span className="mc-step-help-wrap">
+                        <button
+                          type="button"
+                          className="mc-step-help"
+                          aria-label={`Qué significa ${stepLabel}`}
+                          aria-describedby="mc-steps-help-panel"
+                          onMouseEnter={() =>
+                            setStepHelpTip(s as PipelineStepKey)
+                          }
+                          onFocus={() => setStepHelpTip(s as PipelineStepKey)}
+                          onBlur={() => setStepHelpTip(null)}
+                        >
+                          <HelpCircle size={14} aria-hidden />
+                        </button>
+                      </span>
                     </div>
                   )
                 },
               )}
             </div>
             <p
-              className={`mc-pipeline-status${isCancelling ? ' is-cancelling-status' : ''}`}
+              id="mc-steps-help-panel"
+              className={`mc-steps-help-slot${stepHelpTip ? ' is-active' : ''}`}
+              role="status"
+              aria-live="polite"
             >
-              {pipelineStatusLabel}
+              {stepHelpTip
+                ? PIPELINE_STEP_HELP[stepHelpTip]
+                : 'Pasa el cursor sobre (?) para ver qué hace cada etapa.'}
             </p>
+            {(pipelineStatus !== 'idle' || isCancelling) && (
+              <p
+                className={`mc-pipeline-status${isCancelling ? ' is-cancelling-status' : ''}`}
+              >
+                {pipelineStatusLabel}
+              </p>
+            )}
             <div className="mc-progress-stack">
               {(pipelineStatus === 'processing_text' ||
                 pipelineStatus === 'awaiting_graph_confirmation' ||

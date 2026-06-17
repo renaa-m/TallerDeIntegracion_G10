@@ -6,6 +6,7 @@ import LoginPage from './pages/login_page/login_page'
 import Navbar from './pages/navbar/navbar'
 import BuscadorColeccion from './pages/buscador_coleccion/buscador_coleccion'
 import GraphViewer from './pages/visualizador_grafo/visualizador_grafo'
+import AppLoading from './components/ui/app_loading'
 
 // Componente que maneja el callback de Auth0
 function CallbackHandler() {
@@ -19,32 +20,14 @@ function CallbackHandler() {
     }
   }, [isLoading, isAuthenticated, user, navigate])
 
-  return (
-    <div className="h-screen flex items-center justify-center bg-[#243166]">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-10 h-10 border-4 border-[#FBFFA1] border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-[#FBFFA1] font-black text-xs uppercase italic">
-          Sincronizando...
-        </p>
-      </div>
-    </div>
-  )
+  return <AppLoading message="Sincronizando..." />
 }
 
 function App() {
   const { isAuthenticated, isLoading, user } = useAuth0()
 
   if (isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-[#243166]">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-4 border-[#FBFFA1] border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-[#FBFFA1] font-black text-xs uppercase italic">
-            Sincronizando...
-          </p>
-        </div>
-      </div>
-    )
+    return <AppLoading message="Sincronizando..." />
   }
 
   const userId = user?.sub?.split('|')[1] || user?.nickname
@@ -60,8 +43,10 @@ function App() {
       }}
     >
       <Navbar />
-      {/* Colchón para la Navbar fija de 70px */}
-      <div style={{ height: '70px', flexShrink: 0 }} />
+      <div
+        style={{ height: 'var(--navbar-height)', flexShrink: 0 }}
+        aria-hidden="true"
+      />
 
       <main
         style={{
@@ -69,7 +54,7 @@ function App() {
           minHeight: 0,
           width: '100%',
           position: 'relative',
-          overflow: 'hidden',
+          overflow: 'auto',
         }}
       >
         <Routes>

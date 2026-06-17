@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import LandingPage from '../pages/landing_page/landing_page'
 
@@ -42,7 +43,7 @@ const coleccionesMock = [
   {
     id: 'collection-1',
     user_id: 'user123',
-    name: 'Colección Uno',
+    name: 'Coleccion Uno',
     description: null,
     status: 'created',
     created_at: '2024-01-01T00:00:00Z',
@@ -50,7 +51,7 @@ const coleccionesMock = [
   {
     id: 'collection-2',
     user_id: 'user123',
-    name: 'Colección Dos',
+    name: 'Coleccion Dos',
     description: null,
     status: 'created',
     created_at: '2024-01-02T00:00:00Z',
@@ -76,9 +77,6 @@ describe('LandingPage', () => {
 
     mockGetToken.mockResolvedValue('fake-token')
     globalThis.fetch = jest.fn()
-
-    window.prompt = jest.fn()
-    window.confirm = jest.fn()
   })
 
   const renderPage = () => {
@@ -97,11 +95,16 @@ describe('LandingPage', () => {
 
     renderPage()
 
-    expect(screen.getByText('¡Hola, Anto!')).toBeInTheDocument()
-    expect(screen.getByText('Cargando colecciones...')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: /hola, anto/i }),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/cargando colecciones/i)).toBeInTheDocument()
 
-    expect(await screen.findByText('Colección Uno')).toBeInTheDocument()
-    expect(screen.getByText('Colección Dos')).toBeInTheDocument()
+    expect(await screen.findByText('Coleccion Uno')).toBeInTheDocument()
+    expect(screen.getByText('Coleccion Dos')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /nueva colecci/i }),
+    ).toBeInTheDocument()
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${API_BASE}/api/collections`,
@@ -122,8 +125,9 @@ describe('LandingPage', () => {
     renderPage()
 
     expect(
-      await screen.findByText('No tienes colecciones todavía.'),
+      await screen.findByText(/no tienes colecciones todav/i),
     ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /iniciar/i })).toBeInTheDocument()
   })
 
   test('muestra error si falla la carga de colecciones', async () => {
@@ -159,7 +163,7 @@ describe('LandingPage', () => {
     ).not.toBeInTheDocument()
   })
 
-  test('navega a nueva colección al presionar Iniciar', async () => {
+  test('navega a nueva coleccion al presionar Iniciar', async () => {
     ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => [],
@@ -167,7 +171,7 @@ describe('LandingPage', () => {
 
     renderPage()
 
-    fireEvent.click(screen.getByRole('button', { name: /iniciar/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /iniciar/i }))
 
     expect(mockNavigate).toHaveBeenCalledWith(
       '/user123/colecciones/nueva/buscador',
@@ -177,7 +181,7 @@ describe('LandingPage', () => {
     )
   })
 
-  test('abre colección existente al hacer click en una card', async () => {
+  test('abre coleccion existente al hacer click en una card', async () => {
     ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => coleccionesMock,
@@ -185,9 +189,11 @@ describe('LandingPage', () => {
 
     renderPage()
 
-    const card = await screen.findByText('Colección Uno')
+    await screen.findByText('Coleccion Uno')
 
-    fireEvent.click(card.closest('.card') as HTMLElement)
+    fireEvent.click(
+      screen.getByRole('button', { name: /abrir colecci.*uno/i }),
+    )
 
     expect(mockNavigate).toHaveBeenCalledWith(
       '/user123/colecciones/collection-1/buscador',
@@ -197,7 +203,8 @@ describe('LandingPage', () => {
     )
   })
 
-  test('edita nombre de colección exitosamente', async () => {
+  test('edita nombre de coleccion exitosamente', async () => {
+    const user = userEvent.setup()
     ;(globalThis.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
@@ -210,14 +217,18 @@ describe('LandingPage', () => {
           name: 'Nuevo nombre',
         }),
       })
-    ;(window.prompt as jest.Mock).mockReturnValueOnce('Nuevo nombre')
 
     renderPage()
 
-    expect(await screen.findByText('Colección Uno')).toBeInTheDocument()
+    expect(await screen.findByText('Coleccion Uno')).toBeInTheDocument()
 
-    const editButtons = screen.getAllByLabelText('Editar colección')
-    fireEvent.click(editButtons[0])
+    const editButtons = screen.getAllByLabelText(/editar colecci/i)
+    await user.click(editButtons[0])
+
+    const input = screen.getByLabelText(/^nombre$/i)
+    await user.clear(input)
+    await user.type(input, 'Nuevo nombre')
+    await user.click(screen.getByRole('button', { name: /guardar/i }))
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -238,24 +249,29 @@ describe('LandingPage', () => {
     expect(await screen.findByText('Nuevo nombre')).toBeInTheDocument()
   })
 
-  test('no edita si prompt retorna vacío', async () => {
+  test('no edita si el nombre queda vacio', async () => {
+    const user = userEvent.setup()
     ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => coleccionesMock,
     })
-    ;(window.prompt as jest.Mock).mockReturnValueOnce('')
 
     renderPage()
 
-    expect(await screen.findByText('Colección Uno')).toBeInTheDocument()
+    expect(await screen.findByText('Coleccion Uno')).toBeInTheDocument()
 
-    const editButtons = screen.getAllByLabelText('Editar colección')
-    fireEvent.click(editButtons[0])
+    const editButtons = screen.getAllByLabelText(/editar colecci/i)
+    await user.click(editButtons[0])
 
+    const input = screen.getByLabelText(/^nombre$/i)
+    await user.clear(input)
+
+    expect(screen.getByRole('button', { name: /guardar/i })).toBeDisabled()
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
   })
 
-  test('muestra error si falla edición de colección', async () => {
+  test('muestra error si falla edicion de coleccion', async () => {
+    const user = userEvent.setup()
     ;(globalThis.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
@@ -265,21 +281,26 @@ describe('LandingPage', () => {
         ok: false,
         json: async () => ({ detail: 'No se pudo editar' }),
       })
-    ;(window.prompt as jest.Mock).mockReturnValueOnce('Nuevo nombre')
 
     renderPage()
 
-    expect(await screen.findByText('Colección Uno')).toBeInTheDocument()
+    expect(await screen.findByText('Coleccion Uno')).toBeInTheDocument()
 
-    const editButtons = screen.getAllByLabelText('Editar colección')
-    fireEvent.click(editButtons[0])
+    const editButtons = screen.getAllByLabelText(/editar colecci/i)
+    await user.click(editButtons[0])
+
+    const input = screen.getByLabelText(/^nombre$/i)
+    await user.clear(input)
+    await user.type(input, 'Nuevo nombre')
+    await user.click(screen.getByRole('button', { name: /guardar/i }))
 
     expect(
-      await screen.findByText('No se pudo cambiar el nombre de la colección'),
+      await screen.findByText(/no se pudo cambiar el nombre de la colecci/i),
     ).toBeInTheDocument()
   })
 
-  test('elimina colección exitosamente', async () => {
+  test('elimina coleccion exitosamente', async () => {
+    const user = userEvent.setup()
     ;(globalThis.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
@@ -289,14 +310,14 @@ describe('LandingPage', () => {
         ok: true,
         text: async () => '',
       })
-    ;(window.confirm as jest.Mock).mockReturnValueOnce(true)
 
     renderPage()
 
-    expect(await screen.findByText('Colección Uno')).toBeInTheDocument()
+    expect(await screen.findByText('Coleccion Uno')).toBeInTheDocument()
 
-    const deleteButtons = screen.getAllByLabelText('Eliminar colección')
-    fireEvent.click(deleteButtons[0])
+    const deleteButtons = screen.getAllByLabelText(/eliminar colecci/i)
+    await user.click(deleteButtons[0])
+    await user.click(screen.getByRole('button', { name: /s?, eliminar/i }))
 
     await waitFor(() => {
       expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -310,29 +331,31 @@ describe('LandingPage', () => {
       )
     })
 
-    expect(screen.queryByText('Colección Uno')).not.toBeInTheDocument()
-    expect(screen.getByText('Colección Dos')).toBeInTheDocument()
+    expect(screen.queryByText('Coleccion Uno')).not.toBeInTheDocument()
+    expect(screen.getByText('Coleccion Dos')).toBeInTheDocument()
   })
 
-  test('no elimina colección si usuario cancela confirm', async () => {
+  test('no elimina coleccion si usuario cancela confirmacion', async () => {
+    const user = userEvent.setup()
     ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
       json: async () => coleccionesMock,
     })
-    ;(window.confirm as jest.Mock).mockReturnValueOnce(false)
 
     renderPage()
 
-    expect(await screen.findByText('Colección Uno')).toBeInTheDocument()
+    expect(await screen.findByText('Coleccion Uno')).toBeInTheDocument()
 
-    const deleteButtons = screen.getAllByLabelText('Eliminar colección')
-    fireEvent.click(deleteButtons[0])
+    const deleteButtons = screen.getAllByLabelText(/eliminar colecci/i)
+    await user.click(deleteButtons[0])
+    await user.click(screen.getByRole('button', { name: /cancelar/i }))
 
     expect(globalThis.fetch).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('Colección Uno')).toBeInTheDocument()
+    expect(screen.getByText('Coleccion Uno')).toBeInTheDocument()
   })
 
-  test('muestra error si falla eliminación de colección', async () => {
+  test('muestra error si falla eliminacion de coleccion', async () => {
+    const user = userEvent.setup()
     ;(globalThis.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
@@ -342,17 +365,17 @@ describe('LandingPage', () => {
         ok: false,
         text: async () => JSON.stringify({ detail: 'No se pudo eliminar' }),
       })
-    ;(window.confirm as jest.Mock).mockReturnValueOnce(true)
 
     renderPage()
 
-    expect(await screen.findByText('Colección Uno')).toBeInTheDocument()
+    expect(await screen.findByText('Coleccion Uno')).toBeInTheDocument()
 
-    const deleteButtons = screen.getAllByLabelText('Eliminar colección')
-    fireEvent.click(deleteButtons[0])
+    const deleteButtons = screen.getAllByLabelText(/eliminar colecci/i)
+    await user.click(deleteButtons[0])
+    await user.click(screen.getByRole('button', { name: /s?, eliminar/i }))
 
     expect(
-      await screen.findByText('No se pudo eliminar la colección'),
+      await screen.findByText(/no se pudo eliminar la colecci/i),
     ).toBeInTheDocument()
   })
 
@@ -365,9 +388,46 @@ describe('LandingPage', () => {
 
     expect(screen.getByText('Acceso denegado')).toBeInTheDocument()
     expect(
-      screen.getByText('No tienes permiso para ver esta colección.'),
+      screen.getByText(/no tienes permiso para ver esta colecci/i),
     ).toBeInTheDocument()
     expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  test('renderiza todas las colecciones en el carril horizontal', async () => {
+    const muchasColecciones = Array.from({ length: 6 }, (_, index) => ({
+      id: `collection-${index + 1}`,
+      user_id: 'user123',
+      name: `Coleccion ${index + 1}`,
+      description: null,
+      status: 'created',
+      created_at: `2024-01-0${index + 1}T00:00:00Z`,
+    }))
+
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => muchasColecciones,
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Coleccion 1')).toBeInTheDocument()
+    expect(screen.getByText('Coleccion 6')).toBeInTheDocument()
+    expect(screen.getByText('6 Colecciones')).toBeInTheDocument()
+  })
+
+  test('capitaliza el nombre mostrado en el saludo', async () => {
+    mockUser = {
+      sub: 'auth0|user123',
+      nickname: 'juliette',
+    }
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => coleccionesMock,
+    })
+
+    renderPage()
+
+    expect(await screen.findByText(/Hola, Juliette!/)).toBeInTheDocument()
   })
 
   test('usa nickname si no existe given_name', async () => {
@@ -382,7 +442,9 @@ describe('LandingPage', () => {
 
     renderPage()
 
-    expect(screen.getByText('¡Hola, antonia!')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 1, name: /hola, antonia/i }),
+    ).toBeInTheDocument()
   })
 
   test('usa nickname para navegar si no existe sub', async () => {
@@ -401,7 +463,7 @@ describe('LandingPage', () => {
 
     renderPage()
 
-    fireEvent.click(screen.getByRole('button', { name: /iniciar/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /iniciar/i }))
 
     expect(mockNavigate).toHaveBeenCalledWith(
       '/nickname-user/colecciones/nueva/buscador',

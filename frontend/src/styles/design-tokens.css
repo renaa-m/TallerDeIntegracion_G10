@@ -1,0 +1,175 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
+
+/*
+ * IMFD Notebook — design tokens compartidos
+ * Importar una sola vez desde main.tsx antes del resto de estilos.
+ */
+
+:root {
+  /* Marca IMFD */
+  --imfd-navy: #243166;
+  --imfd-navy-deep: #1a1a2e;
+  --imfd-yellow: #f8ffa1;
+  --imfd-yellow-bright: #fbffa1;
+  --imfd-pink: #f6d5ee;
+  --imfd-accent: #aba3f6;
+  --imfd-accent-hover: #9b93e6;
+  --imfd-accent-soft: #e8e6fd;
+  --imfd-accent-soft-hover: #dcd9fc;
+  --imfd-accent-soft-border: rgba(171, 163, 246, 0.45);
+  --imfd-accent-shadow: rgba(171, 163, 246, 0.35);
+  --imfd-accent-shadow-soft: rgba(171, 163, 246, 0.16);
+
+  /* Layout */
+  --navbar-height: 72px;
+
+  /* Tipografía */
+  --font-sans:
+    'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'DM Serif Display', Georgia, serif;
+
+  /* Modo claro */
+  --bg-gradient: linear-gradient(
+    180deg,
+    var(--imfd-yellow) 0%,
+    var(--imfd-pink) 55%,
+    #ffffff 100%
+  );
+  --surface: rgba(255, 255, 255, 0.75);
+  --surface-2: rgba(255, 255, 255, 0.45);
+  --surface-3: rgba(246, 213, 238, 0.55);
+  --card-bg: rgba(255, 255, 255, 0.72);
+  --card-bg-hover: rgba(246, 213, 238, 0.85);
+  --overlay: rgba(17, 17, 17, 0.35);
+
+  --text-1: #111111;
+  --text-2: #4f4f5c;
+  --text-3: #6f7280;
+  --text-main: var(--text-1);
+  --text-sub: var(--text-2);
+  --btn-text: #111111;
+
+  --border: rgba(171, 163, 246, 0.3);
+  --border-color: var(--border);
+  --accent: var(--imfd-accent);
+
+  --navbar-bg: rgba(255, 255, 255, 0.72);
+  --navbar-border: rgba(171, 163, 246, 0.15);
+  --navbar-shadow: rgba(171, 163, 246, 0.12);
+  --hover-bg: rgba(171, 163, 246, 0.1);
+
+  --danger: #ef4444;
+  --danger-soft: rgba(239, 68, 68, 0.1);
+  --danger-main: var(--danger);
+
+  --badge-bg: var(--imfd-pink);
+  --badge-border: var(--imfd-accent);
+  --badge-text: #4b4680;
+
+  --icon-btn-bg: rgba(171, 163, 246, 0.14);
+  --icon-btn-bg-hover: rgba(171, 163, 246, 0.28);
+  --icon-btn-delete-hover: rgba(239, 68, 68, 0.18);
+
+  --popup-success-bg: var(--imfd-yellow);
+  --popup-success-text: #2d3a00;
+  --popup-success-border: var(--imfd-accent);
+  --popup-error-bg: var(--imfd-pink);
+  --popup-error-text: #7a1c4a;
+  --popup-error-border: #d88bbb;
+  --popup-loading-bg: var(--imfd-yellow);
+  --popup-loading-text: #5a5a00;
+  --popup-loading-border: #e7ef7a;
+
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-pill: 999px;
+
+  --shadow-accent: 0 10px 24px var(--imfd-accent-shadow);
+  --shadow-card: 0 12px 28px rgba(171, 163, 246, 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-gradient: radial-gradient(
+      circle at center,
+      var(--imfd-navy) 0%,
+      var(--imfd-navy-deep) 100%
+    );
+    --surface: #141d35;
+    --surface-2: #0d1426;
+    --surface-3: #182038;
+    --card-bg: rgba(20, 29, 53, 0.88);
+    --card-bg-hover: rgba(36, 49, 102, 0.75);
+    --overlay: rgba(10, 14, 30, 0.55);
+
+    --text-1: #ffffff;
+    --text-2: #dce4f5;
+    --text-3: #8394b4;
+    --text-sub: #94a3b8;
+
+    --border: rgba(168, 163, 246, 0.2);
+    --accent: #a8a3f6;
+    --imfd-accent-soft: rgba(168, 163, 246, 0.22);
+    --imfd-accent-soft-hover: rgba(168, 163, 246, 0.32);
+    --imfd-accent-soft-border: rgba(168, 163, 246, 0.42);
+    --imfd-accent-shadow-soft: rgba(168, 163, 246, 0.12);
+
+    --navbar-bg: rgba(15, 32, 69, 0.82);
+    --navbar-border: rgba(168, 163, 246, 0.16);
+    --navbar-shadow: rgba(15, 85, 166, 0.3);
+    --hover-bg: rgba(255, 255, 255, 0.08);
+
+    --badge-bg: rgba(168, 163, 246, 0.18);
+    --badge-border: rgba(168, 163, 246, 0.45);
+    --badge-text: #dce4f5;
+
+    --icon-btn-bg: rgba(168, 163, 246, 0.16);
+    --icon-btn-bg-hover: rgba(168, 163, 246, 0.32);
+    --icon-btn-delete-hover: rgba(239, 68, 68, 0.22);
+
+    --popup-success-bg: rgba(251, 255, 161, 0.15);
+    --popup-success-text: #fbffa1;
+    --popup-error-bg: rgba(246, 213, 238, 0.12);
+    --popup-error-text: #f6d5ee;
+  }
+}
+
+/* Botón primario compartido */
+.imfd-btn-primary {
+  background-color: var(--imfd-accent-soft);
+  color: var(--btn-text);
+  border: 1.5px solid var(--imfd-accent-soft-border);
+  padding: 14px 30px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    opacity 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+  box-shadow: 0 4px 14px var(--imfd-accent-shadow-soft);
+}
+
+.imfd-btn-primary:hover {
+  transform: translateY(-2px);
+  opacity: 0.98;
+  background-color: var(--imfd-accent-soft-hover);
+  border-color: var(--imfd-accent);
+  box-shadow: 0 8px 20px var(--imfd-accent-shadow-soft);
+}
+
+.imfd-btn-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.imfd-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
