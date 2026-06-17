@@ -1,0 +1,160 @@
+.filterPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: var(--bg-surface, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  margin-top: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.filterGroupHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.filterLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #64748b);
+  font-family: 'DM Sans', sans-serif;
+}
+
+.filterChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filterChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 20px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--bg-element, #f8fafc);
+  color: var(--text-main, #334155);
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.filterChip:hover {
+  background: var(--border, #e2e8f0);
+}
+
+.filterChip.selected {
+  background: var(--accent-light, rgba(139, 92, 246, 0.1));
+  border-color: var(--accent, #8b5cf6);
+  color: var(--accent, #8b5cf6);
+}
+
+.filterDivider {
+  height: 1px;
+  background: var(--border, #e2e8f0);
+  width: 100%;
+}
+
+.filterTagInput {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  background: var(--bg-input, #ffffff);
+  color: var(--text-main, #334155);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease;
+}
+
+.filterTagInput:focus {
+  border-color: var(--accent, #8b5cf6);
+}
+
+.entityScrollList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border, #e2e8f0) transparent;
+}
+
+.emptyStateText {
+  font-size: 12px;
+  color: var(--text-muted, #94a3b8);
+  padding: 4px;
+  font-style: italic;
+}
+
+.logicToggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.logicBtns {
+  display: flex;
+  border-radius: 8px;
+  border: 1px solid var(--border, #e2e8f0);
+  overflow: hidden;
+  background: var(--bg-element, #f8fafc);
+}
+
+.logicBtn {
+  padding: 4px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #64748b);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.logicBtn:not(:first-child) {
+  border-left: 1px solid var(--border, #e2e8f0);
+}
+
+.logicBtn.active {
+  background: var(--accent-light, rgba(139, 92, 246, 0.15));
+  color: var(--accent, #8b5cf6);
+}
+
+.filterClearAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: transparent;
+  border: none;
+  color: var(--text-danger, #ef4444);
+  cursor: pointer;
+  align-self: flex-start;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.filterClearAll:hover {
+  background: var(--bg-danger-light, rgba(239, 68, 68, 0.05));
+}
