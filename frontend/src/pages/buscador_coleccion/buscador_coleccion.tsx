@@ -142,7 +142,6 @@ const BuscadorColeccion = () => {
     useState(false)
   const collectionMissingRef = useRef(false)
   const collectionProcessingStatusRef = useRef(collectionProcessingStatus)
-  collectionProcessingStatusRef.current = collectionProcessingStatus
 
   // ─────────────────────────────────────────
   // 4. ESTADO: BÚSQUEDA
@@ -224,8 +223,15 @@ const BuscadorColeccion = () => {
     setBackgroundProcessingId(null)
     setBackgroundProcessingSnapshot(null)
     setCollectionInitialLoadDone(false)
-    collectionMissingRef.current = false
   }
+
+  useEffect(() => {
+    collectionProcessingStatusRef.current = collectionProcessingStatus
+  }, [collectionProcessingStatus])
+
+  useEffect(() => {
+    collectionMissingRef.current = false
+  }, [id_coleccion])
 
   // ─────────────────────────────────────────
   // 11. DERIVED STATE: POLLING & VISIBILITY
