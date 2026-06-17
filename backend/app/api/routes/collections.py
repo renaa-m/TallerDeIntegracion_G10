@@ -256,7 +256,7 @@ async def cancel_process_collection(
         return CancelProcessResponse(
             collection_id=collection_id,
             processing_status="idle",
-            detail="Estado de cola obsoleto; colección restablecida.",
+            detail="Colección sacada de la cola. Puedes volver a generarla cuando quieras.",
         )
 
     if st not in _ACTIVE_PIPELINE_STATUSES:

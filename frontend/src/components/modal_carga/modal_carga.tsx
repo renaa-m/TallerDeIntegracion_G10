@@ -466,7 +466,7 @@ const ModalCarga = ({
     let deleteSucceeded = !collectionId
     try {
       if (collectionId) {
-        if (isBackendPipelineRunning(pipelineStatus)) {
+        if (isBackendPipelineRunning(pipelineStatus) || pipelineStatus === 'queued') {
           try {
             const token = await getAccessTokenSilently()
             await fetch(
