@@ -38,12 +38,14 @@ describe('ModalCarga', () => {
   const renderModal = ({
     onClose = jest.fn(),
     onUploadSuccess,
+    onProcessingChange,
     isOpen = true,
     scopeCollectionId = null as string | null,
     forcePipelineEtapa = false,
   }: {
     onClose?: jest.Mock
     onUploadSuccess?: jest.Mock
+    onProcessingChange?: jest.Mock
     isOpen?: boolean
     scopeCollectionId?: string | null
     forcePipelineEtapa?: boolean
@@ -54,13 +56,14 @@ describe('ModalCarga', () => {
           isOpen={isOpen}
           onClose={onClose}
           onUploadSuccess={onUploadSuccess}
+          onProcessingChange={onProcessingChange}
           scopeCollectionId={scopeCollectionId}
           forcePipelineEtapa={forcePipelineEtapa}
         />
       </MemoryRouter>,
     )
 
-    return { onClose, onUploadSuccess }
+    return { onClose, onUploadSuccess, onProcessingChange }
   }
 
   const selectFileAndNameCollection = async (
@@ -856,7 +859,12 @@ describe('ModalCarga', () => {
     })
 
     const onClose = jest.fn()
-    renderModal({ onClose, scopeCollectionId: 'collection-123' })
+    const onProcessingChange = jest.fn()
+    renderModal({
+      onClose,
+      onProcessingChange,
+      scopeCollectionId: 'collection-123',
+    })
 
     expect(
       await screen.findByText('Extrayendo texto de los documentos...'),
@@ -869,11 +877,52 @@ describe('ModalCarga', () => {
       expect(onClose).toHaveBeenCalledTimes(1)
     })
 
+    expect(onProcessingChange).toHaveBeenCalledWith(true)
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       `${API_BASE}/api/collections/collection-123/process/cancel`,
       expect.anything(),
     )
     expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-123')
+    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
+  })
+
+  test('cerrar con X durante grafo en nueva navega al buscador y mantiene pipeline', async () => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-nueva')
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    localStorage.setItem('modal_nueva_session', '1')
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'processing_graph',
+        graph_progress_total: 4,
+        graph_progress_processed: 1,
+      }),
+    })
+
+    const onClose = jest.fn()
+    const onProcessingChange = jest.fn()
+    renderModal({
+      onClose,
+      onProcessingChange,
+      scopeCollectionId: 'nueva',
+    })
+
+    expect(
+      await screen.findByText('Construyendo grafo con Wukong...'),
+    ).toBeInTheDocument()
+
+    const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
+    fireEvent.click(closeButton)
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    expect(onProcessingChange).toHaveBeenCalledWith(true)
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/testuser/colecciones/collection-nueva/buscador',
+    )
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-nueva')
     expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
   })
 

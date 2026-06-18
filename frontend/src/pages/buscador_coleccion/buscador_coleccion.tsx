@@ -53,6 +53,7 @@ import {
   isPipelineInProgress,
   isPipelineRunning,
   persistModalCargaOpen,
+  hasPipelineModalIntent,
   readInitialModalOpenState,
   snapshotFromCollectionApi,
 } from '../../lib/collection_processing'
@@ -365,7 +366,9 @@ const BuscadorColeccion = () => {
   // ─────────────────────────────────────────
 
   const shouldPollBackground = isNuevaColeccionPage && !modalCargaOpen
-  const currentPageInPipeline = isPipelineInProgress(collectionProcessingStatus)
+  const currentPageInPipeline =
+    isCollectionProcessing ||
+    isPipelineInProgress(collectionProcessingStatus)
 
   const visibleBackgroundProcessingId = shouldPollBackground
     ? backgroundProcessingId
@@ -1556,6 +1559,12 @@ const BuscadorColeccion = () => {
           if (isNuevaColeccionPage) {
             const tracked = localStorage.getItem(ACTIVE_COLLECTION_KEY)
             setBackgroundProcessingId(tracked)
+          } else if (
+            id_coleccion &&
+            id_coleccion !== 'nueva' &&
+            hasPipelineModalIntent(id_coleccion)
+          ) {
+            void cargarDatos()
           }
         }}
         onProcessingChange={setIsCollectionProcessing}

@@ -262,6 +262,11 @@ const ModalCarga = ({
     pipelineStatus === 'processing_graph'
 
   const abortControllersRef = useRef<AbortController[]>([])
+  const isOpenRef = useRef(isOpen)
+
+  useEffect(() => {
+    isOpenRef.current = isOpen
+  }, [isOpen])
 
   const persistBackgroundProcessing = useCallback(
     (collectionId: string, options?: { nuevaSession?: boolean }) => {
@@ -355,6 +360,7 @@ const ModalCarga = ({
         const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
+        if (!isOpenRef.current || isCancelling) return
         if (res.status === 404) {
           if (localStorage.getItem(ACTIVE_COLLECTION_KEY) === collectionId) {
             clearActiveCollectionStorage()
@@ -424,6 +430,8 @@ const ModalCarga = ({
           } catch {
             documentCount = 0
           }
+
+          if (!isOpenRef.current || isCancelling) return
 
           if (
             savedEtapa === 'subida' &&
@@ -574,9 +582,17 @@ const ModalCarga = ({
       isPipelineInProgress(pipelineStatus) &&
       resolvedCollectionId
     ) {
-      persistBackgroundProcessing(resolvedCollectionId)
+      persistBackgroundProcessing(resolvedCollectionId, {
+        nuevaSession: scopeCollectionId === 'nueva',
+      })
       persistModalCargaOpen(false)
+      onProcessingChange?.(true)
       onClose()
+      if (scopeCollectionId === 'nueva' && landingUserId) {
+        navigate(
+          `/${landingUserId}/colecciones/${resolvedCollectionId}/buscador`,
+        )
+      }
       return
     }
 
@@ -671,6 +687,10 @@ const ModalCarga = ({
         const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
+        if (!isOpenRef.current || isCancelling) {
+          clearInterval(interval)
+          return
+        }
         if (res.status === 404) {
           clearActiveCollectionStorageIfMatch(collectionId)
           clearInterval(interval)
