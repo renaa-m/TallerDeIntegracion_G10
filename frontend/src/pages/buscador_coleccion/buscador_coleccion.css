@@ -562,26 +562,36 @@
   line-height: 1;
 }
 
-/* ── RESULTS ─────────────────────────────────────────────────────────────── */
-.bc-results-area {
+/* ── MAIN SCROLL (búsqueda + filtros + resultados) ─────────────────────── */
+.bc-main-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 24px 32px;
   display: flex;
   flex-direction: column;
   scrollbar-width: thin;
   scrollbar-color: rgba(171, 163, 246, 0.55) transparent;
 }
-.bc-results-area::-webkit-scrollbar {
+
+.bc-main-scroll::-webkit-scrollbar {
   width: 6px;
 }
-.bc-results-area::-webkit-scrollbar-track {
+
+.bc-main-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
-.bc-results-area::-webkit-scrollbar-thumb {
+
+.bc-main-scroll::-webkit-scrollbar-thumb {
   background: rgba(171, 163, 246, 0.55);
   border-radius: 999px;
+}
+
+/* ── RESULTS ─────────────────────────────────────────────────────────────── */
+.bc-results-area {
+  flex: 1 0 auto;
+  padding: 16px 24px 32px;
+  display: flex;
+  flex-direction: column;
 }
 
 .bc-results-count {

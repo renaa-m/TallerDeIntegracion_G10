@@ -11,7 +11,7 @@ let mockParams = {
   id_coleccion: 'collection-123',
 }
 
-let mockQuery = ''
+let mockSearchParams = new URLSearchParams()
 
 jest.mock('@auth0/auth0-react', () => ({
   useAuth0: () => ({
@@ -24,23 +24,32 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => mockParams,
   useSearchParams: () => [
-    {
-      get: (key: string) => {
-        if (key === 'q') return mockQuery
-        return null
-      },
+    mockSearchParams,
+    (
+      next:
+        | URLSearchParams
+        | Record<string, string>
+        | ((prev: URLSearchParams) => URLSearchParams),
+    ) => {
+      if (typeof next === 'function') {
+        mockSearchParams = next(new URLSearchParams(mockSearchParams))
+      } else {
+        mockSearchParams = new URLSearchParams(next)
+      }
+      mockSetSearchParams(next)
     },
-    mockSetSearchParams,
   ],
 }))
 
 jest.mock('../components/modal_carga/modal_carga', () => {
   return function MockModalCarga({
     isOpen,
+    forcePipelineEtapa,
     onClose,
     onUploadSuccess,
   }: {
     isOpen: boolean
+    forcePipelineEtapa?: boolean
     onClose: () => void
     onUploadSuccess?: () => void
   }) {
@@ -48,7 +57,7 @@ jest.mock('../components/modal_carga/modal_carga', () => {
 
     return (
       <div data-testid="modal-carga">
-        <p>Modal Carga Abierto</p>
+        <p>{forcePipelineEtapa ? 'Procesar grafo' : 'Añadir fuentes'}</p>
         <button onClick={onClose}>Cerrar carga</button>
         <button onClick={onUploadSuccess}>Upload success</button>
       </div>
@@ -191,12 +200,12 @@ describe('BuscadorColeccion', () => {
     jest.clearAllMocks()
     jest.useRealTimers()
     localStorage.clear()
+    mockSearchParams = new URLSearchParams()
     mockGetToken.mockResolvedValue('fake-token')
     mockParams = {
       id_usuario: 'user-123',
       id_coleccion: 'collection-123',
     }
-    mockQuery = ''
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -353,7 +362,7 @@ describe('BuscadorColeccion', () => {
       )
     })
 
-    expect(mockSetSearchParams).toHaveBeenCalledWith({ q: 'grafos' })
+    expect(mockSearchParams.get('q')).toBe('grafos')
 
     await act(async () => {
       jest.advanceTimersByTime(400)
@@ -415,7 +424,7 @@ describe('BuscadorColeccion', () => {
       })
     })
 
-    mockQuery = 'consulta inicial'
+    mockSearchParams = new URLSearchParams({ q: 'consulta inicial' })
 
     renderPage()
 
@@ -462,7 +471,7 @@ describe('BuscadorColeccion', () => {
       },
     )
 
-    mockQuery = 'grafos'
+    mockSearchParams = new URLSearchParams({ q: 'grafos' })
 
     renderPage()
 
@@ -644,7 +653,7 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(screen.getByTestId('modal-carga')).toBeInTheDocument()
-    expect(screen.getByText('Modal Carga Abierto')).toBeInTheDocument()
+    expect(screen.getByText('Añadir fuentes')).toBeInTheDocument()
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
@@ -819,5 +828,177 @@ describe('BuscadorColeccion', () => {
       screen.queryByRole('button', { name: /añadir fuentes/i }),
     ).not.toBeInTheDocument()
     expect(screen.getByText(/preparando tu colección/i)).toBeInTheDocument()
+  })
+
+  test('restaura modal en etapa pipeline al recargar con grafo pendiente', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'idle',
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+    expect(screen.queryByText('Añadir fuentes')).not.toBeInTheDocument()
+  })
+
+  test('restaura modal en etapa pipeline al recargar durante construcción del grafo', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'processing_graph',
+            graph_progress_total: 1,
+            graph_progress_processed: 0,
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+  })
+
+  test('restaura filtros de entidades desde la URL al recargar', async () => {
+    mockSearchParams = new URLSearchParams({
+      q: 'consulta entidades',
+      entities: 'Persona,Organizacion',
+      entity_logic: 'AND',
+      entity_type: 'Persona',
+    })
+
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => searchResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentosResponse,
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123/entities')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            tipos: ['Persona', 'Organizacion'],
+            entidades: [
+              { id: '1', label: 'Persona', tipo: 'Persona' },
+              { id: '2', label: 'Organizacion', tipo: 'Organizacion' },
+            ],
+          }),
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Colección Test',
+            processing_status: 'graph_ready',
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Colección Test')).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /criterios de búsqueda/i }),
+    )
+
+    expect(await screen.findByText('Seleccionadas (2)')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/search`,
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining(
+            '"nombres_entidades":["Persona","Organizacion"]',
+          ),
+        }),
+      )
+    })
+
+    const searchCall = (globalThis.fetch as jest.Mock).mock.calls.find(
+      ([url, options]) =>
+        typeof url === 'string' &&
+        url.includes('/api/search') &&
+        typeof options?.body === 'string' &&
+        options.body.includes('"logica_entidades":"AND"'),
+    )
+    expect(searchCall).toBeDefined()
   })
 })

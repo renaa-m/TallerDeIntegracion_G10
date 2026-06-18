@@ -13,6 +13,17 @@ export const PIPELINE_IN_PROGRESS_STATUSES = new Set([
 
 export const ACTIVE_COLLECTION_KEY = 'active_collection_id'
 export const MODAL_ETAPA_KEY = 'modal_carga_etapa'
+export const MODAL_NUEVA_SESSION_KEY = 'modal_nueva_session'
+export const MODAL_PIPELINE_ENTITIES_KEY = 'modal_pipeline_entities'
+
+export type ModalEtapa = 'subida' | 'pipeline'
+
+const PIPELINE_ENTITY_OPTIONS = new Set([
+  'Persona',
+  'Organizacion',
+  'Lugar',
+  'Evento',
+])
 
 /** Legacy: el backend ya no encola; tratar como idle. */
 export function isPipelineQueued(status: string | undefined | null): boolean {
@@ -82,6 +93,112 @@ export function shouldOpenPipelineModal(
   return false
 }
 
+/** Reabrir modal en etapa pipeline tras recargar la página del buscador. */
+export function shouldRestorePipelineModalOnPageLoad(
+  collectionId: string,
+  processingStatus: string | undefined | null,
+  options?: { documentCount?: number },
+): boolean {
+  if (!hasPipelineModalIntent(collectionId)) return false
+
+  return shouldOpenPipelineModal(processingStatus, {
+    savedModalEtapa: 'pipeline',
+    documentCount: options?.documentCount,
+  })
+}
+
+export function readNuevaSessionCollectionId(): string | null {
+  if (localStorage.getItem(MODAL_NUEVA_SESSION_KEY) !== '1') return null
+  if (localStorage.getItem(MODAL_ETAPA_KEY) !== 'pipeline') return null
+  return localStorage.getItem(ACTIVE_COLLECTION_KEY)
+}
+
+export function readModalEtapa(): ModalEtapa | null {
+  const etapa = localStorage.getItem(MODAL_ETAPA_KEY)
+  if (etapa === 'subida' || etapa === 'pipeline') return etapa
+  return null
+}
+
+export function hasPipelineModalIntent(collectionId: string): boolean {
+  return (
+    localStorage.getItem(ACTIVE_COLLECTION_KEY) === collectionId &&
+    localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+  )
+}
+
+/** Colección marcada en localStorage para etapa pipeline (p. ej. tras recargar en /nueva). */
+export function readPipelineTrackedCollectionId(): string | null {
+  if (localStorage.getItem(MODAL_ETAPA_KEY) !== 'pipeline') return null
+  return localStorage.getItem(ACTIVE_COLLECTION_KEY)
+}
+
+export function persistPipelineModalState(
+  collectionId: string,
+  options?: { nuevaSession?: boolean },
+): void {
+  localStorage.setItem(ACTIVE_COLLECTION_KEY, collectionId)
+  localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+  if (options?.nuevaSession === true) {
+    localStorage.setItem(MODAL_NUEVA_SESSION_KEY, '1')
+  } else if (options?.nuevaSession === false) {
+    localStorage.removeItem(MODAL_NUEVA_SESSION_KEY)
+  }
+}
+
+type PipelineEntitiesMap = Record<string, string[]>
+
+function readPipelineEntitiesMap(): PipelineEntitiesMap {
+  try {
+    const raw = localStorage.getItem(MODAL_PIPELINE_ENTITIES_KEY)
+    if (!raw) return {}
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return {}
+    }
+    return parsed as PipelineEntitiesMap
+  } catch {
+    return {}
+  }
+}
+
+function writePipelineEntitiesMap(map: PipelineEntitiesMap): void {
+  if (Object.keys(map).length === 0) {
+    localStorage.removeItem(MODAL_PIPELINE_ENTITIES_KEY)
+    return
+  }
+  localStorage.setItem(MODAL_PIPELINE_ENTITIES_KEY, JSON.stringify(map))
+}
+
+export function readPipelineEntitySelection(collectionId: string): string[] {
+  const saved = readPipelineEntitiesMap()[collectionId]
+  if (!Array.isArray(saved)) return []
+  return saved.filter(
+    (entity): entity is string =>
+      typeof entity === 'string' && PIPELINE_ENTITY_OPTIONS.has(entity),
+  )
+}
+
+export function persistPipelineEntitySelection(
+  collectionId: string,
+  entities: string[],
+): void {
+  const valid = entities.filter((entity) => PIPELINE_ENTITY_OPTIONS.has(entity))
+  const map = readPipelineEntitiesMap()
+  if (valid.length === 0) {
+    delete map[collectionId]
+  } else {
+    map[collectionId] = valid
+  }
+  writePipelineEntitiesMap(map)
+}
+
+export function clearPipelineEntitySelection(collectionId: string): void {
+  const map = readPipelineEntitiesMap()
+  if (!(collectionId in map)) return
+  delete map[collectionId]
+  writePipelineEntitiesMap(map)
+}
+
 export type PendingGraphBannerView = {
   title: string
   subtitle: string
@@ -99,8 +216,11 @@ export function getPendingGraphBannerView(
 }
 
 export function clearActiveCollectionStorage(): void {
+  const trackedId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+  if (trackedId) clearPipelineEntitySelection(trackedId)
   localStorage.removeItem(ACTIVE_COLLECTION_KEY)
   localStorage.removeItem(MODAL_ETAPA_KEY)
+  localStorage.removeItem(MODAL_NUEVA_SESSION_KEY)
 }
 
 /** Limpia tracking local si coincide con la colección borrada/navegada. */

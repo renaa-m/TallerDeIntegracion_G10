@@ -39,22 +39,47 @@ import ModalFiltros from '../../components/modal_filtro/modal_filtro'
 import {
   ACTIVE_COLLECTION_KEY,
   MODAL_ETAPA_KEY,
+  MODAL_NUEVA_SESSION_KEY,
   type CollectionProcessingSnapshot,
   clearActiveCollectionStorageIfMatch,
   clearStaleActiveCollectionForPage,
   getPendingGraphBannerView,
   getProcessingBannerView,
+  hasPipelineModalIntent,
   isAwaitingGraphForCollection,
   isAwaitingGraphGeneration,
   isGraphViewable,
   isPipelineInProgress,
   isPipelineRunning,
+  shouldOpenPipelineModal,
   snapshotFromCollectionApi,
 } from '../../lib/collection_processing'
+
+import {
+  buildBuscadorSearchParams,
+  readBuscadorFiltersFromSearchParams,
+} from '../../lib/buscador_search_params'
 
 import './buscador_coleccion.css'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
+
+function readInitialModalState(collectionId: string | undefined) {
+  if (!collectionId || typeof window === 'undefined') {
+    return { open: false, pipeline: false }
+  }
+
+  if (collectionId === 'nueva') {
+    const pipeline =
+      localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1' &&
+      localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline' &&
+      !!localStorage.getItem(ACTIVE_COLLECTION_KEY)
+    return { open: true, pipeline }
+  }
+
+  const pipeline = hasPipelineModalIntent(collectionId)
+  return { open: pipeline, pipeline }
+}
 
 const SEARCH_SEMANTIC_HELP =
   'La búsqueda semántica interpreta el significado de tu consulta, no solo palabras exactas. Encuentra fragmentos relacionados aunque no repitan tu texto.'
@@ -238,6 +263,7 @@ const BuscadorColeccion = () => {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const location = useLocation()
+  const initialUrlFilters = readBuscadorFiltersFromSearchParams(searchParams)
 
   // ─────────────────────────────────────────
   // 2. DERIVED STATE: RUTAS
@@ -265,14 +291,14 @@ const BuscadorColeccion = () => {
   // 4. ESTADO: BÚSQUEDA
   // ─────────────────────────────────────────
 
-  const queryFromUrl = searchParams.get('q') ?? ''
+  const queryFromUrl = initialUrlFilters.q
   const [busqueda, setBusqueda] = useState(queryFromUrl)
   const [busquedaEnviada, setBusquedaEnviada] = useState(queryFromUrl)
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTime, setSearchTime] = useState<number>(0)
   const [searchNotReadyMessage] = useState<string | null>(null)
-  const [page, setPage] = useState<number>(1)
+  const [page, setPage] = useState<number>(initialUrlFilters.page)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
 
@@ -284,14 +310,13 @@ const BuscadorColeccion = () => {
   const [tiposEntidad, setTiposEntidad] = useState<string[]>([])
   const [entidadesSeleccionadas, setEntidadesSeleccionadas] = useState<
     string[]
-  >([])
-  const [logicaEntidades, setLogicaEntidades] = useState<'OR' | 'AND'>('OR')
-  const [selectedEntityIds] = useState<string[]>(() => {
-    const params = new URLSearchParams(location.search)
-    const entities = params.get('entities')
-    return entities ? entities.split(',') : []
-  })
-  const [tipoFiltroUI, setTipoFiltroUI] = useState<string | null>(null)
+  >(initialUrlFilters.entities)
+  const [logicaEntidades, setLogicaEntidades] = useState<'OR' | 'AND'>(
+    initialUrlFilters.entityLogic,
+  )
+  const [tipoFiltroUI, setTipoFiltroUI] = useState<string | null>(
+    initialUrlFilters.entityType,
+  )
   const [entitySearch, setEntitySearch] = useState('')
   const [filtroOpen, setFiltroOpen] = useState(false)
   const [semanticHelpActive, setSemanticHelpActive] = useState(false)
@@ -313,8 +338,12 @@ const BuscadorColeccion = () => {
   // 8. ESTADO: MODALES
   // ─────────────────────────────────────────
 
-  const [modalCargaOpen, setModalCargaOpen] = useState(id_coleccion === 'nueva')
-  const [modalPipelineEtapa, setModalPipelineEtapa] = useState(false)
+  const initialModalState = readInitialModalState(id_coleccion)
+
+  const [modalCargaOpen, setModalCargaOpen] = useState(initialModalState.open)
+  const [modalPipelineEtapa, setModalPipelineEtapa] = useState(
+    initialModalState.pipeline,
+  )
   const [isModalFuentesOpen, setIsModalFuentesOpen] = useState(false)
   const [isEliminarModalOpen, setIsEliminarModalOpen] = useState(false)
   const [isRenombrarModalOpen, setIsRenombrarModalOpen] = useState(false)
@@ -438,6 +467,8 @@ const BuscadorColeccion = () => {
   const cargarDatos = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva') return
 
+    const shouldRestoreModalOnLoad = hasPipelineModalIntent(id_coleccion)
+
     try {
       const token = await getAccessTokenSilently()
       const headers = { Authorization: `Bearer ${token}` }
@@ -450,12 +481,13 @@ const BuscadorColeccion = () => {
         redirectIfCollectionMissing()
         return
       }
+      let collectionStatus = 'idle'
       if (resColl.ok) {
         const data = await resColl.json()
         setNombreColeccion(data.name)
-        const status = data.processing_status ?? 'idle'
-        setCollectionProcessingStatus(status)
-        const processing = isPipelineInProgress(status)
+        collectionStatus = data.processing_status ?? 'idle'
+        setCollectionProcessingStatus(collectionStatus)
+        const processing = isPipelineInProgress(collectionStatus)
         setIsCollectionProcessing(processing)
         if (processing) {
           setCurrentProcessingSnapshot(
@@ -472,8 +504,24 @@ const BuscadorColeccion = () => {
         `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
         { headers },
       )
+      let documentCount = 0
       if (resDocs.ok) {
-        setFuentes(await resDocs.json())
+        const docs = await resDocs.json()
+        setFuentes(docs)
+        documentCount = Array.isArray(docs) ? docs.length : 0
+      }
+
+      if (
+        shouldRestoreModalOnLoad &&
+        shouldOpenPipelineModal(collectionStatus, {
+          savedModalEtapa: 'pipeline',
+          documentCount,
+        })
+      ) {
+        localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+        localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+        setModalPipelineEtapa(true)
+        setModalCargaOpen(true)
       }
     } catch (e) {
       console.error('Error cargando datos:', e)
@@ -671,11 +719,29 @@ const BuscadorColeccion = () => {
 
   const handleBuscar = () => {
     const trimmed = busqueda.trim()
-    setSearchParams(trimmed ? { q: trimmed } : {})
     setBusquedaEnviada(trimmed)
-    setPage(1) // Resetear página a 1
-    // ejecutarBusqueda será llamado por el effect debounce
+    setPage(1)
   }
+
+  const syncSearchParamsToUrl = useCallback(() => {
+    setSearchParams(
+      buildBuscadorSearchParams({
+        q: busquedaEnviada,
+        entities: entidadesSeleccionadas,
+        entityLogic: logicaEntidades,
+        entityType: tipoFiltroUI,
+        page,
+      }),
+      { replace: true },
+    )
+  }, [
+    busquedaEnviada,
+    entidadesSeleccionadas,
+    logicaEntidades,
+    tipoFiltroUI,
+    page,
+    setSearchParams,
+  ])
 
   // ─────────────────────────────────────────
   // 19. CALLBACKS: MODALES
@@ -710,16 +776,8 @@ const BuscadorColeccion = () => {
   // ─────────────────────────────────────────
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search)
-
-    if (selectedEntityIds.length > 0) {
-      params.set('entities', selectedEntityIds.join(','))
-    } else {
-      params.delete('entities')
-    }
-
-    setSearchParams(params, { replace: true })
-  }, [selectedEntityIds, setSearchParams, location.search])
+    syncSearchParamsToUrl()
+  }, [syncSearchParamsToUrl])
 
   useEffect(() => {
     clearStaleActiveCollectionForPage(id_coleccion)
@@ -1168,7 +1226,7 @@ const BuscadorColeccion = () => {
               <Outlet />
             </div>
           ) : (
-            <>
+            <div className="bc-main-scroll">
               {/* BARRA DE BÚSQUEDA */}
 
               <div
@@ -1424,7 +1482,7 @@ const BuscadorColeccion = () => {
                   </div>
                 )}
               </div>
-            </>
+            </div>
           )}
         </main>
       </div>

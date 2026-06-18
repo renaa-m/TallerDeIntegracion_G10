@@ -16,12 +16,17 @@ import './modal_carga.css'
 import {
   ACTIVE_COLLECTION_KEY,
   MODAL_ETAPA_KEY,
+  MODAL_NUEVA_SESSION_KEY,
   clearActiveCollectionStorage,
   clearActiveCollectionStorageIfMatch,
   isPipelineInProgress,
   isPipelineRunning as isBackendPipelineRunning,
   resolveModalCollectionId,
   shouldOpenPipelineModal,
+  readNuevaSessionCollectionId,
+  readPipelineEntitySelection,
+  persistPipelineEntitySelection,
+  persistPipelineModalState,
 } from '../../lib/collection_processing'
 import DEFAULT_DATA_MODEL from '../../data/defaultDataModel'
 
@@ -190,6 +195,7 @@ const ModalCarga = ({
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedCount, setUploadedCount] = useState(0)
+  const [uploadTotal, setUploadTotal] = useState(0)
   const [nombreColeccion, setNombreColeccion] = useState('')
   /* Idioma español por defecto, pero se puede extender para soportar otros idiomas en el futuro. */
   const [idioma, setIdioma] = useState<string>('es')
@@ -198,6 +204,7 @@ const ModalCarga = ({
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** ID de colección en creación/subida (sincrónico; el state puede ir retrasado). */
   const uploadCollectionIdRef = useRef<string | null>(null)
+  const uploadInFlightRef = useRef(false)
 
   const [etapa, setEtapa] = useState<Etapa>('subida')
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>('idle')
@@ -226,18 +233,62 @@ const ModalCarga = ({
     ) {
       return 'pipeline'
     }
+
+    const trackedId =
+      resolveModalCollectionId(scopeCollectionId, activeCollectionId) ??
+      (scopeCollectionId === 'nueva' ? readNuevaSessionCollectionId() : null)
+    if (
+      trackedId &&
+      localStorage.getItem(ACTIVE_COLLECTION_KEY) === trackedId &&
+      localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+    ) {
+      return 'pipeline'
+    }
+
+    if (
+      forcePipelineEtapa &&
+      scopeCollectionId === 'nueva' &&
+      readNuevaSessionCollectionId() &&
+      localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+    ) {
+      return 'pipeline'
+    }
+
     return etapa
-  }, [forcePipelineEtapa, scopeCollectionId, etapa])
+  }, [forcePipelineEtapa, scopeCollectionId, activeCollectionId, etapa])
   const isPipelineRunning =
     pipelineStatus === 'processing_text' ||
     pipelineStatus === 'processing_graph'
 
   const abortControllersRef = useRef<AbortController[]>([])
 
-  const persistBackgroundProcessing = useCallback((collectionId: string) => {
-    localStorage.setItem(ACTIVE_COLLECTION_KEY, collectionId)
-    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-  }, [])
+  const persistBackgroundProcessing = useCallback(
+    (collectionId: string, options?: { nuevaSession?: boolean }) => {
+      persistPipelineModalState(collectionId, options)
+    },
+    [],
+  )
+
+  const updateSelectedEntities = useCallback(
+    (updater: (prev: string[]) => string[]) => {
+      setSelectedEntities((prev) => {
+        const next = updater(prev)
+        if (resolvedCollectionId) {
+          persistPipelineEntitySelection(resolvedCollectionId, next)
+        }
+        return next
+      })
+    },
+    [resolvedCollectionId],
+  )
+
+  useEffect(() => {
+    if (!isOpen || !resolvedCollectionId || resolvedEtapa !== 'pipeline') return
+    if (pipelineStatus !== 'idle') return
+
+    const saved = readPipelineEntitySelection(resolvedCollectionId)
+    setSelectedEntities(saved)
+  }, [isOpen, resolvedCollectionId, resolvedEtapa, pipelineStatus])
 
   const resetUploadForm = useCallback(() => {
     setFiles([])
@@ -250,11 +301,29 @@ const ModalCarga = ({
     setActiveCollectionId(null)
     setIsUploading(false)
     setUploadedCount(0)
+    setUploadTotal(0)
     setTextProgress(EMPTY_PROGRESS)
     setGraphProgress(EMPTY_PROGRESS)
     uploadCollectionIdRef.current = null
     setIsCancelling(false)
   }, [])
+
+  const deleteActiveCollection = useCallback(
+    async (collectionId: string): Promise<boolean> => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        return res.status === 404 || res.ok
+      } catch (err) {
+        console.error('Error eliminando colección:', err)
+        return false
+      }
+    },
+    [getAccessTokenSilently],
+  )
 
   // --- 1. Sincronización: colección de la ruta o sesión en /nueva ---
   useEffect(() => {
@@ -264,12 +333,18 @@ const ModalCarga = ({
       const collectionId =
         scopeCollectionId && scopeCollectionId !== 'nueva'
           ? scopeCollectionId
-          : nuevaSessionCollectionId
+          : (nuevaSessionCollectionId ??
+            readNuevaSessionCollectionId() ??
+            (localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1'
+              ? localStorage.getItem(ACTIVE_COLLECTION_KEY)
+              : null))
 
       if (!collectionId) return
 
       if (scopeCollectionId && scopeCollectionId !== 'nueva') {
         setActiveCollectionId(scopeCollectionId)
+      } else if (scopeCollectionId === 'nueva' && collectionId) {
+        setActiveCollectionId(collectionId)
       }
 
       try {
@@ -326,26 +401,40 @@ const ModalCarga = ({
           ) {
             const esperandoGrafo =
               data.processing_status === 'idle' && savedEtapa === 'pipeline'
-            if (!esperandoGrafo) {
+            const uploadEnCurso = savedEtapa === 'subida'
+            if (!esperandoGrafo && !uploadEnCurso) {
               clearActiveCollectionStorage()
               onProcessingChange?.(false)
             }
           }
 
           let documentCount = 0
-          if ((data.processing_status ?? 'idle') === 'idle') {
-            try {
-              const docsRes = await fetch(
-                `${API_BASE}/api/documentos?coleccion_id=${collectionId}`,
-                { headers: { Authorization: `Bearer ${token}` } },
-              )
-              if (docsRes.ok) {
-                const docs = await docsRes.json()
-                documentCount = Array.isArray(docs) ? docs.length : 0
-              }
-            } catch {
-              documentCount = 0
+          try {
+            const docsRes = await fetch(
+              `${API_BASE}/api/documentos?coleccion_id=${collectionId}`,
+              { headers: { Authorization: `Bearer ${token}` } },
+            )
+            if (docsRes.ok) {
+              const docs = await docsRes.json()
+              documentCount = Array.isArray(docs) ? docs.length : 0
             }
+          } catch {
+            documentCount = 0
+          }
+
+          if (
+            savedEtapa === 'subida' &&
+            !isPipelineInProgress(data.processing_status)
+          ) {
+            if (uploadInFlightRef.current) {
+              return
+            }
+
+            await deleteActiveCollection(collectionId)
+            clearActiveCollectionStorage()
+            resetUploadForm()
+            onProcessingChange?.(false)
+            return
           }
 
           const openPipeline =
@@ -377,24 +466,8 @@ const ModalCarga = ({
     getAccessTokenSilently,
     onProcessingChange,
     resetUploadForm,
+    deleteActiveCollection,
   ])
-
-  const deleteActiveCollection = useCallback(
-    async (collectionId: string): Promise<boolean> => {
-      try {
-        const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        return res.status === 404 || res.ok
-      } catch (err) {
-        console.error('Error eliminando colección:', err)
-        return false
-      }
-    },
-    [getAccessTokenSilently],
-  )
 
   /** X u overlay: cerrar sin borrar (pipeline activo o en espera → segundo plano). */
   const handleDismiss = useCallback(() => {
@@ -637,31 +710,49 @@ const ModalCarga = ({
   }
   const handleUpload = async () => {
     if (files.length === 0) return
+    uploadInFlightRef.current = true
     setIsUploading(true)
     setError('')
+    setUploadTotal(files.length)
+    setUploadedCount(0)
 
     try {
       const token = await getAccessTokenSilently()
-      const res = await fetch(`${API_BASE}/api/collections`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: nombreColeccion || 'Nueva Colección',
-          description: '',
-          language: idioma, // <--- Agregar esto
-        }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body?.detail ?? 'Error al crear colección')
+      const existingCollectionId =
+        uploadCollectionIdRef.current ??
+        activeCollectionId ??
+        (scopeCollectionId === 'nueva' ? readNuevaSessionCollectionId() : null)
+
+      let collection: { id: string; name?: string }
+      if (existingCollectionId) {
+        collection = { id: existingCollectionId }
+      } else {
+        const res = await fetch(`${API_BASE}/api/collections`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: nombreColeccion || 'Nueva Colección',
+            description: '',
+            language: idioma,
+          }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body?.detail ?? 'Error al crear colección')
+        }
+        collection = await res.json()
       }
-      const collection = await res.json()
 
       uploadCollectionIdRef.current = collection.id
       setActiveCollectionId(collection.id)
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, collection.id)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'subida')
+      if (scopeCollectionId === 'nueva') {
+        localStorage.setItem(MODAL_NUEVA_SESSION_KEY, '1')
+      }
 
       let uploaded = 0
       const uploadErrors: string[] = []
@@ -701,6 +792,9 @@ const ModalCarga = ({
       }
 
       setEtapa('pipeline')
+      persistBackgroundProcessing(collection.id, {
+        nuevaSession: scopeCollectionId === 'nueva',
+      })
       if (onUploadSuccess) onUploadSuccess()
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -716,6 +810,7 @@ const ModalCarga = ({
 
       setError(err instanceof Error ? err.message : 'Error en la carga')
     } finally {
+      uploadInFlightRef.current = false
       setIsUploading(false)
     }
   }
@@ -778,6 +873,7 @@ const ModalCarga = ({
   const handleIniciarPipeline = async () => {
     if (!resolvedCollectionId) return
     setPipelineError('')
+    setEtapa('pipeline')
     try {
       const token = await getAccessTokenSilently()
       const customDataModel = buildCustomDataModel()
@@ -801,9 +897,9 @@ const ModalCarga = ({
         )
       }
       setPipelineStatus(pipelineStatusFromApi(data.processing_status))
-      if (isPipelineInProgress(data.processing_status)) {
-        persistBackgroundProcessing(resolvedCollectionId)
-      }
+      persistBackgroundProcessing(resolvedCollectionId, {
+        nuevaSession: scopeCollectionId === 'nueva',
+      })
       onProcessingChange?.(isPipelineInProgress(data.processing_status))
     } catch (e: unknown) {
       setPipelineError(
@@ -883,9 +979,10 @@ const ModalCarga = ({
       }
 
       setPipelineStatus(pipelineStatusFromApi(data.processing_status))
-      if (isPipelineInProgress(data.processing_status)) {
-        persistBackgroundProcessing(resolvedCollectionId)
-      }
+      setEtapa('pipeline')
+      persistBackgroundProcessing(resolvedCollectionId, {
+        nuevaSession: scopeCollectionId === 'nueva',
+      })
       onProcessingChange?.(isPipelineInProgress(data.processing_status))
     } catch (e: unknown) {
       setPipelineError(
@@ -1029,7 +1126,7 @@ const ModalCarga = ({
             )}
             {isUploading && (
               <p className="mc-success-message">
-                Subiendo {uploadedCount} de {files.length}...
+                Subiendo {uploadedCount} de {uploadTotal || files.length}...
               </p>
             )}
 
@@ -1287,9 +1384,9 @@ const ModalCarga = ({
                         checked={selectedEntities.includes(entity)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedEntities((prev) => [...prev, entity])
+                            updateSelectedEntities((prev) => [...prev, entity])
                           } else {
-                            setSelectedEntities((prev) =>
+                            updateSelectedEntities((prev) =>
                               prev.filter((item) => item !== entity),
                             )
                           }
