@@ -432,7 +432,9 @@ describe('ModalCarga', () => {
 
     await waitFor(() => {
       expect(localStorage.getItem('modal_carga_etapa')).toBe('subida')
-      expect(localStorage.getItem('active_collection_id')).toBe('collection-123')
+      expect(localStorage.getItem('active_collection_id')).toBe(
+        'collection-123',
+      )
       expect(localStorage.getItem('modal_nueva_session')).toBe('1')
     })
 
@@ -443,7 +445,6 @@ describe('ModalCarga', () => {
     localStorage.setItem('active_collection_id', 'collection-upload')
     localStorage.setItem('modal_carga_etapa', 'subida')
     localStorage.setItem('modal_nueva_session', '1')
-
     ;(globalThis.fetch as jest.Mock).mockImplementation(
       (input: RequestInfo | URL, init?: RequestInit) => {
         const url = typeof input === 'string' ? input : input.toString()
@@ -509,7 +510,6 @@ describe('ModalCarga', () => {
       'modal_pipeline_entities',
       JSON.stringify({ 'collection-123': ['Persona', 'Lugar'] }),
     )
-
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
       if (
         typeof url === 'string' &&

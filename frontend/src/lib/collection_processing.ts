@@ -154,7 +154,10 @@ export function getSearchAvailability(options: {
   const defaultPlaceholder = 'Consulta algo a tus documentos...'
 
   if (options.isNuevaPage || options.collectionId === 'nueva') {
-    if (options.hasBackgroundProcessingOnNueva || options.isCollectionProcessing) {
+    if (
+      options.hasBackgroundProcessingOnNueva ||
+      options.isCollectionProcessing
+    ) {
       if (localStorage.getItem(MODAL_ETAPA_KEY) === 'subida') {
         return {
           disabled: true,
@@ -228,9 +231,7 @@ export function isModalCargaOpenPersisted(): boolean {
 
 /** Reabrir modal solo si el usuario lo tenía abierto antes de recargar. */
 export function shouldRestoreModalOnPageLoad(collectionId: string): boolean {
-  return (
-    hasPipelineModalIntent(collectionId) && isModalCargaOpenPersisted()
-  )
+  return hasPipelineModalIntent(collectionId) && isModalCargaOpenPersisted()
 }
 
 export type InitialModalOpenState = {
@@ -300,7 +301,11 @@ function readPipelineEntitiesMap(): PipelineEntitiesMap {
     const raw = localStorage.getItem(MODAL_PIPELINE_ENTITIES_KEY)
     if (!raw) return {}
     const parsed: unknown = JSON.parse(raw)
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       return {}
     }
     return parsed as PipelineEntitiesMap
@@ -706,16 +711,19 @@ export function getProcessingBannerView(
       snapshot.textProgressTotal > 0
         ? `${snapshot.textProgressProcessed} de ${snapshot.textProgressTotal} documentos`
         : 'Preparando extracción…'
-    progressCaption = overall !== null ? formatPipelineProgressPercent(overall) : '—'
+    progressCaption =
+      overall !== null ? formatPipelineProgressPercent(overall) : '—'
   } else if (snapshot.processingStatus === 'processing_graph') {
     subtitle =
       snapshot.graphProgressTotal > 0
         ? `${snapshot.graphProgressProcessed} de ${snapshot.graphProgressTotal} pasos del grafo`
         : 'Construyendo relaciones…'
-    progressCaption = overall !== null ? formatPipelineProgressPercent(overall) : '—'
+    progressCaption =
+      overall !== null ? formatPipelineProgressPercent(overall) : '—'
   } else {
     subtitle = 'Procesando en segundo plano'
-    progressCaption = overall !== null ? formatPipelineProgressPercent(overall) : '—'
+    progressCaption =
+      overall !== null ? formatPipelineProgressPercent(overall) : '—'
   }
 
   return {

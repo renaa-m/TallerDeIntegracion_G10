@@ -998,12 +998,7 @@ const ModalCarga = ({
         resolvedCollectionId ?? '',
       ),
     )
-  }, [
-    pipelineStatus,
-    textProgress,
-    graphProgress,
-    resolvedCollectionId,
-  ])
+  }, [pipelineStatus, textProgress, graphProgress, resolvedCollectionId])
 
   const pipelineStatusLabel = useMemo(() => {
     if (isCancelling) {
@@ -1079,7 +1074,10 @@ const ModalCarga = ({
   )
 
   return (
-    <div className="mc-overlay" onClick={isCancelling ? undefined : handleDismiss}>
+    <div
+      className="mc-overlay"
+      onClick={isCancelling ? undefined : handleDismiss}
+    >
       <div
         className={`mc-panel${isCancelling ? ' is-cancelling' : ''}`}
         onClick={(e) => e.stopPropagation()}
@@ -1340,7 +1338,9 @@ const ModalCarga = ({
                 <div className="mc-progress-card">
                   <div className="mc-progress-header">
                     <span>Extracción de texto</span>
-                    <strong>{pipelineProgressDisplay.textCardPercentLabel}</strong>
+                    <strong>
+                      {pipelineProgressDisplay.textCardPercentLabel}
+                    </strong>
                   </div>
 
                   <div className="mc-progress-bar">
@@ -1384,7 +1384,9 @@ const ModalCarga = ({
                 <div className="mc-progress-card">
                   <div className="mc-progress-header">
                     <span>Construcción del grafo</span>
-                    <strong>{pipelineProgressDisplay.graphCardPercentLabel}</strong>
+                    <strong>
+                      {pipelineProgressDisplay.graphCardPercentLabel}
+                    </strong>
                   </div>
 
                   <div className="mc-progress-bar">

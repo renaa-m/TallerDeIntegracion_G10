@@ -367,8 +367,7 @@ const BuscadorColeccion = () => {
 
   const shouldPollBackground = isNuevaColeccionPage && !modalCargaOpen
   const currentPageInPipeline =
-    isCollectionProcessing ||
-    isPipelineInProgress(collectionProcessingStatus)
+    isCollectionProcessing || isPipelineInProgress(collectionProcessingStatus)
 
   const visibleBackgroundProcessingId = shouldPollBackground
     ? backgroundProcessingId

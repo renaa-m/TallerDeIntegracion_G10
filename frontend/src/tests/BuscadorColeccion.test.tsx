@@ -700,7 +700,9 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(await screen.findByText('Colección en curso')).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: /ver grafo/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /ver grafo/i }),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /ver documentos/i }),
     ).not.toBeDisabled()
@@ -864,7 +866,10 @@ describe('BuscadorColeccion', () => {
     localStorage.setItem('active_collection_id', 'collection-123')
     localStorage.setItem('modal_carga_etapa', 'pipeline')
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -909,7 +914,10 @@ describe('BuscadorColeccion', () => {
     localStorage.setItem('modal_carga_etapa', 'pipeline')
     localStorage.setItem('modal_carga_open', '1')
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -952,7 +960,10 @@ describe('BuscadorColeccion', () => {
     localStorage.setItem('active_collection_id', 'collection-123')
     localStorage.setItem('modal_carga_etapa', 'pipeline')
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -998,7 +1009,10 @@ describe('BuscadorColeccion', () => {
     localStorage.setItem('active_collection_id', 'collection-123')
     localStorage.setItem('modal_carga_etapa', 'pipeline')
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
-      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
@@ -1035,7 +1049,9 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    expect(await screen.findByText('Construcción del Grafo')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Construcción del Grafo'),
+    ).toBeInTheDocument()
     expect(screen.getByText('Ver detalle')).toBeInTheDocument()
     expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
   })
@@ -1047,7 +1063,6 @@ describe('BuscadorColeccion', () => {
       entity_logic: 'AND',
       entity_type: 'Persona',
     })
-
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
       if (typeof url === 'string' && url.includes('/api/search')) {
         return Promise.resolve({
