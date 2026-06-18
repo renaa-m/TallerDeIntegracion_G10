@@ -39,19 +39,21 @@ import ModalFiltros from '../../components/modal_filtro/modal_filtro'
 import {
   ACTIVE_COLLECTION_KEY,
   MODAL_ETAPA_KEY,
-  MODAL_NUEVA_SESSION_KEY,
   type CollectionProcessingSnapshot,
+  canShowDocumentListNavigation,
+  canShowGraphNavigation,
   clearActiveCollectionStorageIfMatch,
   clearStaleActiveCollectionForPage,
   getPendingGraphBannerView,
   getProcessingBannerView,
-  hasPipelineModalIntent,
+  getSearchAvailability,
   isAwaitingGraphForCollection,
   isAwaitingGraphGeneration,
   isGraphViewable,
   isPipelineInProgress,
   isPipelineRunning,
-  shouldOpenPipelineModal,
+  persistModalCargaOpen,
+  readInitialModalOpenState,
   snapshotFromCollectionApi,
 } from '../../lib/collection_processing'
 
@@ -63,23 +65,6 @@ import {
 import './buscador_coleccion.css'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
-
-function readInitialModalState(collectionId: string | undefined) {
-  if (!collectionId || typeof window === 'undefined') {
-    return { open: false, pipeline: false }
-  }
-
-  if (collectionId === 'nueva') {
-    const pipeline =
-      localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1' &&
-      localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline' &&
-      !!localStorage.getItem(ACTIVE_COLLECTION_KEY)
-    return { open: true, pipeline }
-  }
-
-  const pipeline = hasPipelineModalIntent(collectionId)
-  return { open: pipeline, pipeline }
-}
 
 const SEARCH_SEMANTIC_HELP =
   'La búsqueda semántica interpreta el significado de tu consulta, no solo palabras exactas. Encuentra fragmentos relacionados aunque no repitan tu texto.'
@@ -297,7 +282,6 @@ const BuscadorColeccion = () => {
   const [resultados, setResultados] = useState<SearchResultItem[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTime, setSearchTime] = useState<number>(0)
-  const [searchNotReadyMessage] = useState<string | null>(null)
   const [page, setPage] = useState<number>(initialUrlFilters.page)
   const [totalResults, setTotalResults] = useState(0)
   const [totalPages, setTotalPages] = useState(0)
@@ -338,7 +322,10 @@ const BuscadorColeccion = () => {
   // 8. ESTADO: MODALES
   // ─────────────────────────────────────────
 
-  const initialModalState = readInitialModalState(id_coleccion)
+  const initialModalState =
+    typeof window === 'undefined'
+      ? { open: false, pipeline: false }
+      : readInitialModalOpenState(id_coleccion)
 
   const [modalCargaOpen, setModalCargaOpen] = useState(initialModalState.open)
   const [modalPipelineEtapa, setModalPipelineEtapa] = useState(
@@ -420,13 +407,38 @@ const BuscadorColeccion = () => {
   const canEditCollectionName =
     !isNuevaColeccionPage && id_coleccion !== 'nueva'
   const canDeleteCollection = !isNuevaColeccionPage && id_coleccion !== 'nueva'
-  const isSearchDisabled = isNuevaColeccionPage
   const isNuevaBackgroundProcessing =
     isNuevaColeccionPage && !modalCargaOpen && !!visibleBackgroundProcessingId
   const showNuevaOnboarding =
     isNuevaColeccionPage && !modalCargaOpen && !isNuevaBackgroundProcessing
 
+  const searchAvailability = useMemo(
+    () =>
+      getSearchAvailability({
+        collectionId: id_coleccion,
+        processingStatus: collectionProcessingStatus,
+        isCollectionProcessing,
+        isNuevaPage: isNuevaColeccionPage,
+        hasBackgroundProcessingOnNueva: isNuevaBackgroundProcessing,
+      }),
+    [
+      id_coleccion,
+      collectionProcessingStatus,
+      isCollectionProcessing,
+      isNuevaColeccionPage,
+      isNuevaBackgroundProcessing,
+    ],
+  )
+  const isSearchDisabled = searchAvailability.disabled
+  const searchBlockedMessage = searchAvailability.message
+  const showDocumentListNavigation = canShowDocumentListNavigation(id_coleccion)
+  const showGraphNavigation =
+    !isGrafoView &&
+    showDocumentListNavigation &&
+    canShowGraphNavigation(collectionProcessingStatus)
+
   const handleOpenAddSources = () => {
+    persistModalCargaOpen(true)
     setModalPipelineEtapa(false)
     setModalCargaOpen(true)
   }
@@ -467,8 +479,6 @@ const BuscadorColeccion = () => {
   const cargarDatos = useCallback(async () => {
     if (!id_coleccion || id_coleccion === 'nueva') return
 
-    const shouldRestoreModalOnLoad = hasPipelineModalIntent(id_coleccion)
-
     try {
       const token = await getAccessTokenSilently()
       const headers = { Authorization: `Bearer ${token}` }
@@ -504,24 +514,9 @@ const BuscadorColeccion = () => {
         `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
         { headers },
       )
-      let documentCount = 0
       if (resDocs.ok) {
         const docs = await resDocs.json()
         setFuentes(docs)
-        documentCount = Array.isArray(docs) ? docs.length : 0
-      }
-
-      if (
-        shouldRestoreModalOnLoad &&
-        shouldOpenPipelineModal(collectionStatus, {
-          savedModalEtapa: 'pipeline',
-          documentCount,
-        })
-      ) {
-        localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
-        localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-        setModalPipelineEtapa(true)
-        setModalCargaOpen(true)
       }
     } catch (e) {
       console.error('Error cargando datos:', e)
@@ -538,6 +533,14 @@ const BuscadorColeccion = () => {
   // ─────────────────────────────────────────
 
   const ejecutarBusqueda = useCallback(async () => {
+    if (searchAvailability.disabled) {
+      setResultados([])
+      setTotalResults(0)
+      setTotalPages(0)
+      setSearchTime(0)
+      return
+    }
+
     const tieneQuery = busquedaEnviada.trim().length > 0
     const tieneEntidades = entidadesSeleccionadas.length > 0
 
@@ -622,6 +625,7 @@ const BuscadorColeccion = () => {
     fechaHasta,
     page,
     getAccessTokenSilently,
+    searchAvailability.disabled,
   ])
 
   // ─────────────────────────────────────────
@@ -752,6 +756,7 @@ const BuscadorColeccion = () => {
       localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
       localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
     }
+    persistModalCargaOpen(true)
     setModalPipelineEtapa(true)
     setModalCargaOpen(true)
   }
@@ -794,6 +799,56 @@ const BuscadorColeccion = () => {
     void iniciarCarga()
   }, [cargarDatos])
 
+  useEffect(() => {
+    if (!id_coleccion) return
+    persistModalCargaOpen(modalCargaOpen)
+  }, [modalCargaOpen, id_coleccion])
+
+  useEffect(() => {
+    if (id_coleccion !== 'nueva') return
+    if (localStorage.getItem(MODAL_ETAPA_KEY) !== 'subida') return
+
+    const collectionId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+    if (!collectionId) return
+
+    let cancelled = false
+
+    const cleanupSubidaRefresh = async () => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_URL}/api/collections/${collectionId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (cancelled) return
+        if (res.ok) {
+          const data = await res.json()
+          if (isPipelineInProgress(data.processing_status)) return
+        }
+        const deleteRes = await fetch(
+          `${API_URL}/api/collections/${collectionId}`,
+          {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        )
+        if (cancelled) return
+        if (deleteRes.ok || deleteRes.status === 404) {
+          clearActiveCollectionStorageIfMatch(collectionId)
+          setBackgroundProcessingId(null)
+          setBackgroundProcessingSnapshot(null)
+          setIsCollectionProcessing(false)
+        }
+      } catch (e) {
+        console.error('Error limpiando subida tras recarga:', e)
+      }
+    }
+
+    void cleanupSubidaRefresh()
+    return () => {
+      cancelled = true
+    }
+  }, [id_coleccion, getAccessTokenSilently])
+
   // ─────────────────────────────────────────
   // 22. EFFECTS: ESTADO DE MODALES
   // ─────────────────────────────────────────
@@ -811,6 +866,7 @@ const BuscadorColeccion = () => {
       } else {
         setModalPipelineEtapa(false)
       }
+      persistModalCargaOpen(true)
       setModalCargaOpen(true)
       navigate(location.pathname, { replace: true, state: {} })
     })
@@ -1134,7 +1190,7 @@ const BuscadorColeccion = () => {
 
             <div className="bc-sidebar-divider" />
 
-            {isGrafoView ? (
+            {isGrafoView && showDocumentListNavigation && (
               <Link
                 to={`/${id_usuario}/colecciones/${id_coleccion}/buscador`}
                 className="bc-add-btn bc-add-btn-link"
@@ -1142,7 +1198,9 @@ const BuscadorColeccion = () => {
                 <FileText size={15} />
                 <span>Consultar Documentos</span>
               </Link>
-            ) : id_coleccion !== 'nueva' ? (
+            )}
+
+            {showGraphNavigation && (
               <Link
                 to={`/${id_usuario}/colecciones/${id_coleccion}/grafo`}
                 className="bc-add-btn bc-add-btn-link"
@@ -1150,15 +1208,15 @@ const BuscadorColeccion = () => {
                 <Network size={15} />
                 <span>Ver Grafo</span>
               </Link>
-            ) : null}
+            )}
 
             <button
               type="button"
               className="bc-add-btn bc-add-btn-secondary"
               onClick={() => setIsModalFuentesOpen(true)}
-              disabled={isNuevaColeccionPage}
+              disabled={!showDocumentListNavigation}
               title={
-                isNuevaColeccionPage
+                !showDocumentListNavigation
                   ? 'Sube documentos primero para ver la lista'
                   : undefined
               }
@@ -1236,11 +1294,7 @@ const BuscadorColeccion = () => {
                   <Search size={17} className="bc-searchbar-icon" />
                   <input
                     className="bc-searchbar-input"
-                    placeholder={
-                      isSearchDisabled
-                        ? 'Disponible cuando la colección esté creada'
-                        : 'Consulta algo a tus documentos...'
-                    }
+                    placeholder={searchAvailability.placeholder}
                     value={busqueda}
                     onChange={(e) => setBusqueda(e.target.value)}
                     onKeyDown={(e) =>
@@ -1298,6 +1352,12 @@ const BuscadorColeccion = () => {
                     {semanticHelpActive
                       ? SEARCH_SEMANTIC_HELP
                       : SEARCH_SEMANTIC_HELP_HINT}
+                  </p>
+                )}
+
+                {isSearchDisabled && searchBlockedMessage && (
+                  <p className="bc-search-blocked-message" role="status">
+                    {searchBlockedMessage}
                   </p>
                 )}
 
@@ -1454,7 +1514,7 @@ const BuscadorColeccion = () => {
                         ? 'Empieza Subiendo Documentos'
                         : isNuevaBackgroundProcessing
                           ? 'Preparando Tu Colección'
-                          : searchNotReadyMessage
+                          : searchBlockedMessage
                             ? 'Búsqueda No Disponible Aún'
                             : 'Sin Resultados Todavía'}
                     </h3>
@@ -1463,7 +1523,7 @@ const BuscadorColeccion = () => {
                         ? 'Añade PDF o TXT para crear tu colección. Después podrás generar el grafo y buscar en tus documentos.'
                         : isNuevaBackgroundProcessing
                           ? 'Tus documentos se están procesando en segundo plano. Sigue el avance en la barra superior; la búsqueda estará disponible cuando termine el grafo.'
-                          : (searchNotReadyMessage ??
+                          : (searchBlockedMessage ??
                             (busquedaEnviada
                               ? 'No hay fragmentos que coincidan con tu búsqueda semántica.'
                               : !isGraphViewable(collectionProcessingStatus)
@@ -1492,16 +1552,13 @@ const BuscadorColeccion = () => {
       {/* ──────────────────────────────────── */}
 
       <ModalCarga
-        key={
-          id_coleccion === 'nueva'
-            ? `nueva-${modalCargaOpen ? 'open' : 'closed'}`
-            : (id_coleccion ?? 'none')
-        }
+        key={id_coleccion === 'nueva' ? 'nueva' : (id_coleccion ?? 'none')}
         isOpen={modalCargaOpen}
         scopeCollectionId={id_coleccion ?? null}
         scopeUserId={id_usuario ?? null}
         forcePipelineEtapa={modalPipelineEtapa}
         onClose={() => {
+          persistModalCargaOpen(false)
           setModalCargaOpen(false)
           setModalPipelineEtapa(false)
           if (isNuevaColeccionPage) {

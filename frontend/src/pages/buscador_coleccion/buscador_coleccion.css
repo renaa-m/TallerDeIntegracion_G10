@@ -506,6 +506,18 @@
   color: var(--text-2);
 }
 
+.bc-search-blocked-message {
+  margin: 0.45rem 0 0;
+  padding: 0 0.15rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+
+.bc-dark .bc-search-blocked-message {
+  color: var(--text-3);
+}
+
 .bc-searchbar-input:disabled {
   cursor: not-allowed;
 }

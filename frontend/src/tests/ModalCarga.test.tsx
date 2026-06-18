@@ -931,18 +931,20 @@ describe('ModalCarga', () => {
     })
   })
 
-  test('X durante subida está deshabilitado y no borra', async () => {
+  test('X durante subida cancela, borra colección y redirige', async () => {
     ;(globalThis.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 'collection-upload' }),
       })
-      .mockImplementation(
-        () =>
-          new Promise(() => {
-            /* upload colgado a propósito */
-          }),
-      )
+      .mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true })
+        }
+        return new Promise(() => {
+          /* upload colgado a propósito */
+        })
+      })
 
     const onClose = jest.fn()
     renderModal({ onClose, scopeCollectionId: 'nueva' })
@@ -962,14 +964,67 @@ describe('ModalCarga', () => {
     })
 
     const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
-    expect(closeButton).toBeDisabled()
+    expect(closeButton).not.toBeDisabled()
     fireEvent.click(closeButton)
 
-    expect(onClose).not.toHaveBeenCalled()
-    expect(globalThis.fetch).not.toHaveBeenCalledWith(
-      `${API_BASE}/api/collections/collection-upload`,
-      expect.objectContaining({ method: 'DELETE' }),
-    )
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-upload`,
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
+  })
+
+  test('overlay durante subida cancela, borra colección y redirige', async () => {
+    ;(globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'collection-upload' }),
+      })
+      .mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true })
+        }
+        return new Promise(() => {
+          /* upload colgado a propósito */
+        })
+      })
+
+    const onClose = jest.fn()
+    renderModal({ onClose, scopeCollectionId: 'nueva' })
+
+    const file = new File(['contenido'], 'doc.txt', { type: 'text/plain' })
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+    fireEvent.change(screen.getByPlaceholderText('Nombre de colección'), {
+      target: { value: 'Mi colección' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /subiendo/i })).toBeDisabled()
+    })
+
+    fireEvent.click(document.querySelector('.mc-overlay') as HTMLElement)
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-upload`,
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
   })
 
   test('cancelar durante procesamiento borra la colección', async () => {

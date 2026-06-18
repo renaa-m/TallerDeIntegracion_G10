@@ -309,12 +309,12 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-    expect(screen.getByText('Sin Resultados Todavía')).toBeInTheDocument()
+    expect(screen.getByText('Búsqueda No Disponible Aún')).toBeInTheDocument()
     expect(
-      screen.getByText(
+      screen.getAllByText(
         'Genera el grafo de la colección para habilitar la búsqueda semántica.',
-      ),
-    ).toBeInTheDocument()
+      ).length,
+    ).toBeGreaterThan(0)
   })
 
   test('ejecuta búsqueda al presionar Enter y muestra resultados', async () => {
@@ -689,6 +689,33 @@ describe('BuscadorColeccion', () => {
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
+  test('oculta Ver Grafo mientras procesa pero mantiene Ver Documentos', async () => {
+    mockParams = {
+      id_usuario: 'user-123',
+      id_coleccion: 'collection-processing',
+    }
+    mockFetchForCollection(processingCollectionResponse)
+
+    renderPage()
+
+    expect(await screen.findByText('Colección en curso')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /ver grafo/i })).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /ver documentos/i }),
+    ).not.toBeDisabled()
+  })
+
+  test('muestra Ver Grafo cuando el grafo está listo', async () => {
+    mockInitialLoad()
+    renderPage()
+
+    expect(await screen.findByText('Colección Test')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /ver grafo/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /ver documentos/i }),
+    ).not.toBeDisabled()
+  })
+
   test('aplica clase dark cuando matchMedia indica dark mode', async () => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -830,7 +857,7 @@ describe('BuscadorColeccion', () => {
     expect(screen.getByText(/preparando tu colección/i)).toBeInTheDocument()
   })
 
-  test('restaura modal en etapa pipeline al recargar con grafo pendiente', async () => {
+  test('mantiene buscador con banner de grafo pendiente al recargar (sin reabrir modal)', async () => {
     localStorage.setItem('active_collection_id', 'collection-123')
     localStorage.setItem('modal_carga_etapa', 'pipeline')
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
@@ -869,11 +896,102 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
-    expect(screen.queryByText('Añadir fuentes')).not.toBeInTheDocument()
+    expect(await screen.findByText('Grafo Pendiente')).toBeInTheDocument()
+    expect(screen.getByText('Generar grafo')).toBeInTheDocument()
+    expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
   })
 
-  test('restaura modal en etapa pipeline al recargar durante construcción del grafo', async () => {
+  test('restaura modal al recargar si el usuario lo tenía abierto', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    localStorage.setItem('modal_carga_open', '1')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'idle',
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+    expect(screen.getByTestId('modal-carga')).toBeInTheDocument()
+  })
+
+  test('no reabre modal al recargar si estaba cerrado durante extracción', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/collections/collection-123')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'processing_text',
+            text_progress_total: 4,
+            text_progress_processed: 1,
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText(/Extracción de Texto/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
+    expect(screen.queryByText('Procesar grafo')).not.toBeInTheDocument()
+  })
+
+  test('mantiene buscador con banner de construcción del grafo al recargar (sin reabrir modal)', async () => {
     localStorage.setItem('active_collection_id', 'collection-123')
     localStorage.setItem('modal_carga_etapa', 'pipeline')
     ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
@@ -914,7 +1032,9 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+    expect(await screen.findByText('Construcción del Grafo')).toBeInTheDocument()
+    expect(screen.getByText('Ver detalle')).toBeInTheDocument()
+    expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
   })
 
   test('restaura filtros de entidades desde la URL al recargar', async () => {
