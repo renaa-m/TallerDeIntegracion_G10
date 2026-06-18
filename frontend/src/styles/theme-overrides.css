@@ -3,6 +3,15 @@
  * Los tokens base viven en design-tokens.css vía prefers-color-scheme.
  */
 
+html.bc-dark {
+  --popup-loading-bg: rgba(251, 255, 161, 0.15);
+  --popup-loading-text: #fbffa1;
+  --popup-loading-border: rgba(168, 163, 246, 0.45);
+  --popup-error-bg: rgba(246, 213, 238, 0.12);
+  --popup-error-text: #f6d5ee;
+  --popup-error-border: rgba(216, 139, 187, 0.45);
+}
+
 html.bc-dark .bc-root {
   --surface: #141d35;
   --surface-2: #0d1426;

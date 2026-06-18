@@ -343,9 +343,9 @@ html.bc-dark .mc-panel .mc-cancelling-banner {
   margin: 14px 24px 0;
   padding: 10px 14px;
   border-radius: 12px;
-  background: #f8ffa1;
-  color: #2d3a00;
-  border: 1.5px solid #aba3f6;
+  background: var(--popup-loading-bg);
+  color: var(--popup-loading-text);
+  border: 1.5px solid var(--popup-loading-border);
   font-size: 13px;
   font-weight: 600;
   text-align: center;
@@ -355,9 +355,9 @@ html.bc-dark .mc-panel .mc-cancelling-banner {
   margin: 14px 24px 0;
   padding: 10px 14px;
   border-radius: 12px;
-  background: #f6d5ee;
-  color: #7a1c4a;
-  border: 1.5px solid #d88bbb;
+  background: var(--popup-error-bg);
+  color: var(--popup-error-text);
+  border: 1.5px solid var(--popup-error-border);
   font-size: 13px;
   font-weight: 600;
   text-align: center;
