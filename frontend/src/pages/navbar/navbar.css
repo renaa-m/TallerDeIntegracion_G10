@@ -192,3 +192,12 @@
 .delete-account-action svg {
   flex-shrink: 0;
 }
+
+/* Navbar más clara en oscuro: logo IMFD lleva texto oscuro */
+html.bc-dark .navbar {
+  --hover-bg: rgba(171, 163, 246, 0.14);
+}
+
+html.bc-dark .navbar .chevron {
+  color: #526080;
+}

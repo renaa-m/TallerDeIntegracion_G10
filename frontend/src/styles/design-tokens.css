@@ -143,9 +143,9 @@
     --imfd-accent-soft-border: rgba(168, 163, 246, 0.42);
     --imfd-accent-shadow-soft: rgba(168, 163, 246, 0.12);
 
-    --navbar-bg: rgba(15, 32, 69, 0.82);
-    --navbar-border: rgba(168, 163, 246, 0.16);
-    --navbar-shadow: rgba(15, 85, 166, 0.3);
+    --navbar-bg: rgba(232, 236, 248, 0.94);
+    --navbar-border: rgba(171, 163, 246, 0.28);
+    --navbar-shadow: rgba(0, 0, 0, 0.08);
     --hover-bg: rgba(255, 255, 255, 0.08);
 
     --badge-bg: rgba(168, 163, 246, 0.18);

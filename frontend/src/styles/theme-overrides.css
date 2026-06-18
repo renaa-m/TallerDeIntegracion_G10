@@ -10,6 +10,9 @@ html.bc-dark {
   --popup-error-bg: rgba(246, 213, 238, 0.12);
   --popup-error-text: #f6d5ee;
   --popup-error-border: rgba(216, 139, 187, 0.45);
+  --navbar-bg: rgba(232, 236, 248, 0.94);
+  --navbar-border: rgba(171, 163, 246, 0.28);
+  --navbar-shadow: rgba(0, 0, 0, 0.08);
 }
 
 html.bc-dark .bc-root {
