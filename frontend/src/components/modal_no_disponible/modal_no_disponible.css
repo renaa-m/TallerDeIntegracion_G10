@@ -15,9 +15,8 @@
   --shadow: rgba(26, 37, 80, 0.13);
 }
 
-/* ── VARIABLES (dark) ────────────────────────────────────────────────────── */
-@media (prefers-color-scheme: dark) {
-  .mnd-overlay {
+/* ── VARIABLES (dark vía html.bc-dark) ───────────────────────────────────── */
+html.bc-dark .mnd-overlay {
     --surface: #141d35;
     --surface-2: #182038;
     --border: #1e2d50;
@@ -29,7 +28,6 @@
     --red-bg: rgba(239, 68, 68, 0.12);
     --red-border: rgba(239, 68, 68, 0.25);
     --shadow: rgba(0, 0, 0, 0.4);
-  }
 }
 
 /* ── OVERLAY ─────────────────────────────────────────────────────────────── */

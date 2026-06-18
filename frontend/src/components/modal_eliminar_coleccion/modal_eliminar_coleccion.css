@@ -175,64 +175,7 @@
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
 
-/* ── DARK MODE ───────────────────────────────────────────────────────────── */
-@media (prefers-color-scheme: dark) {
-  .mea-box {
-    background: var(--surface, #141d35);
-    border-color: var(--border, #1e2d50);
-  }
-
-  .mea-title {
-    color: var(--text-1, #dce4f5);
-  }
-
-  .mea-text {
-    color: var(--text-2, #8394b4);
-  }
-
-  .mea-filename {
-    color: var(--text-1, #dce4f5);
-  }
-
-  .mea-btn-cancel {
-    border-color: var(--border, #1e2d50);
-    color: var(--text-2, #8394b4);
-  }
-
-  .mea-btn-cancel:hover {
-    background: var(--surface-2, #0d1426);
-    border-color: var(--accent, #aba3f6);
-    color: var(--text-1, #dce4f5);
-  }
-}
-
-.bc-dark .mea-box {
-  background: var(--surface, #141d35);
-  border-color: var(--border, #1e2d50);
-}
-
-.bc-dark .mea-title {
-  color: var(--text-1, #dce4f5);
-}
-
-.bc-dark .mea-text {
-  color: var(--text-2, #8394b4);
-}
-
-.bc-dark .mea-filename {
-  color: var(--text-1, #dce4f5);
-}
-
-.bc-dark .mea-btn-cancel {
-  border-color: var(--border, #1e2d50);
-  color: var(--text-2, #8394b4);
-}
-
-.bc-dark .mea-btn-cancel:hover {
-  background: var(--surface-2, #0d1426);
-  border-color: var(--accent, #aba3f6);
-  color: var(--text-1, #dce4f5);
-}
+/* ── DARK MODE: tokens globales en design-tokens.css ─────────────────────── */
 
 @media (max-width: 480px) {
   .mea-box {

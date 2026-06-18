@@ -36,7 +36,6 @@ import DEFAULT_DATA_MODEL from '../../data/defaultDataModel'
 interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
-  darkMode?: boolean
   onUploadSuccess?: () => void
   /** id de la ruta (`nueva` o UUID). Evita mezclar estado entre colecciones. */
   scopeCollectionId?: string | null
@@ -181,7 +180,6 @@ const ENTITY_OPTIONS = ['Persona', 'Organizacion', 'Lugar', 'Evento'] as const
 const ModalCarga = ({
   isOpen,
   onClose,
-  darkMode = false,
   onUploadSuccess,
   scopeCollectionId = null,
   scopeUserId = null,
@@ -1058,7 +1056,7 @@ const ModalCarga = ({
   return (
     <div className="mc-overlay" onClick={isCancelling ? undefined : handleDismiss}>
       <div
-        className={`mc-panel${darkMode ? ' dark' : ''}${isCancelling ? ' is-cancelling' : ''}`}
+        className={`mc-panel${isCancelling ? ' is-cancelling' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {isCancelling && (

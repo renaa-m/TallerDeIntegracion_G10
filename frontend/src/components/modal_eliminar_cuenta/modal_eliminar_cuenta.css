@@ -170,23 +170,6 @@
   transform: translateY(-1px);
 }
 
-/* ── MODO OSCURO (Soporta tu clase .bc-dark) ─────────────────────────────── */
-.bc-dark .mea-box {
-  background: #141d35;
-  border-color: #1e2d50;
-}
-
-.bc-dark .mea-title {
-  color: #dce4f5;
-}
-.bc-dark .mea-text {
-  color: #8394b4;
-}
-.bc-dark .mea-btn-cancel {
-  border-color: #1e2d50;
-  color: #8394b4;
-}
-
 @media (max-width: 480px) {
   .mea-box {
     margin: 0 20px;

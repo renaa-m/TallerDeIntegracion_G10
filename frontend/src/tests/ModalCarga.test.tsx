@@ -38,14 +38,12 @@ describe('ModalCarga', () => {
   const renderModal = ({
     onClose = jest.fn(),
     onUploadSuccess,
-    darkMode = false,
     isOpen = true,
     scopeCollectionId = null as string | null,
     forcePipelineEtapa = false,
   }: {
     onClose?: jest.Mock
     onUploadSuccess?: jest.Mock
-    darkMode?: boolean
     isOpen?: boolean
     scopeCollectionId?: string | null
     forcePipelineEtapa?: boolean
@@ -55,7 +53,6 @@ describe('ModalCarga', () => {
         <ModalCarga
           isOpen={isOpen}
           onClose={onClose}
-          darkMode={darkMode}
           onUploadSuccess={onUploadSuccess}
           scopeCollectionId={scopeCollectionId}
           forcePipelineEtapa={forcePipelineEtapa}
@@ -133,11 +130,11 @@ describe('ModalCarga', () => {
     ).toBeDisabled()
   })
 
-  test('aplica modo oscuro cuando darkMode es true', () => {
-    renderModal({ darkMode: true })
+  test('no aplica clase dark al panel (tema vía html.bc-dark)', () => {
+    renderModal()
 
     const panel = document.querySelector('.mc-panel')
-    expect(panel).toHaveClass('dark')
+    expect(panel).not.toHaveClass('dark')
   })
 
   test('no renderiza nada cuando isOpen es false', () => {

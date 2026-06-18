@@ -2,15 +2,7 @@
 
 /* ── 1. TEMA CLARO ──────────────────────────────── */
 .mdd-overlay {
-  --mdd-overlay-bg: rgba(10, 14, 30, 0.55);
-  --mdd-surface: #ffffff;
-  --mdd-surface-2: #f4f6fb;
-  --mdd-border: rgba(171, 163, 246, 0.3);
-  --mdd-text-1: #1a2550;
-  --mdd-text-2: #526080;
-  --mdd-accent: #243166;
-  --mdd-shadow: rgba(10, 15, 35, 0.15);
-  /* Colores de estado */
+  /* Colores de estado locales al modal */
   --mdd-status-ok: #10b981;
   --mdd-status-error: #ef4444;
 
@@ -25,18 +17,6 @@
   z-index: 9999;
   padding: 20px;
   animation: mdd-fade-in 0.2s ease both;
-}
-
-/* ── 2. TEMA OSCURO ────────────────────────── */
-.mdd-overlay.bc-dark {
-  --mdd-overlay-bg: rgba(0, 0, 0, 0.7);
-  --mdd-surface: #141d35;
-  --mdd-surface-2: #0d1426;
-  --mdd-border: #1e2d50;
-  --mdd-text-1: #dce4f5;
-  --mdd-text-2: #8394b4;
-  --mdd-accent: #aba3f6;
-  --mdd-shadow: rgba(0, 0, 0, 0.4);
 }
 
 /* ── 3. PANEL PRINCIPAL ─────────────────────────────────────── */

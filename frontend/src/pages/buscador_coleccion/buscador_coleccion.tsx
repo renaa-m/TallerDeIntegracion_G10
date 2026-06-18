@@ -375,15 +375,7 @@ const BuscadorColeccion = () => {
     : null
 
   // ─────────────────────────────────────────
-  // 12. TEMA & CONFIGURACIÓN
-  // ─────────────────────────────────────────
-
-  const darkMode =
-    typeof window !== 'undefined' &&
-    window.matchMedia('(prefers-color-scheme: dark)').matches
-
-  // ─────────────────────────────────────────
-  // 13. COMPUTED: FILTROS
+  // 12. COMPUTED: FILTROS
   // ─────────────────────────────────────────
 
   const entidadesFiltradas = useMemo(
@@ -1163,7 +1155,7 @@ const BuscadorColeccion = () => {
 
   return (
     <>
-      <div className={darkMode ? 'bc-root bc-dark' : 'bc-root'}>
+      <div className="bc-root">
         {/* ──────────────────────────────────── */}
         {/* SIDEBAR */}
         {/* ──────────────────────────────────── */}
@@ -1568,7 +1560,6 @@ const BuscadorColeccion = () => {
         }}
         onProcessingChange={setIsCollectionProcessing}
         onUploadSuccess={cargarDatos}
-        darkMode={darkMode}
       />
 
       <ModalEliminarColeccion
@@ -1595,7 +1586,6 @@ const BuscadorColeccion = () => {
         isOpen={isModalFuentesOpen}
         fuentes={fuentes}
         onClose={() => setIsModalFuentesOpen(false)}
-        darkMode={darkMode}
       />
     </>
   )

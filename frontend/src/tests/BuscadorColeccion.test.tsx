@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import BuscadorColeccion from '../pages/buscador_coleccion/buscador_coleccion'
+import { syncThemeClass } from '../lib/theme'
 
 const mockNavigate = jest.fn()
 const mockSetSearchParams = jest.fn()
@@ -716,7 +717,7 @@ describe('BuscadorColeccion', () => {
     ).not.toBeDisabled()
   })
 
-  test('aplica clase dark cuando matchMedia indica dark mode', async () => {
+  test('aplica bc-dark en html cuando matchMedia indica dark mode', async () => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: jest.fn().mockImplementation(() => ({
@@ -726,13 +727,15 @@ describe('BuscadorColeccion', () => {
       })),
     })
 
+    syncThemeClass()
     mockInitialLoad()
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
 
+    expect(document.documentElement).toHaveClass('bc-dark')
     const root = document.querySelector('.bc-root')
-    expect(root).toHaveClass('bc-dark')
+    expect(root).not.toHaveClass('bc-dark')
   })
 
   test('deja de hacer polling cuando la colección devuelve 404', async () => {

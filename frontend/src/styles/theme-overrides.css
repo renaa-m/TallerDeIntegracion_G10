@@ -1,0 +1,61 @@
+/*
+ * Overrides de modo oscuro unificados (clase html.bc-dark).
+ * Los tokens base viven en design-tokens.css vía prefers-color-scheme.
+ */
+
+html.bc-dark .bc-root {
+  --surface: #141d35;
+  --surface-2: #0d1426;
+  --surface-3: #182038;
+  --border: #1e2d50;
+  --text-1: #dce4f5;
+  --text-2: #8394b4;
+  --text-3: #465672;
+  --red-bg: rgba(239, 68, 68, 0.1);
+  --hl-bg: rgba(251, 255, 161, 0.2);
+  --hl-text: var(--imfd-yellow-bright);
+}
+
+html.bc-dark .landing-page .collections-panel-shell {
+  background: rgba(20, 29, 53, 0.88);
+  border-color: rgba(168, 163, 246, 0.22);
+}
+
+html.bc-dark .landing-page .collections-panel-header {
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom-color: rgba(168, 163, 246, 0.14);
+}
+
+html.bc-dark .landing-page .collections-nav {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(168, 163, 246, 0.24);
+  color: var(--text-main);
+}
+
+html.bc-dark .landing-page .collections-nav:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+html.bc-dark .landing-page .collections-count {
+  color: var(--text-2);
+}
+
+html.bc-dark .landing-page .card {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-color: rgba(168, 163, 246, 0.2);
+}
+
+html.bc-dark .landing-page .card:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+html.bc-dark .mdd-overlay {
+  --mdd-overlay-bg: rgba(0, 0, 0, 0.7);
+  --mdd-surface: var(--surface);
+  --mdd-surface-2: var(--surface-2);
+  --mdd-border: #1e2d50;
+  --mdd-text-1: var(--text-1);
+  --mdd-text-2: var(--text-2);
+  --mdd-accent: var(--accent);
+  --mdd-shadow: rgba(0, 0, 0, 0.4);
+}

@@ -4,6 +4,7 @@ import { Auth0Provider } from '@auth0/auth0-react'
 import { BrowserRouter, useNavigate } from 'react-router-dom'
 import App from './App.tsx'
 import './styles/design-tokens.css'
+import './styles/theme-overrides.css'
 import './index.css'
 
 // FIX: leer desde variables de entorno en vez de hardcodear

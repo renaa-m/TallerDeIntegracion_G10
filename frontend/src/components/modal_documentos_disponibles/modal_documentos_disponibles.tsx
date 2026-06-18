@@ -14,14 +14,12 @@ interface ModalProps {
   isOpen: boolean
   fuentes: Fuente[]
   onClose: () => void
-  darkMode?: boolean
 }
 
 const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
   isOpen,
   fuentes,
   onClose,
-  darkMode,
 }) => {
   if (!isOpen) return null
 
@@ -37,10 +35,7 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
   }
 
   return (
-    <div
-      className={`mdd-overlay ${darkMode ? 'bc-dark' : ''}`}
-      onClick={onClose}
-    >
+    <div className="mdd-overlay" onClick={onClose}>
       <div className="mdd-panel" onClick={(e) => e.stopPropagation()}>
         <header className="mdd-header">
           <div className="mdd-header-left">

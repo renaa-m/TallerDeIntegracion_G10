@@ -7,6 +7,7 @@ import Navbar from './pages/navbar/navbar'
 import BuscadorColeccion from './pages/buscador_coleccion/buscador_coleccion'
 import GraphViewer from './pages/visualizador_grafo/visualizador_grafo'
 import AppLoading from './components/ui/app_loading'
+import ThemeSync from './components/ThemeSync'
 
 // Componente que maneja el callback de Auth0
 function CallbackHandler() {
@@ -43,6 +44,7 @@ function App() {
       }}
     >
       <Navbar />
+      <ThemeSync />
       <div
         style={{ height: 'var(--navbar-height)', flexShrink: 0 }}
         aria-hidden="true"

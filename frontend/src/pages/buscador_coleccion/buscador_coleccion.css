@@ -27,28 +27,6 @@
   transition: background 0.3s ease;
 }
 
-/* ── DARK ────────────────────────────────────────────────────────────────── */
-.bc-dark {
-  --surface: #141d35;
-  --surface-2: #0d1426;
-  --surface-3: #182038;
-  --border: #1e2d50;
-  --text-1: #dce4f5;
-  --text-2: #8394b4;
-  --text-3: #465672;
-  --red-bg: rgba(239, 68, 68, 0.1);
-  --hl-bg: rgba(251, 255, 161, 0.2);
-  --hl-text: #fbffa1;
-}
-
-@media (prefers-color-scheme: dark) {
-  .bc-root:not(.bc-dark) {
-    --text-3: #8394b4;
-    --hl-bg: rgba(251, 255, 161, 0.2);
-    --hl-text: var(--imfd-yellow-bright);
-  }
-}
-
 /* ── SIDEBAR ─────────────────────────────────────────────────────────────── */
 .bc-sidebar {
   width: 260px;
@@ -514,7 +492,7 @@
   color: var(--text-2);
 }
 
-.bc-dark .bc-search-blocked-message {
+html.bc-dark .bc-search-blocked-message {
   color: var(--text-3);
 }
 
@@ -858,13 +836,13 @@
 }
 
 /* Ajuste específico para Modo Oscuro */
-.bc-dark .bc-delete-collection-btn {
+html.bc-dark .bc-delete-collection-btn {
   background: rgba(239, 68, 68, 0.15);
   border-color: rgba(239, 68, 68, 0.3);
   color: #ff6b6b;
 }
 
-.bc-dark .bc-delete-collection-btn:hover {
+html.bc-dark .bc-delete-collection-btn:hover {
   background: #e03131;
   color: white;
   border-color: #e03131;
@@ -1074,7 +1052,7 @@
   border-left: 2px solid var(--border);
 }
 
-.bc-dark .bc-result-excerpt {
+html.bc-dark .bc-result-excerpt {
   color: var(--text-2);
 }
 
@@ -1227,19 +1205,19 @@
 }
 
 /* ── AJUSTES PARA MODO OSCURO ────────────────────────────────────────────── */
-.bc-dark .status-high {
+html.bc-dark .status-high {
   background: rgba(34, 197, 94, 0.2);
   color: #4ade80;
   border-color: rgba(34, 197, 94, 0.3);
 }
 
-.bc-dark .status-med {
+html.bc-dark .status-med {
   background: rgba(234, 179, 8, 0.2);
   color: #facc15;
   border-color: rgba(234, 179, 8, 0.3);
 }
 
-.bc-dark .bc-score-tooltip {
+html.bc-dark .bc-score-tooltip {
   background: var(--surface);
   border-color: var(--border);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.28);
@@ -1445,32 +1423,32 @@
   text-align: right;
 }
 
-.bc-dark .bc-processing-banner {
+html.bc-dark .bc-processing-banner {
   background: rgba(20, 29, 53, 0.94);
   border-color: rgba(168, 163, 246, 0.22);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
 }
 
-.bc-dark .bc-processing-banner:hover {
+html.bc-dark .bc-processing-banner:hover {
   border-color: rgba(168, 163, 246, 0.36);
 }
 
-.bc-dark .bc-processing-banner-icon {
+html.bc-dark .bc-processing-banner-icon {
   background: rgba(168, 163, 246, 0.16);
 }
 
-.bc-dark .bc-processing-banner-cta {
+html.bc-dark .bc-processing-banner-cta {
   background: rgba(168, 163, 246, 0.16);
   border-color: rgba(168, 163, 246, 0.28);
   color: var(--text-1);
 }
 
-.bc-dark .bc-processing-banner:hover .bc-processing-banner-cta {
+html.bc-dark .bc-processing-banner:hover .bc-processing-banner-cta {
   background: rgba(168, 163, 246, 0.24);
   border-color: var(--accent);
 }
 
-.bc-dark .bc-processing-banner-track {
+html.bc-dark .bc-processing-banner-track {
   background: rgba(168, 163, 246, 0.12);
 }
 
@@ -1513,7 +1491,7 @@
   color: #70757a; /* El color gris exacto de Google Search */
 }
 
-.bc-dark .bc-search-stats {
+html.bc-dark .bc-search-stats {
   color: #9aa0a6; /* Variación gris claro para el modo oscuro */
 }
 
@@ -1559,11 +1537,11 @@
 }
 
 /* Ajuste para modo oscuro (si ya usas la clase .bc-dark) */
-.bc-dark .bc-pagination {
+html.bc-dark .bc-pagination {
   border-color: var(--mc-border);
 }
 
-.bc-dark .bc-pagination button {
+html.bc-dark .bc-pagination button {
   background: var(--mc-surface-2);
   color: var(--mc-text-1);
 }
@@ -1801,10 +1779,8 @@
 }
 
 /* Ajuste sutil de sombra para el modo oscuro en el botón activo */
-@media (prefers-color-scheme: dark) {
-  .bc-page-num-btn.is-active {
-    box-shadow: 0 4px 14px rgba(94, 75, 242, 0.4);
-  }
+html.bc-dark .bc-page-num-btn.is-active {
+  box-shadow: 0 4px 14px rgba(94, 75, 242, 0.4);
 }
 
 /* RESPONSIVIDAD: Adaptación para móviles */

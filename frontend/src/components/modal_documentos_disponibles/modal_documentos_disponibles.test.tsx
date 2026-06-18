@@ -55,7 +55,6 @@ describe('ModalDocumentosDisponibles', () => {
           },
         ]}
         onClose={onClose}
-        darkMode
       />,
     )
 
