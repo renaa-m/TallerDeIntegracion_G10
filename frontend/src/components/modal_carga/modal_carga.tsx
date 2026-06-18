@@ -288,7 +288,9 @@ const ModalCarga = ({
     if (pipelineStatus !== 'idle') return
 
     const saved = readPipelineEntitySelection(resolvedCollectionId)
-    setSelectedEntities(saved)
+    queueMicrotask(() => {
+      setSelectedEntities(saved)
+    })
   }, [isOpen, resolvedCollectionId, resolvedEtapa, pipelineStatus])
 
   const resetUploadForm = useCallback(() => {
@@ -620,7 +622,10 @@ const ModalCarga = ({
     if (isOpen || scopeCollectionId !== 'nueva' || isCancelling) return
     if (!isUploading && !uploadInFlightRef.current) return
     if (localStorage.getItem(MODAL_ETAPA_KEY) !== 'subida') return
-    void handleCancel()
+
+    queueMicrotask(() => {
+      void handleCancel()
+    })
   }, [isOpen, scopeCollectionId, isUploading, isCancelling, handleCancel])
 
   // Al salir de /nueva con subida pendiente (p. ej. navbar), borrar colección huérfana.
