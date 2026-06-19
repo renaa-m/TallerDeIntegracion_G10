@@ -9,25 +9,33 @@ import {
   Network,
   CheckCircle2,
   AlertCircle,
+  HelpCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import './modal_carga.css'
 import {
   ACTIVE_COLLECTION_KEY,
   MODAL_ETAPA_KEY,
+  MODAL_NUEVA_SESSION_KEY,
   clearActiveCollectionStorage,
   clearActiveCollectionStorageIfMatch,
   isPipelineInProgress,
   isPipelineRunning as isBackendPipelineRunning,
   resolveModalCollectionId,
   shouldOpenPipelineModal,
+  readNuevaSessionCollectionId,
+  readPipelineEntitySelection,
+  persistPipelineEntitySelection,
+  persistPipelineModalState,
+  persistModalCargaOpen,
+  getPipelineProgressDisplay,
+  snapshotFromCollectionApi,
 } from '../../lib/collection_processing'
 import DEFAULT_DATA_MODEL from '../../data/defaultDataModel'
 
 interface ModalCargaProps {
   isOpen: boolean
   onClose: () => void
-  darkMode?: boolean
   onUploadSuccess?: () => void
   /** id de la ruta (`nueva` o UUID). Evita mezclar estado entre colecciones. */
   scopeCollectionId?: string | null
@@ -68,7 +76,7 @@ const EMPTY_PROGRESS: StepProgress = {
 }
 
 const PIPELINE_LABELS: Record<PipelineStatus, string> = {
-  idle: 'Listo para procesar',
+  idle: '',
   processing_text: 'Extrayendo texto de los documentos...',
   processing_graph: 'Construyendo grafo con Wukong...',
   awaiting_graph_confirmation:
@@ -79,6 +87,20 @@ const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   queued: 'Preparando el procesamiento — comenzará automáticamente en breve...',
   error: 'Ocurrió un error durante el procesamiento.',
 }
+
+const PIPELINE_STEP_HELP: Record<
+  'processing_text' | 'processing_graph' | 'graph_ready',
+  string
+> = {
+  processing_text:
+    'Lee tus documentos y extrae el texto para poder analizarlo después.',
+  processing_graph:
+    'Detecta entidades y relaciones en el texto y construye el grafo de conocimiento.',
+  graph_ready:
+    'Proceso completado. Ya puedes buscar en la colección y explorar el grafo.',
+}
+
+type PipelineStepKey = keyof typeof PIPELINE_STEP_HELP
 
 const LANGUAGE_OPTIONS = [
   { value: 'es', label: 'Español' },
@@ -188,7 +210,6 @@ const ENTITY_OPTIONS = ['Persona', 'Organizacion', 'Lugar', 'Evento'] as const
 const ModalCarga = ({
   isOpen,
   onClose,
-  darkMode = false,
   onUploadSuccess,
   scopeCollectionId = null,
   scopeUserId = null,
@@ -205,6 +226,7 @@ const ModalCarga = ({
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedCount, setUploadedCount] = useState(0)
+  const [uploadTotal, setUploadTotal] = useState(0)
   const [nombreColeccion, setNombreColeccion] = useState('')
   /* Idioma español por defecto, pero se puede extender para soportar otros idiomas en el futuro. */
   const [idioma, setIdioma] = useState<string>('es')
@@ -213,6 +235,7 @@ const ModalCarga = ({
   const fileInputRef = useRef<HTMLInputElement>(null)
   /** ID de colección en creación/subida (sincrónico; el state puede ir retrasado). */
   const uploadCollectionIdRef = useRef<string | null>(null)
+  const uploadInFlightRef = useRef(false)
 
   const [etapa, setEtapa] = useState<Etapa>('subida')
   const [pipelineStatus, setPipelineStatus] = useState<PipelineStatus>('idle')
@@ -224,6 +247,7 @@ const ModalCarga = ({
   const [graphProgress, setGraphProgress] =
     useState<StepProgress>(EMPTY_PROGRESS)
   const [isCancelling, setIsCancelling] = useState(false)
+  const [stepHelpTip, setStepHelpTip] = useState<PipelineStepKey | null>(null)
   const [isSubmittingPipeline, setIsSubmittingPipeline] = useState(false)
 
   const pipelineStatusRef = useRef<PipelineStatus>('idle')
@@ -252,18 +276,69 @@ const ModalCarga = ({
     ) {
       return 'pipeline'
     }
+
+    const trackedId =
+      resolveModalCollectionId(scopeCollectionId, activeCollectionId) ??
+      (scopeCollectionId === 'nueva' ? readNuevaSessionCollectionId() : null)
+    if (
+      trackedId &&
+      localStorage.getItem(ACTIVE_COLLECTION_KEY) === trackedId &&
+      localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+    ) {
+      return 'pipeline'
+    }
+
+    if (
+      forcePipelineEtapa &&
+      scopeCollectionId === 'nueva' &&
+      readNuevaSessionCollectionId() &&
+      localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
+    ) {
+      return 'pipeline'
+    }
+
     return etapa
-  }, [forcePipelineEtapa, scopeCollectionId, etapa])
+  }, [forcePipelineEtapa, scopeCollectionId, activeCollectionId, etapa])
   const isPipelineRunning =
     pipelineStatus === 'processing_text' ||
     pipelineStatus === 'processing_graph'
 
   const abortControllersRef = useRef<AbortController[]>([])
+  const isOpenRef = useRef(isOpen)
 
-  const persistBackgroundProcessing = useCallback((collectionId: string) => {
-    localStorage.setItem(ACTIVE_COLLECTION_KEY, collectionId)
-    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-  }, [])
+  useEffect(() => {
+    isOpenRef.current = isOpen
+  }, [isOpen])
+
+  const persistBackgroundProcessing = useCallback(
+    (collectionId: string, options?: { nuevaSession?: boolean }) => {
+      persistPipelineModalState(collectionId, options)
+    },
+    [],
+  )
+
+  const updateSelectedEntities = useCallback(
+    (updater: (prev: string[]) => string[]) => {
+      setSelectedEntities((prev) => {
+        const next = updater(prev)
+        if (resolvedCollectionId) {
+          persistPipelineEntitySelection(resolvedCollectionId, next)
+        }
+        return next
+      })
+    },
+    [resolvedCollectionId],
+  )
+
+  useEffect(() => {
+    if (!isOpen || !resolvedCollectionId || resolvedEtapa !== 'pipeline') return
+    if (pipelineStatus !== 'idle') return
+
+    const saved = readPipelineEntitySelection(resolvedCollectionId)
+    queueMicrotask(() => {
+      setSelectedEntities(saved)
+    })
+  }, [isOpen, resolvedCollectionId, resolvedEtapa, pipelineStatus])
 
   const resetUploadForm = useCallback(() => {
     setFiles([])
@@ -276,11 +351,29 @@ const ModalCarga = ({
     setActiveCollectionId(null)
     setIsUploading(false)
     setUploadedCount(0)
+    setUploadTotal(0)
     setTextProgress(EMPTY_PROGRESS)
     setGraphProgress(EMPTY_PROGRESS)
     uploadCollectionIdRef.current = null
     setIsCancelling(false)
   }, [])
+
+  const deleteActiveCollection = useCallback(
+    async (collectionId: string): Promise<boolean> => {
+      try {
+        const token = await getAccessTokenSilently()
+        const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        return res.status === 404 || res.ok
+      } catch (err) {
+        console.error('Error eliminando colección:', err)
+        return false
+      }
+    },
+    [getAccessTokenSilently],
+  )
 
   // --- 1. Sincronización: colección de la ruta o sesión en /nueva ---
   useEffect(() => {
@@ -290,12 +383,18 @@ const ModalCarga = ({
       const collectionId =
         scopeCollectionId && scopeCollectionId !== 'nueva'
           ? scopeCollectionId
-          : nuevaSessionCollectionId
+          : (nuevaSessionCollectionId ??
+            readNuevaSessionCollectionId() ??
+            (localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1'
+              ? localStorage.getItem(ACTIVE_COLLECTION_KEY)
+              : null))
 
       if (!collectionId) return
 
       if (scopeCollectionId && scopeCollectionId !== 'nueva') {
         setActiveCollectionId(scopeCollectionId)
+      } else if (scopeCollectionId === 'nueva' && collectionId) {
+        setActiveCollectionId(collectionId)
       }
 
       try {
@@ -303,6 +402,7 @@ const ModalCarga = ({
         const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
+        if (!isOpenRef.current || isCancelling) return
         if (res.status === 404) {
           if (localStorage.getItem(ACTIVE_COLLECTION_KEY) === collectionId) {
             clearActiveCollectionStorage()
@@ -363,7 +463,8 @@ const ModalCarga = ({
           ) {
             const esperandoGrafo =
               effectiveStatus === 'idle' && savedEtapa === 'pipeline'
-            if (!esperandoGrafo) {
+            const uploadEnCurso = savedEtapa === 'subida'
+            if (!esperandoGrafo && !uploadEnCurso) {
               clearActiveCollectionStorage()
               onProcessingChange?.(false)
             }
@@ -383,6 +484,23 @@ const ModalCarga = ({
             } catch {
               documentCount = 0
             }
+          }
+
+          if (!isOpenRef.current || isCancelling) return
+
+          if (
+            savedEtapa === 'subida' &&
+            !isPipelineInProgress(data.processing_status)
+          ) {
+            if (uploadInFlightRef.current) {
+              return
+            }
+
+            await deleteActiveCollection(collectionId)
+            clearActiveCollectionStorage()
+            resetUploadForm()
+            onProcessingChange?.(false)
+            return
           }
 
           const openPipeline =
@@ -414,94 +532,7 @@ const ModalCarga = ({
     getAccessTokenSilently,
     onProcessingChange,
     resetUploadForm,
-  ])
-
-  const deleteActiveCollection = useCallback(
-    async (collectionId: string): Promise<boolean> => {
-      try {
-        const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        return res.status === 404 || res.ok
-      } catch (err) {
-        console.error('Error eliminando colección:', err)
-        return false
-      }
-    },
-    [getAccessTokenSilently],
-  )
-
-  /** X u overlay: cerrar sin borrar (pipeline activo o en espera → segundo plano). */
-  const handleDismiss = useCallback(() => {
-    if (isUploading || isCancelling) return
-
-    const collectionId = uploadCollectionIdRef.current ?? resolvedCollectionId
-
-    // Cerrar en etapa de subida para colección nueva: borrar colección si se
-    // alcanzó a crear y volver al landing, sin dejar colecciones vacías huérfanas.
-    if (scopeCollectionId === 'nueva' && resolvedEtapa === 'subida') {
-      if (collectionId) {
-        getAccessTokenSilently()
-          .then((token) =>
-            fetch(`${API_BASE}/api/collections/${collectionId}`, {
-              method: 'DELETE',
-              headers: { Authorization: `Bearer ${token}` },
-            }),
-          )
-          .catch(() => {})
-      }
-      clearActiveCollectionStorage()
-      onClose()
-      if (landingUserId) {
-        navigate(`/landing-page/${landingUserId}`, { replace: true })
-      }
-      return
-    }
-
-    if (
-      resolvedEtapa === 'pipeline' &&
-      isPipelineInProgress(pipelineStatus) &&
-      resolvedCollectionId
-    ) {
-      persistBackgroundProcessing(resolvedCollectionId)
-      onClose()
-      return
-    }
-
-    // Docs listos, grafo pendiente: cerrar modal pero mantener colección y ruta.
-    if (
-      resolvedEtapa === 'pipeline' &&
-      pipelineStatus === 'idle' &&
-      resolvedCollectionId
-    ) {
-      if (scopeCollectionId && scopeCollectionId !== 'nueva') {
-        localStorage.setItem(ACTIVE_COLLECTION_KEY, resolvedCollectionId)
-        localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-      }
-      onClose()
-      if (scopeCollectionId === 'nueva' && landingUserId) {
-        navigate(
-          `/${landingUserId}/colecciones/${resolvedCollectionId}/buscador`,
-        )
-      }
-      return
-    }
-
-    onClose()
-  }, [
-    resolvedCollectionId,
-    landingUserId,
-    resolvedEtapa,
-    isUploading,
-    isCancelling,
-    navigate,
-    onClose,
-    persistBackgroundProcessing,
-    pipelineStatus,
-    scopeCollectionId,
-    getAccessTokenSilently,
+    deleteActiveCollection,
   ])
 
   /** Cancelar: elimina la colección y redirige al landing. */
@@ -570,6 +601,129 @@ const ModalCarga = ({
     resetUploadForm,
   ])
 
+  /** X u overlay: cerrar sin borrar (pipeline activo o en espera → segundo plano). */
+  const handleDismiss = useCallback(() => {
+    if (isCancelling) return
+
+    const collectionId = uploadCollectionIdRef.current ?? resolvedCollectionId
+    const subidaEnCurso =
+      isUploading ||
+      uploadInFlightRef.current ||
+      localStorage.getItem(MODAL_ETAPA_KEY) === 'subida'
+
+    // Nueva colección en subida: cancelar interrumpe y borra en cascada → landing.
+    if (scopeCollectionId === 'nueva' && resolvedEtapa === 'subida') {
+      if (subidaEnCurso || collectionId) {
+        void handleCancel()
+        return
+      }
+      clearActiveCollectionStorage()
+      resetUploadForm()
+      onProcessingChange?.(false)
+      onClose()
+      if (landingUserId) {
+        navigate(`/landing-page/${landingUserId}`, { replace: true })
+      }
+      return
+    }
+
+    if (isUploading) return
+
+    // Cerrar en etapa de subida para colección existente: solo cerrar modal.
+    if (resolvedEtapa === 'subida') {
+      onClose()
+      return
+    }
+
+    if (
+      resolvedEtapa === 'pipeline' &&
+      isPipelineInProgress(pipelineStatus) &&
+      resolvedCollectionId
+    ) {
+      persistBackgroundProcessing(resolvedCollectionId, {
+        nuevaSession: scopeCollectionId === 'nueva',
+      })
+      persistModalCargaOpen(false)
+      onProcessingChange?.(true)
+      onClose()
+      if (scopeCollectionId === 'nueva' && landingUserId) {
+        navigate(
+          `/${landingUserId}/colecciones/${resolvedCollectionId}/buscador`,
+        )
+      }
+      return
+    }
+
+    // Docs listos, grafo pendiente: cerrar modal pero mantener colección y ruta.
+    if (
+      resolvedEtapa === 'pipeline' &&
+      pipelineStatus === 'idle' &&
+      resolvedCollectionId
+    ) {
+      if (scopeCollectionId && scopeCollectionId !== 'nueva') {
+        localStorage.setItem(ACTIVE_COLLECTION_KEY, resolvedCollectionId)
+        localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+      }
+      persistModalCargaOpen(false)
+      onClose()
+      if (scopeCollectionId === 'nueva' && landingUserId) {
+        navigate(
+          `/${landingUserId}/colecciones/${resolvedCollectionId}/buscador`,
+        )
+      }
+      return
+    }
+
+    onClose()
+  }, [
+    resolvedCollectionId,
+    landingUserId,
+    resolvedEtapa,
+    isUploading,
+    isCancelling,
+    navigate,
+    onClose,
+    onProcessingChange,
+    handleCancel,
+    persistBackgroundProcessing,
+    pipelineStatus,
+    scopeCollectionId,
+    resetUploadForm,
+  ])
+
+  // Si el modal se cierra mientras sube en /nueva, borrar en cascada (p. ej. navegación).
+  useEffect(() => {
+    if (isOpen || scopeCollectionId !== 'nueva' || isCancelling) return
+    if (!isUploading && !uploadInFlightRef.current) return
+    if (localStorage.getItem(MODAL_ETAPA_KEY) !== 'subida') return
+
+    queueMicrotask(() => {
+      void handleCancel()
+    })
+  }, [isOpen, scopeCollectionId, isUploading, isCancelling, handleCancel])
+
+  // Al salir de /nueva con subida pendiente (p. ej. navbar), borrar colección huérfana.
+  useEffect(() => {
+    return () => {
+      if (scopeCollectionId !== 'nueva') return
+      if (localStorage.getItem(MODAL_ETAPA_KEY) !== 'subida') return
+      const collectionId =
+        uploadCollectionIdRef.current ??
+        localStorage.getItem(ACTIVE_COLLECTION_KEY)
+      if (!collectionId) return
+      abortControllersRef.current.forEach((controller) => controller.abort())
+      clearActiveCollectionStorage()
+      void getAccessTokenSilently()
+        .then((token) =>
+          fetch(`${API_BASE}/api/collections/${collectionId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        )
+        .catch(() => {})
+    }
+  }, [scopeCollectionId, getAccessTokenSilently])
+
   // --- 3. Polling de Pipeline (solo con modal abierto y colección de la ruta) ---
   useEffect(() => {
     if (
@@ -591,6 +745,10 @@ const ModalCarga = ({
         const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
+        if (!isOpenRef.current || isCancelling) {
+          clearInterval(interval)
+          return
+        }
         if (res.status === 404) {
           clearActiveCollectionStorageIfMatch(collectionId)
           clearInterval(interval)
@@ -684,31 +842,49 @@ const ModalCarga = ({
   }
   const handleUpload = async () => {
     if (files.length === 0) return
+    uploadInFlightRef.current = true
     setIsUploading(true)
     setError('')
+    setUploadTotal(files.length)
+    setUploadedCount(0)
 
     try {
       const token = await getAccessTokenSilently()
-      const res = await fetch(`${API_BASE}/api/collections`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: nombreColeccion || 'Nueva colección',
-          description: '',
-          language: idioma, // <--- Agregar esto
-        }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}))
-        throw new Error(body?.detail ?? 'Error al crear colección')
+      const existingCollectionId =
+        uploadCollectionIdRef.current ??
+        activeCollectionId ??
+        (scopeCollectionId === 'nueva' ? readNuevaSessionCollectionId() : null)
+
+      let collection: { id: string; name?: string }
+      if (existingCollectionId) {
+        collection = { id: existingCollectionId }
+      } else {
+        const res = await fetch(`${API_BASE}/api/collections`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: nombreColeccion || 'Nueva Colección',
+            description: '',
+            language: idioma,
+          }),
+        })
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error(body?.detail ?? 'Error al crear colección')
+        }
+        collection = await res.json()
       }
-      const collection = await res.json()
 
       uploadCollectionIdRef.current = collection.id
       setActiveCollectionId(collection.id)
+      localStorage.setItem(ACTIVE_COLLECTION_KEY, collection.id)
+      localStorage.setItem(MODAL_ETAPA_KEY, 'subida')
+      if (scopeCollectionId === 'nueva') {
+        localStorage.setItem(MODAL_NUEVA_SESSION_KEY, '1')
+      }
 
       let uploaded = 0
       const uploadErrors: string[] = []
@@ -748,6 +924,9 @@ const ModalCarga = ({
       }
 
       setEtapa('pipeline')
+      persistBackgroundProcessing(collection.id, {
+        nuevaSession: scopeCollectionId === 'nueva',
+      })
       if (onUploadSuccess) onUploadSuccess()
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -763,6 +942,7 @@ const ModalCarga = ({
 
       setError(err instanceof Error ? err.message : 'Error en la carga')
     } finally {
+      uploadInFlightRef.current = false
       setIsUploading(false)
     }
   }
@@ -828,17 +1008,20 @@ const ModalCarga = ({
       pipelineStatusRef.current = nextStatus
       setPipelineStatus(nextStatus)
       if (isPipelineInProgress(rawStatus)) {
-        persistBackgroundProcessing(collectionId)
+        persistBackgroundProcessing(collectionId, {
+          nuevaSession: scopeCollectionId === 'nueva',
+        })
       }
       onProcessingChange?.(isPipelineInProgress(rawStatus))
     },
-    [onProcessingChange, persistBackgroundProcessing],
+    [onProcessingChange, persistBackgroundProcessing, scopeCollectionId],
   )
 
   const handleIniciarPipeline = async () => {
     if (!resolvedCollectionId || isSubmittingPipeline) return
     setIsSubmittingPipeline(true)
     setPipelineError('')
+    setEtapa('pipeline')
     try {
       const token = await getAccessTokenSilently()
       const customDataModel = buildCustomDataModel()
@@ -881,16 +1064,20 @@ const ModalCarga = ({
     }
   }
 
-  const getProgressPercent = (progress: StepProgress) => {
-    if (progress.total <= 0) return 0
-    return Math.min(
-      100,
-      Math.round((progress.processed / progress.total) * 100),
+  const pipelineProgressDisplay = useMemo(() => {
+    return getPipelineProgressDisplay(
+      snapshotFromCollectionApi(
+        {
+          processing_status: pipelineStatus,
+          text_progress_total: textProgress.total,
+          text_progress_processed: textProgress.processed,
+          graph_progress_total: graphProgress.total,
+          graph_progress_processed: graphProgress.processed,
+        },
+        resolvedCollectionId ?? '',
+      ),
     )
-  }
-
-  const textProgressPercent = getProgressPercent(textProgress)
-  const graphProgressPercent = getProgressPercent(graphProgress)
+  }, [pipelineStatus, textProgress, graphProgress, resolvedCollectionId])
 
   const pipelineStatusLabel = useMemo(() => {
     if (isCancelling) {
@@ -941,6 +1128,7 @@ const ModalCarga = ({
         )
       }
 
+      setEtapa('pipeline')
       applyPipelineStatusFromApi(data.processing_status, resolvedCollectionId)
     } catch (e: unknown) {
       setPipelineError(
@@ -963,10 +1151,10 @@ const ModalCarga = ({
   return (
     <div
       className="mc-overlay"
-      onClick={isUploadingLocked ? undefined : handleDismiss}
+      onClick={isCancelling ? undefined : handleDismiss}
     >
       <div
-        className={`mc-panel${darkMode ? ' dark' : ''}${isCancelling ? ' is-cancelling' : ''}`}
+        className={`mc-panel${isCancelling ? ' is-cancelling' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         {isCancelling && (
@@ -980,7 +1168,7 @@ const ModalCarga = ({
           </div>
         )}
         <div className="mc-header">
-          <div>
+          <div className="mc-header-main">
             <h2 className="mc-title">
               {resolvedEtapa === 'subida' ? 'Añadir fuentes' : 'Procesar grafo'}
             </h2>
@@ -995,13 +1183,13 @@ const ModalCarga = ({
           <button
             className="mc-close"
             onClick={handleDismiss}
-            disabled={isUploadingLocked}
+            disabled={isCancelling}
             aria-label="Cerrar"
             title={
               isCancelling
                 ? cancellingMessage
-                : isUploading
-                  ? 'Espera a que termine la subida o usa Cancelar'
+                : scopeCollectionId === 'nueva' && resolvedEtapa === 'subida'
+                  ? 'Cancelar subida y volver al inicio'
                   : 'Cerrar'
             }
           >
@@ -1084,7 +1272,7 @@ const ModalCarga = ({
             )}
             {isUploading && (
               <p className="mc-success-message">
-                Subiendo {uploadedCount} de {files.length}...
+                Subiendo {uploadedCount} de {uploadTotal || files.length}...
               </p>
             )}
 
@@ -1100,7 +1288,7 @@ const ModalCarga = ({
             </div>
 
             {/* 4. Selector de Idioma integrado */}
-            <div className="mc-language-selector" style={{ marginTop: '1rem' }}>
+            <div className="mc-language-selector">
               <label className="mc-label-custom">
                 Idioma de los documentos
               </label>
@@ -1142,7 +1330,7 @@ const ModalCarga = ({
           </>
         ) : (
           <div className="mc-pipeline">
-            <div className="mc-steps">
+            <div className="mc-steps" onMouseLeave={() => setStepHelpTip(null)}>
               {['processing_text', 'processing_graph', 'graph_ready'].map(
                 (s, idx) => {
                   const stepLabel = ['Extracción', 'Construcción', 'Listo'][idx]
@@ -1162,10 +1350,11 @@ const ModalCarga = ({
                     !isCancelling &&
                     s === pipelineStatus &&
                     pipelineStatus !== 'graph_ready'
+                  const isPending = !isActive && !isDone
                   return (
                     <div
                       key={s}
-                      className={`mc-step ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
+                      className={`mc-step${isActive ? ' active' : ''}${isDone ? ' done' : ''}${isPending ? ' pending' : ''}`}
                     >
                       <div className="mc-step-icon">
                         {isActive ? (
@@ -1177,16 +1366,43 @@ const ModalCarga = ({
                         )}
                       </div>
                       <span className="mc-step-label">{stepLabel}</span>
+                      <span className="mc-step-help-wrap">
+                        <button
+                          type="button"
+                          className="mc-step-help"
+                          aria-label={`Qué significa ${stepLabel}`}
+                          aria-describedby="mc-steps-help-panel"
+                          onMouseEnter={() =>
+                            setStepHelpTip(s as PipelineStepKey)
+                          }
+                          onFocus={() => setStepHelpTip(s as PipelineStepKey)}
+                          onBlur={() => setStepHelpTip(null)}
+                        >
+                          <HelpCircle size={14} aria-hidden />
+                        </button>
+                      </span>
                     </div>
                   )
                 },
               )}
             </div>
             <p
-              className={`mc-pipeline-status${isCancelling ? ' is-cancelling-status' : ''}`}
+              id="mc-steps-help-panel"
+              className={`mc-steps-help-slot${stepHelpTip ? ' is-active' : ''}`}
+              role="status"
+              aria-live="polite"
             >
-              {pipelineStatusLabel}
+              {stepHelpTip
+                ? PIPELINE_STEP_HELP[stepHelpTip]
+                : 'Pasa el cursor sobre (?) para ver qué hace cada etapa.'}
             </p>
+            {(pipelineStatus !== 'idle' || isCancelling) && (
+              <p
+                className={`mc-pipeline-status${isCancelling ? ' is-cancelling-status' : ''}`}
+              >
+                {pipelineStatusLabel}
+              </p>
+            )}
             <div className="mc-progress-stack">
               {(pipelineStatus === 'processing_text' ||
                 pipelineStatus === 'awaiting_graph_confirmation' ||
@@ -1198,11 +1414,7 @@ const ModalCarga = ({
                   <div className="mc-progress-header">
                     <span>Extracción de texto</span>
                     <strong>
-                      {pipelineStatus === 'processing_text'
-                        ? `${textProgressPercent}%`
-                        : pipelineStatus === 'awaiting_graph_confirmation'
-                          ? 'Con advertencias'
-                          : 'Completada'}
+                      {pipelineProgressDisplay.textCardPercentLabel}
                     </strong>
                   </div>
 
@@ -1210,10 +1422,7 @@ const ModalCarga = ({
                     <div
                       className="mc-progress-fill"
                       style={{
-                        width:
-                          pipelineStatus === 'processing_text'
-                            ? `${textProgressPercent}%`
-                            : '100%',
+                        width: `${pipelineProgressDisplay.textCardBarWidth}%`,
                       }}
                     />
                   </div>
@@ -1250,13 +1459,17 @@ const ModalCarga = ({
                 <div className="mc-progress-card">
                   <div className="mc-progress-header">
                     <span>Construcción del grafo</span>
-                    <strong>{graphProgressPercent}%</strong>
+                    <strong>
+                      {pipelineProgressDisplay.graphCardPercentLabel}
+                    </strong>
                   </div>
 
                   <div className="mc-progress-bar">
                     <div
                       className="mc-progress-fill"
-                      style={{ width: `${graphProgressPercent}%` }}
+                      style={{
+                        width: `${pipelineProgressDisplay.graphCardBarWidth}%`,
+                      }}
                     />
                   </div>
 
@@ -1314,9 +1527,9 @@ const ModalCarga = ({
                         checked={selectedEntities.includes(entity)}
                         onChange={(e) => {
                           if (e.target.checked) {
-                            setSelectedEntities((prev) => [...prev, entity])
+                            updateSelectedEntities((prev) => [...prev, entity])
                           } else {
-                            setSelectedEntities((prev) =>
+                            updateSelectedEntities((prev) =>
                               prev.filter((item) => item !== entity),
                             )
                           }

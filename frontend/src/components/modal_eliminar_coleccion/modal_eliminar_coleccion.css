@@ -34,6 +34,9 @@
   align-items: center;
   text-align: center;
   gap: 0;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
   box-shadow:
     0 24px 60px rgba(0, 0, 0, 0.12),
     0 4px 16px rgba(0, 0, 0, 0.06);
@@ -92,35 +95,35 @@
 }
 
 /* ── TEXTO ───────────────────────────────────────────────────────────────── */
-.mea-title {
-  font-family: 'DM Serif Display', Georgia, serif;
+.mea-title-2 {
+  font-family: var(--font-sans);
   font-size: 20px;
-  color: var(--text-1, #111111);
+  font-weight: 700;
+  color: var(--text-1);
   margin: 0 0 12px;
-  line-height: 1.2;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
 }
 
 .mea-text {
-  font-family: 'DM Sans', sans-serif;
   font-size: 14px;
-  line-height: 1.65;
-  color: var(--text-2, #4f4f5c);
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--text-2);
   margin: 0 0 8px;
 }
 
 .mea-filename {
   font-weight: 700;
-  color: var(--text-1, #111111);
-  word-break: break-all;
+  color: var(--text-1);
+  word-break: break-word;
 }
 
 .mea-warning {
-  font-family: 'DM Sans', sans-serif;
   font-size: 12px;
   font-weight: 600;
   color: #ef4444;
   margin: 0 0 28px;
-  opacity: 0.85;
 }
 
 /* ── ACCIONES ────────────────────────────────────────────────────────────── */
@@ -134,9 +137,8 @@
   flex: 1;
   padding: 11px 16px;
   border-radius: 13px;
-  font-family: 'DM Sans', sans-serif;
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
   transition: all 0.18s ease;
   border: 1.5px solid transparent;
@@ -144,14 +146,14 @@
 
 .mea-btn-cancel {
   background: transparent;
-  border-color: var(--border, rgba(171, 163, 246, 0.3));
-  color: var(--text-2, #4f4f5c);
+  border-color: var(--border);
+  color: var(--text-1);
 }
 
 .mea-btn-cancel:hover {
-  background: var(--surface-2, rgba(255, 255, 255, 0.45));
-  border-color: var(--accent, #aba3f6);
-  color: var(--text-1, #111111);
+  background: var(--surface-2);
+  border-color: var(--accent);
+  color: var(--text-1);
 }
 
 .mea-btn-confirm {
@@ -173,34 +175,7 @@
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
 
-/* ── DARK MODE ───────────────────────────────────────────────────────────── */
-.bc-dark .mea-box {
-  background: var(--surface, #141d35);
-  border-color: var(--border, #1e2d50);
-}
-
-.bc-dark .mea-title {
-  color: var(--text-1, #dce4f5);
-}
-
-.bc-dark .mea-text {
-  color: var(--text-2, #8394b4);
-}
-
-.bc-dark .mea-filename {
-  color: var(--text-1, #dce4f5);
-}
-
-.bc-dark .mea-btn-cancel {
-  border-color: var(--border, #1e2d50);
-  color: var(--text-2, #8394b4);
-}
-
-.bc-dark .mea-btn-cancel:hover {
-  background: var(--surface-2, #0d1426);
-  border-color: var(--accent, #aba3f6);
-  color: var(--text-1, #dce4f5);
-}
+/* ── DARK MODE: tokens globales en design-tokens.css ─────────────────────── */
 
 @media (max-width: 480px) {
   .mea-box {

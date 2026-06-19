@@ -1,14 +1,3 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import ModalCarga from '../components/modal_carga/modal_carga'
-
-const mockNavigate = jest.fn()
-const mockGetToken = jest.fn()
-
-const ACTIVE_COLLECTION_KEY = 'active_collection_id'
-const MODAL_ETAPA_KEY = 'modal_carga_etapa'
-const API_BASE = 'http://localhost:8080'
-
 jest.mock('@auth0/auth0-react', () => ({
   useAuth0: () => ({
     getAccessTokenSilently: mockGetToken,
@@ -20,6 +9,17 @@ jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useNavigate: () => mockNavigate,
 }))
+
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
+import ModalCarga from '../components/modal_carga/modal_carga'
+
+const mockNavigate = jest.fn()
+const mockGetToken = jest.fn()
+
+const ACTIVE_COLLECTION_KEY = 'active_collection_id'
+const MODAL_ETAPA_KEY = 'modal_carga_etapa'
+const API_BASE = 'http://localhost:8080'
 
 describe('ModalCarga', () => {
   beforeEach(() => {
@@ -38,14 +38,14 @@ describe('ModalCarga', () => {
   const renderModal = ({
     onClose = jest.fn(),
     onUploadSuccess,
-    darkMode = false,
+    onProcessingChange,
     isOpen = true,
     scopeCollectionId = null as string | null,
     forcePipelineEtapa = false,
   }: {
     onClose?: jest.Mock
     onUploadSuccess?: jest.Mock
-    darkMode?: boolean
+    onProcessingChange?: jest.Mock
     isOpen?: boolean
     scopeCollectionId?: string | null
     forcePipelineEtapa?: boolean
@@ -55,15 +55,15 @@ describe('ModalCarga', () => {
         <ModalCarga
           isOpen={isOpen}
           onClose={onClose}
-          darkMode={darkMode}
           onUploadSuccess={onUploadSuccess}
+          onProcessingChange={onProcessingChange}
           scopeCollectionId={scopeCollectionId}
           forcePipelineEtapa={forcePipelineEtapa}
         />
       </MemoryRouter>,
     )
 
-    return { onClose, onUploadSuccess }
+    return { onClose, onUploadSuccess, onProcessingChange }
   }
 
   const selectFileAndNameCollection = async (
@@ -110,7 +110,6 @@ describe('ModalCarga', () => {
     })
 
     expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
-    expect(screen.getByText('Listo para procesar')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /generar grafo/i }),
     ).toBeInTheDocument()
@@ -134,11 +133,11 @@ describe('ModalCarga', () => {
     ).toBeDisabled()
   })
 
-  test('aplica modo oscuro cuando darkMode es true', () => {
-    renderModal({ darkMode: true })
+  test('no aplica clase dark al panel (tema vía html.bc-dark)', () => {
+    renderModal()
 
     const panel = document.querySelector('.mc-panel')
-    expect(panel).toHaveClass('dark')
+    expect(panel).not.toHaveClass('dark')
   })
 
   test('no renderiza nada cuando isOpen es false', () => {
@@ -296,15 +295,14 @@ describe('ModalCarga', () => {
       }),
     )
 
-    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBeNull()
-    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBeNull()
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-123')
+    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
     expect(onUploadSuccess).toHaveBeenCalledTimes(1)
 
     expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
     expect(
       screen.getByText('Construye el grafo de conocimiento'),
     ).toBeInTheDocument()
-    expect(screen.getByText('Listo para procesar')).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: /generar grafo/i }),
     ).toBeInTheDocument()
@@ -413,6 +411,87 @@ describe('ModalCarga', () => {
     ).toBeInTheDocument()
   })
 
+  test('persiste sesión de subida al crear colección', async () => {
+    ;(globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'collection-123' }),
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise(() => {
+            /* upload colgado a propósito */
+          }),
+      )
+
+    renderModal({ scopeCollectionId: 'nueva' })
+
+    await selectFileAndNameCollection()
+
+    fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
+
+    await waitFor(() => {
+      expect(localStorage.getItem('modal_carga_etapa')).toBe('subida')
+      expect(localStorage.getItem('active_collection_id')).toBe(
+        'collection-123',
+      )
+      expect(localStorage.getItem('modal_nueva_session')).toBe('1')
+    })
+
+    expect(screen.getByText(/Subiendo 0 de 1/i)).toBeInTheDocument()
+  })
+
+  test('elimina colección en cascada al refrescar durante subida', async () => {
+    localStorage.setItem('active_collection_id', 'collection-upload')
+    localStorage.setItem('modal_carga_etapa', 'subida')
+    localStorage.setItem('modal_nueva_session', '1')
+    ;(globalThis.fetch as jest.Mock).mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === 'string' ? input : input.toString()
+        const method = init?.method ?? 'GET'
+
+        if (
+          url.includes('/api/collections/collection-upload') &&
+          method === 'DELETE'
+        ) {
+          return Promise.resolve({ ok: true, status: 204 })
+        }
+        if (url.includes('/api/collections/collection-upload')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => ({
+              id: 'collection-upload',
+              name: 'Mi colección',
+              processing_status: 'idle',
+            }),
+          })
+        }
+        if (url.includes('/api/documentos?coleccion_id=collection-upload')) {
+          return Promise.resolve({
+            ok: true,
+            json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+          })
+        }
+        return Promise.resolve({ ok: false, json: async () => ({}) })
+      },
+    )
+
+    renderModal({ scopeCollectionId: 'nueva' })
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-upload`,
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+    })
+
+    expect(await screen.findByText('Añadir fuentes')).toBeInTheDocument()
+    expect(screen.queryByText(/Subiendo/i)).not.toBeInTheDocument()
+    expect(localStorage.getItem('active_collection_id')).toBeNull()
+    expect(localStorage.getItem('modal_carga_etapa')).toBeNull()
+    expect(document.querySelector('input[type="file"]')).not.toBeDisabled()
+  })
+
   test('nueva colección ignora active_collection_id en localStorage', async () => {
     localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-processing')
     localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
@@ -422,6 +501,98 @@ describe('ModalCarga', () => {
     expect(await screen.findByText('Añadir fuentes')).toBeInTheDocument()
     expect(screen.queryByText('Procesar grafo')).not.toBeInTheDocument()
     expect(globalThis.fetch).not.toHaveBeenCalled()
+  })
+
+  test('restaura entidades seleccionadas del pipeline tras recargar', async () => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-123')
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    localStorage.setItem(
+      'modal_pipeline_entities',
+      JSON.stringify({ 'collection-123': ['Persona', 'Lugar'] }),
+    )
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'idle',
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      return Promise.resolve({ ok: false, json: async () => ({}) })
+    })
+
+    renderModal({
+      scopeCollectionId: 'collection-123',
+      forcePipelineEtapa: true,
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: 'Persona' })).toBeChecked()
+      expect(
+        screen.getByRole('checkbox', { name: 'Organizacion' }),
+      ).not.toBeChecked()
+      expect(screen.getByRole('checkbox', { name: 'Lugar' })).toBeChecked()
+      expect(screen.getByRole('checkbox', { name: 'Evento' })).not.toBeChecked()
+    })
+  })
+
+  test('persiste entidades seleccionadas en localStorage al marcar checkboxes', async () => {
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'idle',
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      return Promise.resolve({ ok: false, json: async () => ({}) })
+    })
+
+    renderModal({
+      scopeCollectionId: 'collection-123',
+      forcePipelineEtapa: true,
+    })
+
+    await screen.findByText('Entidades a extraer')
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Persona' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Evento' }))
+
+    expect(
+      JSON.parse(localStorage.getItem('modal_pipeline_entities') ?? '{}'),
+    ).toEqual({
+      'collection-123': ['Persona', 'Evento'],
+    })
   })
 
   test('colección idle con documentos abre etapa pipeline sin localStorage previo', async () => {
@@ -688,7 +859,12 @@ describe('ModalCarga', () => {
     })
 
     const onClose = jest.fn()
-    renderModal({ onClose, scopeCollectionId: 'collection-123' })
+    const onProcessingChange = jest.fn()
+    renderModal({
+      onClose,
+      onProcessingChange,
+      scopeCollectionId: 'collection-123',
+    })
 
     expect(
       await screen.findByText('Extrayendo texto de los documentos...'),
@@ -701,11 +877,52 @@ describe('ModalCarga', () => {
       expect(onClose).toHaveBeenCalledTimes(1)
     })
 
+    expect(onProcessingChange).toHaveBeenCalledWith(true)
     expect(globalThis.fetch).not.toHaveBeenCalledWith(
       `${API_BASE}/api/collections/collection-123/process/cancel`,
       expect.anything(),
     )
     expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-123')
+    expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
+  })
+
+  test('cerrar con X durante grafo en nueva navega al buscador y mantiene pipeline', async () => {
+    localStorage.setItem(ACTIVE_COLLECTION_KEY, 'collection-nueva')
+    localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+    localStorage.setItem('modal_nueva_session', '1')
+    ;(globalThis.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        processing_status: 'processing_graph',
+        graph_progress_total: 4,
+        graph_progress_processed: 1,
+      }),
+    })
+
+    const onClose = jest.fn()
+    const onProcessingChange = jest.fn()
+    renderModal({
+      onClose,
+      onProcessingChange,
+      scopeCollectionId: 'nueva',
+    })
+
+    expect(
+      await screen.findByText('Construyendo grafo con Wukong...'),
+    ).toBeInTheDocument()
+
+    const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
+    fireEvent.click(closeButton)
+
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    expect(onProcessingChange).toHaveBeenCalledWith(true)
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/testuser/colecciones/collection-nueva/buscador',
+    )
+    expect(localStorage.getItem(ACTIVE_COLLECTION_KEY)).toBe('collection-nueva')
     expect(localStorage.getItem(MODAL_ETAPA_KEY)).toBe('pipeline')
   })
 
@@ -760,18 +977,20 @@ describe('ModalCarga', () => {
     })
   })
 
-  test('X durante subida está deshabilitado y no borra', async () => {
+  test('X durante subida cancela, borra colección y redirige', async () => {
     ;(globalThis.fetch as jest.Mock)
       .mockResolvedValueOnce({
         ok: true,
         json: async () => ({ id: 'collection-upload' }),
       })
-      .mockImplementation(
-        () =>
-          new Promise(() => {
-            /* upload colgado a propósito */
-          }),
-      )
+      .mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true })
+        }
+        return new Promise(() => {
+          /* upload colgado a propósito */
+        })
+      })
 
     const onClose = jest.fn()
     renderModal({ onClose, scopeCollectionId: 'nueva' })
@@ -791,14 +1010,67 @@ describe('ModalCarga', () => {
     })
 
     const closeButton = document.querySelector('.mc-close') as HTMLButtonElement
-    expect(closeButton).toBeDisabled()
+    expect(closeButton).not.toBeDisabled()
     fireEvent.click(closeButton)
 
-    expect(onClose).not.toHaveBeenCalled()
-    expect(globalThis.fetch).not.toHaveBeenCalledWith(
-      `${API_BASE}/api/collections/collection-upload`,
-      expect.objectContaining({ method: 'DELETE' }),
-    )
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-upload`,
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
+  })
+
+  test('overlay durante subida cancela, borra colección y redirige', async () => {
+    ;(globalThis.fetch as jest.Mock)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ id: 'collection-upload' }),
+      })
+      .mockImplementation((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true })
+        }
+        return new Promise(() => {
+          /* upload colgado a propósito */
+        })
+      })
+
+    const onClose = jest.fn()
+    renderModal({ onClose, scopeCollectionId: 'nueva' })
+
+    const file = new File(['contenido'], 'doc.txt', { type: 'text/plain' })
+    const input = document.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement
+    fireEvent.change(input, { target: { files: [file] } })
+    fireEvent.change(screen.getByPlaceholderText('Nombre de colección'), {
+      target: { value: 'Mi colección' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /añadir archivos/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /subiendo/i })).toBeDisabled()
+    })
+
+    fireEvent.click(document.querySelector('.mc-overlay') as HTMLElement)
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/collections/collection-upload`,
+        expect.objectContaining({ method: 'DELETE' }),
+      )
+    })
+
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(mockNavigate).toHaveBeenCalledWith('/landing-page/testuser', {
+      replace: true,
+    })
   })
 
   test('cancelar durante procesamiento borra la colección', async () => {

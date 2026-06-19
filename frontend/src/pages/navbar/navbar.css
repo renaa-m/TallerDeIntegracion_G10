@@ -1,47 +1,12 @@
-/* navbar.css */
+/* navbar.css — usa tokens globales de styles/design-tokens.css */
 
-:root {
-  /* NAVBAR */
-  --navbar-bg: rgba(255, 255, 255, 0.7);
-  --navbar-border: rgba(0, 0, 0, 0.06);
-  --navbar-shadow: rgba(0, 0, 0, 0.05);
-
-  /* TEXTOS */
-  --text-main: #1a1a1a;
-  --text-sub: #6b7280;
-
-  /* UI */
-  --card-bg: rgba(255, 255, 255, 0.85);
-  --border-color: rgba(0, 0, 0, 0.08);
-  --hover-bg: rgba(0, 0, 0, 0.05);
-  --danger-soft: rgba(239, 68, 68, 0.1);
-  --danger-main: #ef4444;
-
-  /* ACCENT */
-  --accent: #7c3aed;
-}
-
-.dark {
-  --navbar-bg: rgba(15, 32, 69, 0.82);
-  --navbar-border: rgba(96, 165, 250, 0.16);
-  --navbar-shadow: rgba(15, 85, 166, 0.3);
-  --text-main: #e5e7eb;
-  --text-sub: #9ca3af;
-  --card-bg: rgba(30, 41, 59, 0.8);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --hover-bg: rgba(255, 255, 255, 0.08);
-  --accent: #a78bfa;
-  --danger-soft: rgba(239, 68, 68, 0.2);
-}
-
-/* NAVBAR BASE */
 .navbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   width: 100%;
-  height: 72px;
+  height: var(--navbar-height);
   background: var(--navbar-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -86,7 +51,6 @@
   gap: 24px;
 }
 
-/* PERFIL & TRIGGER */
 .profile-wrapper {
   position: relative;
 }
@@ -105,6 +69,11 @@
 
 .profile-trigger:hover {
   background: var(--hover-bg);
+}
+
+.profile-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .nav-avatar,
@@ -133,13 +102,12 @@
   transform: rotate(180deg);
 }
 
-/* DROPDOWN */
 .nav-dropdown {
   position: absolute;
   top: calc(100% + 8px);
   right: 0;
   width: 240px;
-  background: var(--card-bg);
+  background: var(--surface);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border-color);
@@ -186,7 +154,6 @@
   margin: 8px 0;
 }
 
-/* UNIFICACIÓN DE ACCIONES (Logout & Delete) */
 .logout-action,
 .delete-account-action {
   width: 100%;
@@ -196,7 +163,7 @@
   padding: 10px 14px;
   border: none;
   background: transparent;
-  font-family: 'DM Sans', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 13px;
   border-radius: 12px;
@@ -205,7 +172,6 @@
   text-align: left;
 }
 
-/* Logout específico */
 .logout-action {
   color: var(--text-main);
 }
@@ -214,7 +180,6 @@
   background: var(--hover-bg);
 }
 
-/* Delete específico */
 .delete-account-action {
   color: var(--danger-main);
 }
@@ -223,8 +188,16 @@
   background: var(--danger-soft);
 }
 
-/* Iconos dentro de las acciones */
 .logout-action svg,
 .delete-account-action svg {
   flex-shrink: 0;
+}
+
+/* Navbar más clara en oscuro: logo IMFD lleva texto oscuro */
+html.bc-dark .navbar {
+  --hover-bg: rgba(171, 163, 246, 0.14);
+}
+
+html.bc-dark .navbar .chevron {
+  color: #526080;
 }

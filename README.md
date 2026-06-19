@@ -22,6 +22,7 @@
 13. [Integración con MillenniumDB](#integración-con-millenniumdb)
 14. [Docker](#docker)
 15. [Equipo](#equipo)
+16. [Sistema de diseño UI](#sistema-de-diseño-ui)
 
 ---
 
@@ -73,11 +74,13 @@ Plataforma web tipo **buscador** (no un chat) que permite a investigadores del I
 | **Data model por idioma** | Modelos por defecto en español (`default_data_model_es.json`) e inglés (`default_data_model_en.json`) |
 | **Cancelación cooperativa** | `POST .../process/cancel` — detiene el pipeline de forma segura |
 | **Confirmación de grafo parcial** | Si la extracción tuvo errores parciales, el usuario puede confirmar continuar con `awaiting_graph_confirmation` |
-| **Pipeline en segundo plano** | FastAPI BackgroundTasks; el frontend hace polling sobre el estado de la colección |
+| **Pipeline en segundo plano** | HTTP 202; `processing_queue` despacha el job en un thread daemon; el frontend hace polling sobre el estado de la colección |
 | **Cola de procesamiento** | Solo una colección activa por usuario a la vez; recuperación de jobs huérfanos al arrancar |
 
 **Estados de procesamiento:**
 `idle` → `processing_text` → `processing_graph` → `graph_ready` / `partial_error` / `error` / `cancelled` / `awaiting_graph_confirmation`
+
+> El estado `queued` es legacy y se normaliza a `idle` en la API.
 
 ### Búsqueda semántica
 
@@ -123,7 +126,7 @@ Esto genera un `data_model.json` que Wukong usa para saber exactamente qué extr
 
 ```
 POST /api/collections/{id}/generate-graph   →   202 Accepted
-        │   (BackgroundTasks → wukong_runner.process_collection)
+        │   (processing_queue → thread daemon → wukong_runner.process_collection)
         ▼
 ═══════════════════════════════════════════════════════
   PIPELINE 1 — Extracción de texto (por documento)
@@ -227,7 +230,7 @@ graph LR
     subgraph GCP ["Google Cloud Platform"]
         API[FastAPI\nCloud Run]
         SUPA[(Supabase\nDB + pgvector + Storage)]
-        BT[BackgroundTasks\nHTTP 202]
+        BT[processing_queue\nHTTP 202 + thread]
 
         subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
             VISION[Cloud Vision\nOCR]
@@ -298,6 +301,7 @@ graph RL
 | FastAPI → OpenAI | **HTTPS** | Consumido por **Wukong** (extracción de entidades/relaciones) |
 | Embeddings | **Proceso local** | `sentence-transformers` (sin API key; descarga modelo a caché HuggingFace) |
 | FastAPI ↔ Wukong | **Subproceso Python** | `python -m wukong_engine` en el mismo contenedor / máquina |
+| Pipeline async | **Thread daemon** | `processing_queue` en local; variables `CLOUD_TASKS_*` reservadas en config para evolución en GCP |
 
 ---
 
@@ -314,10 +318,10 @@ graph RL
 | Grafo de conocimiento | Wukong (IMFD) → export `.qm` | submodule Python 3.13 |
 | Búsqueda semántica | **sentence-transformers** + Supabase `search_chunks` | `paraphrase-multilingual-MiniLM-L12-v2` |
 | Grafo en IMFD | MillenniumDB + driver WebSocket | integración pendiente |
-| Orquestación async | FastAPI **BackgroundTasks** | — |
+| Orquestación async | `processing_queue` (thread daemon; HTTP 202) | — |
 | Deploy producción | Google Cloud Run + Artifact Registry | us-central1 |
 | CI/CD | GitHub Actions | ci.yml (lint+test) + cd.yml (deploy) |
-| Tests backend | pytest 8.3 | 17 módulos |
+| Tests backend | pytest 8.3 | 16 módulos |
 | Tests frontend | Jest 30 + Testing Library | cobertura amplia |
 
 > **Nota sobre Python**: Wukong requiere Python 3.13+. El backend usa la misma versión para compatibilidad.
@@ -360,9 +364,9 @@ TallerDeIntegracion_G10/
 │   │       ├── vision_quota.py      # Control de cuota OCR
 │   │       ├── default_data_model_es.json
 │   │       └── default_data_model_en.json
-│   ├── supabase/migrations/         # 10 migraciones SQL (esquema + pgvector)
+│   ├── supabase/migrations/         # 14 migraciones SQL (esquema + pgvector)
 │   ├── wukong-engine/               # Submodule Wukong
-│   ├── tests/                       # 17 módulos pytest
+│   ├── tests/                       # 16 módulos pytest
 │   ├── scripts/                     # Utilidades (grafo, OCR, cuotas)
 │   ├── docs/                        # PROCESAMIENTO_BACKGROUND_Y_CANCELACION.md
 │   ├── static/                      # Frontend compilado (servido por FastAPI)
@@ -373,15 +377,25 @@ TallerDeIntegracion_G10/
 ├── frontend/
 │   ├── src/
 │   │   ├── App.tsx
+│   │   ├── App.css
+│   │   ├── index.css
+│   │   ├── styles/
+│   │   │   ├── design-tokens.css   # Tokens IMFD (colores, layout, botones)
+│   │   │   └── theme-overrides.css # Modo oscuro unificado (html.bc-dark)
 │   │   ├── pages/
-│   │   │   ├── landing_page.tsx         # Dashboard de colecciones
-│   │   │   ├── login_page.tsx
-│   │   │   ├── buscador_coleccion.tsx   # Buscador semántico + toggle grafo
-│   │   │   ├── visualizador_grafo.tsx   # Cytoscape.js
-│   │   │   └── navbar.tsx
-│   │   ├── components/                  # Modales (carga, documentos, eliminar)
-│   │   └── lib/
-│   │       └── collection_processing.ts # Lógica estados, banners, progreso
+│   │   │   ├── landing_page/            # Dashboard de colecciones
+│   │   │   ├── login_page/
+│   │   │   ├── buscador_coleccion/      # Buscador semántico + toggle grafo
+│   │   │   ├── visualizador_grafo/      # Cytoscape.js
+│   │   │   └── navbar/
+│   │   ├── components/                  # Modales (carga, documentos, eliminar, renombrar)
+│   │   │   ├── ui/                      # AppLoading y utilidades visuales
+│   │   │   └── ThemeSync.tsx            # Sincroniza html.bc-dark con prefers-color-scheme
+│   │   ├── lib/
+│   │   │   └── collection_processing.ts # Lógica estados, banners, progreso
+│   │   └── assets/
+│   ├── public/
+│   ├── index.html
 │   ├── package.json
 │   └── .env.example
 ├── infra/
@@ -451,8 +465,7 @@ git submodule update --init --recursive
 ```bash
 cd backend
 
-/opt/homebrew/bin/python3.13 -m venv venv   # macOS con Homebrew
-# o: python3.13 -m venv venv
+python3.13 -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
 
 pip install -r requirements.txt
@@ -461,13 +474,13 @@ pip install -e ./wukong-engine
 cp .env.example .env
 # Completar .env (ver Variables de Entorno)
 
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8080
 ```
 
 El backend queda en:
-- API: `http://localhost:8000`
-- Swagger: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
+- API: `http://localhost:8080`
+- Swagger: `http://localhost:8080/docs`
+- ReDoc: `http://localhost:8080/redoc`
 
 ### 3. Supabase
 
@@ -486,7 +499,7 @@ npm install
 Crear `frontend/.env`:
 
 ```env
-VITE_API_URL=http://localhost:8000
+VITE_API_URL=http://localhost:8080
 VITE_AUTH0_DOMAIN=...
 VITE_AUTH0_CLIENT_ID=...
 VITE_AUTH0_AUDIENCE=...
@@ -548,6 +561,10 @@ GCP_PROJECT_ID=your-gcp-project-id
 
 # Opcional: copia del workdir Wukong tras cada run (depuración)
 WUKONG_ARTIFACTS_DIR=
+
+# Cloud Tasks (reservado para evolución en GCP)
+CLOUD_TASKS_QUEUE=
+CLOUD_TASKS_LOCATION=
 
 # HU-13: reintentos de subida a Storage
 MAX_UPLOAD_RETRIES=3
@@ -617,6 +634,7 @@ Módulos de test (cobertura ~70%):
 | `test_qm_storage.py` | Upload/download Storage |
 | `test_vision_quota.py` | Control cuota OCR |
 | `test_usuarios.py` | Rutas de usuario |
+| `test_millenniumdb_import.py` | Import .qm preparado |
 
 ### Frontend
 
@@ -709,3 +727,149 @@ docker run -p 8080:8080 --env-file backend/.env imfd-explorer:latest
 
 Proyecto de Título 2025 — Pontificia Universidad Católica de Chile
 En colaboración con el Instituto Milenio Fundamento de los Datos (IMFD)
+
+---
+
+## Sistema de diseño UI
+
+La interfaz de **NotebookIMFD** sigue una paleta y reglas compartidas definidas en `frontend/src/styles/design-tokens.css`. Ese archivo es la **fuente de verdad** para colores, espaciado de layout y componentes base. Se importa una sola vez desde `main.tsx`, antes de `index.css`. El modo oscuro se aplica con la clase `html.bc-dark` (sincronizada por `ThemeSync` y reforzada en `theme-overrides.css`).
+
+### Identidad visual (marca IMFD)
+
+| Token | Valor (referencia) | Uso |
+|---|---|---|
+| `--imfd-navy` | `#243166` | Fondos oscuros, identidad institucional |
+| `--imfd-yellow` / `--imfd-yellow-bright` | `#f8ffa1` / `#fbffa1` | Acentos de carga, highlights |
+| `--imfd-pink` | `#f6d5ee` | Gradientes, estados suaves |
+| `--imfd-accent` | `#aba3f6` | Botones primarios, bordes, foco |
+| `--danger` | `#ef4444` | Eliminar, alertas destructivas |
+
+**Modo claro:** gradiente vertical amarillo → rosa → blanco (`--bg-gradient`).
+
+**Modo oscuro:** gradiente radial azul (`--imfd-navy` → `#1a1a2e`), activado con `prefers-color-scheme: dark` → clase `html.bc-dark`.
+
+> Regla: no hardcodear `#7c3aed`, `#aa3bff` ni amarillos fuera de paleta en pantallas nuevas. Usar siempre variables CSS del design system.
+
+### Layout global
+
+| Regla | Valor | Dónde aplica |
+|---|---|---|
+| Altura navbar | `--navbar-height: 72px` | `navbar.css`, spacer en `App.tsx`, `buscador_coleccion.css` |
+| Scroll principal | `overflow: auto` en `<main>` | Permite listar muchas colecciones en landing |
+| Contenido interno full-height | `overflow: hidden` en `.bc-root` | Buscador y vistas que ocupan todo el viewport útil |
+
+### Tipografía
+
+| Rol | Familia | Tamaños de referencia |
+|---|---|---|
+| UI general | `DM Sans` (`--font-sans`) | 14–18px cuerpo |
+| Títulos de modales | `DM Serif Display` (`--font-display`) | 20–22px |
+| Hero landing | `DM Sans` bold | 52px → 40px → 32px (responsive) |
+| Título de sección | `DM Sans` bold | 32px landing / 28px tablet |
+| Título de card | `DM Sans` bold | 20px (no igualar al título de sección) |
+
+### Componentes compartidos
+
+| Clase / componente | Archivo | Cuándo usarlo |
+|---|---|---|
+| `.imfd-btn-primary` | `design-tokens.css` | CTA principal (login, landing, acciones afirmativas) |
+| `<AppLoading />` | `components/ui/app_loading.tsx` | Auth, callback, carga de listas (prop `compact` en bloques internos) |
+| `ModalRenombrarColeccion` | `components/modal_renombrar_coleccion/` | Renombrar colección (sustituye `window.prompt`) |
+| `ModalEliminarColeccion` | `components/modal_eliminar_coleccion/` | Confirmación destructiva (sustituye `window.confirm`) |
+
+### Reglas de interacción
+
+1. **No usar diálogos nativos** (`prompt`, `confirm`, `alert`) en flujos de producto; usar modales del design system.
+2. **Copy contextual en landing:** si el usuario no tiene colecciones → botón **Iniciar**; si ya tiene → **Nueva colección** y subtítulo orientado a retomar trabajo.
+3. **Badge de bienvenida:** texto inclusivo **Bienvenido/a** (no asumir género).
+4. **Cards de colección:** botón interno `Abrir colección …` separado de acciones editar/eliminar (evita botones anidados inaccesibles).
+5. **Estados de foco:** botones primarios e iconos deben tener `:focus-visible` con `--accent`.
+
+### Radios y sombras
+
+| Token | Valor | Uso típico |
+|---|---|---|
+| `--radius-sm` | `12px` | Inputs, chips |
+| `--radius-md` | `16px` | Botón primario |
+| `--radius-lg` | `24px` | Cards, modales |
+| `--radius-pill` | `999px` | Badges, icon buttons |
+| `--shadow-accent` | sombra lila | CTA primario |
+| `--shadow-card` | sombra suave | Hover de cards |
+
+### Grid del landing (colecciones)
+
+| Breakpoint | Columnas |
+|---|---|
+| `> 1024px` | 3 |
+| `641px – 1024px` | 2 |
+| `≤ 640px` | 1 |
+
+### Flujo `/colecciones/nueva/buscador` (buscador — creación)
+
+Esta ruta combina el **ModalCarga** (paso 1) con el layout del buscador detrás.
+
+| Situación | Comportamiento UI |
+|---|---|
+| Sidebar — título | Mostrar **Nueva colección**, nunca "Cargando…" |
+| Sidebar — etiqueta | **Creación en curso** (no "Colección actual") |
+| Renombrar inline | **Oculto** en `nueva` (solo renombrar en modal de carga o tras crear UUID) |
+| Borrar colección | **Oculto** en `nueva` (no hay recurso persistido aún) |
+| Ver documentos | Botón **deshabilitado** hasta que exista colección |
+| Barra de búsqueda | **Deshabilitada** en `nueva`; placeholder explicativo |
+| Botón **Buscar** | Visible junto al input; deshabilitado en `nueva` |
+| Empty state (modal cerrado) | Onboarding: **Empieza subiendo documentos** + CTA **Añadir fuentes** |
+| Loader de búsqueda | Copy: **Buscando en tus documentos…** (no "grafo de conocimiento") |
+
+**Estilo sidebar:** botones `.bc-add-btn` alineados a tokens IMFD (lila suave, sin sombra neo-brutalista amarilla). Filtros usan accent `#aba3f6`.
+
+**Capitalización:** preferir oración en botones — p. ej. "Criterios de búsqueda", "Ver documentos", "Ver grafo".
+
+### Modal `ModalCarga` (`components/modal_carga/`)
+
+Ventana de **subida de archivos** y **procesamiento del grafo** (`Procesar grafo`). La monta `buscador_coleccion.tsx` cuando `modalCargaOpen === true`.
+
+| Etapa | Título modal | Contenido |
+|---|---|---|
+| `subida` | Añadir fuentes | Dropzone, lista de archivos, nombre de colección, idioma |
+| `pipeline` | Procesar grafo | Pasos Extracción → Construcción → Listo, barras de progreso, entidades |
+
+**Reglas UI:**
+
+- Tokens del panel: `--mc-*` derivados de `design-tokens.css` (claro y `html.bc-dark`).
+- **Entidades a extraer:** fondo `--mc-surface-2`, texto `--mc-text-1` legible; estado seleccionado con borde `--mc-accent`. No usar cajas navy fijas en modo claro.
+- **Pasos del pipeline:** clase `pending` en pasos inactivos; bordes/fondos con `--mc-border` / `--mc-surface-2`.
+- **CTA principal** (`.mc-btn-upload`): accent IMFD `#aba3f6`, sin sombra neo-brutalista navy.
+- **Barra de progreso:** fill `--mc-accent`, no azul `#2563eb`.
+- Texto de ayuda de entidades: `--mc-text-2` (contraste mínimo AA sobre el panel).
+
+### Modo oscuro — checklist para pantallas nuevas
+
+Al crear o refactorizar una vista, verificar que **no queden colores fijos** en:
+
+- Fondos de cards y popups (`var(--surface)`, `var(--card-bg)`)
+- Texto secundario (`var(--text-2)`, `var(--text-3)`)
+- Bordes (`var(--border)`)
+- Botones icono (`var(--icon-btn-bg)`)
+
+El navbar, login, landing, buscador (`/nueva` y existentes), modales de eliminar/renombrar y el popup de errores del landing ya consumen tokens y respetan `prefers-color-scheme` vía `html.bc-dark`.
+
+### Archivos clave del design system
+
+- `frontend/src/styles/design-tokens.css` — tokens y `.imfd-btn-primary`
+- `frontend/src/styles/theme-overrides.css` — overrides de modo oscuro
+- `frontend/src/components/ThemeSync.tsx` — sincroniza `html.bc-dark`
+- `frontend/src/pages/landing_page/*` — layout, dark mode, modales, copy dinámico
+- `frontend/src/pages/buscador_coleccion/*` — flujo `nueva`, searchbar, empty onboarding, tokens
+- `frontend/src/components/modal_carga/*` — pipeline, entidades, progreso, tokens IMFD
+- `frontend/src/components/modal_filtro/modal_filtros.module.css` — accent `#aba3f6`
+- `frontend/src/pages/navbar/navbar.css` — accent alineado a `#aba3f6`
+- `frontend/src/pages/login_page/*` — botón compartido, sin `:root` duplicado
+- `frontend/src/App.tsx` — spacer 72px, scroll en main, loading unificado
+- `frontend/src/components/ui/app_loading.*` — spinner de carga compartido
+
+### Cómo extender el sistema
+
+1. Añadir tokens nuevos solo en `design-tokens.css` (con variante dark si aplica).
+2. Prefijar estilos de página con clase raíz (ej. `.landing-page`) para no pisar globals.
+3. Reutilizar modales existentes antes de crear uno nuevo.
+4. Documentar aquí cualquier regla nueva acordada por el equipo.

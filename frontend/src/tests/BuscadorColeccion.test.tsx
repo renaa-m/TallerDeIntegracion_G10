@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import BuscadorColeccion from '../pages/buscador_coleccion/buscador_coleccion'
+import { syncThemeClass } from '../lib/theme'
 
 const mockNavigate = jest.fn()
 const mockSetSearchParams = jest.fn()
@@ -11,7 +12,7 @@ let mockParams = {
   id_coleccion: 'collection-123',
 }
 
-let mockQuery = ''
+let mockSearchParams = new URLSearchParams()
 
 jest.mock('@auth0/auth0-react', () => ({
   useAuth0: () => ({
@@ -24,23 +25,32 @@ jest.mock('react-router-dom', () => ({
   useNavigate: () => mockNavigate,
   useParams: () => mockParams,
   useSearchParams: () => [
-    {
-      get: (key: string) => {
-        if (key === 'q') return mockQuery
-        return null
-      },
+    mockSearchParams,
+    (
+      next:
+        | URLSearchParams
+        | Record<string, string>
+        | ((prev: URLSearchParams) => URLSearchParams),
+    ) => {
+      if (typeof next === 'function') {
+        mockSearchParams = next(new URLSearchParams(mockSearchParams))
+      } else {
+        mockSearchParams = new URLSearchParams(next)
+      }
+      mockSetSearchParams(next)
     },
-    mockSetSearchParams,
   ],
 }))
 
 jest.mock('../components/modal_carga/modal_carga', () => {
   return function MockModalCarga({
     isOpen,
+    forcePipelineEtapa,
     onClose,
     onUploadSuccess,
   }: {
     isOpen: boolean
+    forcePipelineEtapa?: boolean
     onClose: () => void
     onUploadSuccess?: () => void
   }) {
@@ -48,7 +58,7 @@ jest.mock('../components/modal_carga/modal_carga', () => {
 
     return (
       <div data-testid="modal-carga">
-        <p>Modal Carga Abierto</p>
+        <p>{forcePipelineEtapa ? 'Procesar grafo' : 'Añadir fuentes'}</p>
         <button onClick={onClose}>Cerrar carga</button>
         <button onClick={onUploadSuccess}>Upload success</button>
       </div>
@@ -191,12 +201,12 @@ describe('BuscadorColeccion', () => {
     jest.clearAllMocks()
     jest.useRealTimers()
     localStorage.clear()
+    mockSearchParams = new URLSearchParams()
     mockGetToken.mockResolvedValue('fake-token')
     mockParams = {
       id_usuario: 'user-123',
       id_coleccion: 'collection-123',
     }
-    mockQuery = ''
 
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
@@ -257,7 +267,9 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-    expect(screen.getByText('Colección actual')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Colección Test' }),
+    ).toBeInTheDocument()
 
     expect(globalThis.fetch).toHaveBeenCalledWith(
       `${API_BASE}/api/collections/collection-123`,
@@ -298,12 +310,12 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
-    expect(screen.getByText('Sin resultados todavía')).toBeInTheDocument()
+    expect(screen.getByText('Búsqueda No Disponible Aún')).toBeInTheDocument()
     expect(
-      screen.getByText(
+      screen.getAllByText(
         'Genera el grafo de la colección para habilitar la búsqueda semántica.',
-      ),
-    ).toBeInTheDocument()
+      ).length,
+    ).toBeGreaterThan(0)
   })
 
   test('ejecuta búsqueda al presionar Enter y muestra resultados', async () => {
@@ -351,7 +363,7 @@ describe('BuscadorColeccion', () => {
       )
     })
 
-    expect(mockSetSearchParams).toHaveBeenCalledWith({ q: 'grafos' })
+    expect(mockSearchParams.get('q')).toBe('grafos')
 
     await act(async () => {
       jest.advanceTimersByTime(400)
@@ -413,7 +425,7 @@ describe('BuscadorColeccion', () => {
       })
     })
 
-    mockQuery = 'consulta inicial'
+    mockSearchParams = new URLSearchParams({ q: 'consulta inicial' })
 
     renderPage()
 
@@ -460,7 +472,7 @@ describe('BuscadorColeccion', () => {
       },
     )
 
-    mockQuery = 'grafos'
+    mockSearchParams = new URLSearchParams({ q: 'grafos' })
 
     renderPage()
 
@@ -482,7 +494,7 @@ describe('BuscadorColeccion', () => {
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
   })
 
-  test('permite editar nombre de colección y guardar con Enter', async () => {
+  test('permite renombrar colección desde el modal', async () => {
     // Implementamos una máquina de estados quirúrgica para el fetch de este test
     ;(globalThis.fetch as jest.Mock).mockImplementation(
       (url: string | URL | Request, options?: RequestInit) => {
@@ -518,10 +530,11 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    const title = await screen.findByText('Colección Test')
-    fireEvent.click(title)
+    await screen.findByRole('heading', { name: 'Colección Test' })
 
-    const input = screen.getByDisplayValue('Colección Test')
+    fireEvent.click(screen.getByRole('button', { name: /renombrar colecci/i }))
+
+    const input = screen.getByLabelText(/^nombre$/i)
     fireEvent.change(input, { target: { value: 'Nuevo nombre' } })
 
     await act(async () => {
@@ -641,7 +654,7 @@ describe('BuscadorColeccion', () => {
     renderPage()
 
     expect(screen.getByTestId('modal-carga')).toBeInTheDocument()
-    expect(screen.getByText('Modal Carga Abierto')).toBeInTheDocument()
+    expect(screen.getByText('Añadir fuentes')).toBeInTheDocument()
     expect(globalThis.fetch).not.toHaveBeenCalled()
   })
 
@@ -668,17 +681,45 @@ describe('BuscadorColeccion', () => {
 
     renderPage()
 
-    expect(
-      await screen.findByText(/Se está procesando «Colección en curso»/),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/Extracción de Texto/i)).toBeInTheDocument()
+    expect(screen.getByText(/2 de 4 documentos/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByText('Clic para ver detalle'))
+    fireEvent.click(screen.getByText('Ver detalle'))
 
     expect(screen.getByTestId('modal-carga')).toBeInTheDocument()
     expect(mockNavigate).not.toHaveBeenCalled()
   })
 
-  test('aplica clase dark cuando matchMedia indica dark mode', async () => {
+  test('oculta Ver Grafo mientras procesa pero mantiene Ver Documentos', async () => {
+    mockParams = {
+      id_usuario: 'user-123',
+      id_coleccion: 'collection-processing',
+    }
+    mockFetchForCollection(processingCollectionResponse)
+
+    renderPage()
+
+    expect(await screen.findByText('Colección en curso')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /ver grafo/i }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /ver documentos/i }),
+    ).not.toBeDisabled()
+  })
+
+  test('muestra Ver Grafo cuando el grafo está listo', async () => {
+    mockInitialLoad()
+    renderPage()
+
+    expect(await screen.findByText('Colección Test')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /ver grafo/i })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /ver documentos/i }),
+    ).not.toBeDisabled()
+  })
+
+  test('aplica bc-dark en html cuando matchMedia indica dark mode', async () => {
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       value: jest.fn().mockImplementation(() => ({
@@ -688,13 +729,15 @@ describe('BuscadorColeccion', () => {
       })),
     })
 
+    syncThemeClass()
     mockInitialLoad()
     renderPage()
 
     expect(await screen.findByText('Colección Test')).toBeInTheDocument()
 
+    expect(document.documentElement).toHaveClass('bc-dark')
     const root = document.querySelector('.bc-root')
-    expect(root).toHaveClass('bc-dark')
+    expect(root).not.toHaveClass('bc-dark')
   })
 
   test('deja de hacer polling cuando la colección devuelve 404', async () => {
@@ -752,5 +795,348 @@ describe('BuscadorColeccion', () => {
 
     // Verificamos que el contador se haya congelado por completo
     expect(llamadasFinales.length).toBe(llamadasTrasPrimerIntervalo)
+  })
+
+  test('flujo nueva coleccion muestra onboarding y deshabilita acciones', async () => {
+    mockParams = {
+      id_usuario: 'user-123',
+      id_coleccion: 'nueva',
+    }
+
+    renderPage()
+
+    expect(screen.getByText('Nueva Colección')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Nueva Colección' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Borrar Colección')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /buscar/i })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: /cerrar carga/i }))
+
+    expect(
+      await screen.findByText(/empieza subiendo documentos/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /añadir fuentes/i }),
+    ).toBeInTheDocument()
+  })
+
+  test('nueva coleccion con procesamiento en background no muestra onboarding de subida', async () => {
+    mockParams = {
+      id_usuario: 'user-123',
+      id_coleccion: 'nueva',
+    }
+    localStorage.setItem('active_collection_id', 'collection-bg')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-bg')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-bg',
+            name: 'Dina',
+            processing_status: 'processing_text',
+            text_progress_total: 3,
+            text_progress_processed: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: /cerrar carga/i }))
+
+    expect(await screen.findByText(/Extracción de Texto/i)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/empieza subiendo documentos/i),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /añadir fuentes/i }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByText(/preparando tu colección/i)).toBeInTheDocument()
+  })
+
+  test('mantiene buscador con banner de grafo pendiente al recargar (sin reabrir modal)', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'idle',
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Grafo Pendiente')).toBeInTheDocument()
+    expect(screen.getByText('Generar grafo')).toBeInTheDocument()
+    expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
+  })
+
+  test('restaura modal al recargar si el usuario lo tenía abierto', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    localStorage.setItem('modal_carga_open', '1')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'idle',
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Procesar grafo')).toBeInTheDocument()
+    expect(screen.getByTestId('modal-carga')).toBeInTheDocument()
+  })
+
+  test('no reabre modal al recargar si estaba cerrado durante extracción', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'processing_text',
+            text_progress_total: 4,
+            text_progress_processed: 1,
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText(/Extracción de Texto/i)).toBeInTheDocument()
+    expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
+    expect(screen.queryByText('Procesar grafo')).not.toBeInTheDocument()
+  })
+
+  test('mantiene buscador con banner de construcción del grafo al recargar (sin reabrir modal)', async () => {
+    localStorage.setItem('active_collection_id', 'collection-123')
+    localStorage.setItem('modal_carga_etapa', 'pipeline')
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Circular DINA',
+            processing_status: 'processing_graph',
+            graph_progress_total: 1,
+            graph_progress_processed: 0,
+          }),
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/documentos?coleccion_id=collection-123')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => [{ id: 'doc-1', filename: 'a.pdf' }],
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            resultados: [],
+            total: 0,
+            total_pages: 0,
+            tiempo_segundos: 0,
+          }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({}) })
+    })
+
+    renderPage()
+
+    expect(
+      await screen.findByText('Construcción del Grafo'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Ver detalle')).toBeInTheDocument()
+    expect(screen.queryByTestId('modal-carga')).not.toBeInTheDocument()
+  })
+
+  test('restaura filtros de entidades desde la URL al recargar', async () => {
+    mockSearchParams = new URLSearchParams({
+      q: 'consulta entidades',
+      entities: 'Persona,Organizacion',
+      entity_logic: 'AND',
+      entity_type: 'Persona',
+    })
+    ;(globalThis.fetch as jest.Mock).mockImplementation((url: string) => {
+      if (typeof url === 'string' && url.includes('/api/search')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => searchResponse,
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/documentos')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => documentosResponse,
+        })
+      }
+      if (
+        typeof url === 'string' &&
+        url.includes('/api/collections/collection-123/entities')
+      ) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            tipos: ['Persona', 'Organizacion'],
+            entidades: [
+              { id: '1', label: 'Persona', tipo: 'Persona' },
+              { id: '2', label: 'Organizacion', tipo: 'Organizacion' },
+            ],
+          }),
+        })
+      }
+      if (typeof url === 'string' && url.includes('/api/collections/')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            id: 'collection-123',
+            name: 'Colección Test',
+            processing_status: 'graph_ready',
+          }),
+        })
+      }
+      return Promise.resolve({
+        ok: false,
+        status: 404,
+        json: async () => ({}),
+      })
+    })
+
+    renderPage()
+
+    expect(await screen.findByText('Colección Test')).toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /criterios de búsqueda/i }),
+    )
+
+    expect(await screen.findByText('Seleccionadas (2)')).toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        `${API_BASE}/api/search`,
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining(
+            '"nombres_entidades":["Persona","Organizacion"]',
+          ),
+        }),
+      )
+    })
+
+    const searchCall = (globalThis.fetch as jest.Mock).mock.calls.find(
+      ([url, options]) =>
+        typeof url === 'string' &&
+        url.includes('/api/search') &&
+        typeof options?.body === 'string' &&
+        options.body.includes('"logica_entidades":"AND"'),
+    )
+    expect(searchCall).toBeDefined()
   })
 })

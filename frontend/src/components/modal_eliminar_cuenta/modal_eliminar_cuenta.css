@@ -98,7 +98,7 @@
 .mea-title {
   font-family: 'DM Serif Display', Georgia, serif;
   font-size: 22px;
-  color: #111111;
+  color: var(--text-1);
   margin: 0 0 12px;
   line-height: 1.2;
 }
@@ -107,7 +107,7 @@
   font-family: 'DM Sans', sans-serif;
   font-size: 14px;
   line-height: 1.6;
-  color: #4f4f5c;
+  color: var(--text-2);
   margin: 0 0 8px;
 }
 
@@ -147,14 +147,14 @@
 
 .mea-btn-cancel {
   background: transparent;
-  border-color: rgba(171, 163, 246, 0.3);
-  color: #4f4f5c;
+  border-color: var(--border);
+  color: var(--text-1);
 }
 
 .mea-btn-cancel:hover {
-  background: rgba(245, 245, 255, 0.8);
-  border-color: #aba3f6;
-  color: #111111;
+  background: var(--surface-2);
+  border-color: var(--accent);
+  color: var(--text-1);
 }
 
 .mea-btn-confirm {
@@ -168,23 +168,6 @@
   background: #dc2626;
   border-color: #dc2626;
   transform: translateY(-1px);
-}
-
-/* ── MODO OSCURO (Soporta tu clase .bc-dark) ─────────────────────────────── */
-.bc-dark .mea-box {
-  background: #141d35;
-  border-color: #1e2d50;
-}
-
-.bc-dark .mea-title {
-  color: #dce4f5;
-}
-.bc-dark .mea-text {
-  color: #8394b4;
-}
-.bc-dark .mea-btn-cancel {
-  border-color: #1e2d50;
-  color: #8394b4;
 }
 
 @media (max-width: 480px) {

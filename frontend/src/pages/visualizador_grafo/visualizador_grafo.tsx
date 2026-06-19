@@ -25,6 +25,7 @@ import {
   getGraphUnavailableView,
   type GraphUnavailableView,
 } from '../../lib/collection_processing'
+import { usePrefersDarkMode } from '../../lib/theme'
 import './visualizador_grafo.css'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
@@ -66,10 +67,7 @@ const GraphViewer = () => {
   const [openingDocument, setOpeningDocument] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const darkMode = useMemo(
-    () => document.documentElement.classList.contains('dark'),
-    [],
-  )
+  const darkMode = usePrefersDarkMode()
 
   const renderValue = (k: string, v: unknown): string => {
     if (v == null) return ''

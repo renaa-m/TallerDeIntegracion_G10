@@ -25,14 +25,12 @@ describe('ModalDocumentosDisponibles', () => {
     isOpen = true,
     fuentes = fuentesMock,
     onClose = jest.fn(),
-    darkMode = false,
   } = {}) => {
     render(
       <ModalDocumentosDisponibles
         isOpen={isOpen}
         fuentes={fuentes}
         onClose={onClose}
-        darkMode={darkMode}
       />,
     )
 
@@ -90,16 +88,8 @@ describe('ModalDocumentosDisponibles', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  test('aplica clase dark cuando darkMode es true', () => {
-    renderModal({ darkMode: true })
-
-    const overlay = document.querySelector('.mdd-overlay') as HTMLElement
-
-    expect(overlay).toHaveClass('bc-dark')
-  })
-
-  test('no aplica clase dark cuando darkMode es false', () => {
-    renderModal({ darkMode: false })
+  test('overlay no lleva clase bc-dark (tema global en html)', () => {
+    renderModal()
 
     const overlay = document.querySelector('.mdd-overlay') as HTMLElement
 
