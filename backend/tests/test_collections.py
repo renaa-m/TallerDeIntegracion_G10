@@ -235,7 +235,7 @@ class TestProcesarColeccion:
         assert data["processing_status"] == "processing_text"
         mock_request.assert_called_once()
 
-    def test_procesar_coleccion_retorna_409_si_slot_ocupado(self, client):
+    def test_procesar_coleccion_retorna_429_si_cola_llena(self, client):
         from app.services.processing_queue import ProcessingSlotBusyError
 
         blocking = {
@@ -259,11 +259,10 @@ class TestProcesarColeccion:
         ):
             response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
 
-        assert response.status_code == 409
+        assert response.status_code == 429
         assert "Otra colección" in response.json()["detail"]
-        assert "Se está procesando" in response.json()["detail"]
 
-    def test_procesar_coleccion_en_procesamiento_retorna_409(self, client):
+    def test_procesar_coleccion_en_procesamiento_retorna_202_idempotente(self, client):
         coleccion_procesando = {**MOCK_COLLECTION, "processing_status": "processing_text"}
         with patch(
             "app.api.routes.collections.supabase_client.get_collection",
@@ -271,7 +270,10 @@ class TestProcesarColeccion:
         ):
             response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
 
-        assert response.status_code == 409
+        assert response.status_code == 202
+        data = response.json()
+        assert data["processing_status"] == "processing_text"
+        assert "en curso" in data["detail"].lower()
 
     def test_procesar_sin_autenticacion_retorna_403(self, client_sin_auth):
         response = client_sin_auth.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
@@ -551,7 +553,7 @@ class TestGenerateGraph:
 
         assert response.status_code == 404
 
-    def test_coleccion_en_procesamiento_retorna_409(self, client):
+    def test_coleccion_en_procesamiento_retorna_202_idempotente(self, client):
         coleccion_procesando = {**MOCK_COLLECTION, "processing_status": "processing_graph"}
         with patch(
             "app.api.routes.collections.supabase_client.get_collection",
@@ -562,7 +564,10 @@ class TestGenerateGraph:
                 json=CUSTOM_DATA_MODEL_PAYLOAD,
             )
 
-        assert response.status_code == 409
+        assert response.status_code == 202
+        data = response.json()
+        assert data["processing_status"] == "processing_graph"
+        assert "en curso" in data["detail"].lower()
 
     def test_sin_documentos_retorna_422(self, client):
         with (

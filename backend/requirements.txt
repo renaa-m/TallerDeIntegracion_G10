@@ -67,3 +67,9 @@ websocket-client==1.9.0
 websockets==15.0.1
 yarl==1.23.0
 google-cloud-vision==3.10.1
+google-cloud-tasks==2.19.1
+google-auth==2.38.0
+
+# Wukong (grafo). Requiere el submódulo backend/wukong-engine:
+#   pip install -e ./wukong-engine
+-e ./wukong-engine

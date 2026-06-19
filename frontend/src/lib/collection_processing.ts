@@ -4,17 +4,17 @@ export const PIPELINE_RUNNING_STATUSES = new Set([
   'processing_graph',
 ])
 
-/** Incluye pausa por confirmación de grafo (sin cola). */
+/** Incluye pausa por confirmación de grafo y colecciones en cola. */
 export const PIPELINE_IN_PROGRESS_STATUSES = new Set([
   'processing_text',
   'processing_graph',
   'awaiting_graph_confirmation',
+  'queued',
 ])
 
 export const ACTIVE_COLLECTION_KEY = 'active_collection_id'
 export const MODAL_ETAPA_KEY = 'modal_carga_etapa'
 
-/** Legacy: el backend ya no encola; tratar como idle. */
 export function isPipelineQueued(status: string | undefined | null): boolean {
   return status === 'queued'
 }
@@ -173,6 +173,13 @@ export function getGraphUnavailableView(
           'Los documentos ya están en la colección. Genera el grafo para poder explorarlo aquí.',
         pending: false,
       }
+    case 'queued':
+      return {
+        title: 'El grafo se está preparando',
+        subtitle:
+          'Comenzará automáticamente cuando haya capacidad. Vuelve a comprobarlo en unos momentos.',
+        pending: true,
+      }
     case 'processing_text':
       return {
         title: 'El grafo se está generando',
@@ -228,6 +235,7 @@ export type CollectionProcessingSnapshot = {
 }
 
 const PIPELINE_STAGE_LABELS: Record<string, string> = {
+  queued: 'En preparación',
   processing_text: 'Extracción de texto',
   processing_graph: 'Construcción del grafo',
   awaiting_graph_confirmation: 'Confirmación de grafo',
@@ -241,14 +249,10 @@ export type CollectionProgressFields = {
   graph_progress_processed?: number
 }
 
-/** Etapa + % para tarjetas de colección (p. ej. landing). */
-export function getCollectionCardProgressLabel(
-  collection: CollectionProgressFields,
-): string | null {
-  const status = collection.processing_status
-  if (!status || !isPipelineInProgress(status)) return null
-
-  const snapshot = snapshotFromCollectionApi(collection, '')
+/** Etiqueta unificada de progreso (landing, banner del buscador, etc.). */
+export function formatCollectionProgressLabel(
+  snapshot: CollectionProcessingSnapshot,
+): string {
   const stage = PIPELINE_STAGE_LABELS[snapshot.processingStatus] ?? 'Procesando'
   const overall = getOverallPipelinePercent(snapshot)
 
@@ -258,12 +262,24 @@ export function getCollectionCardProgressLabel(
   return stage
 }
 
+/** Etapa + % para tarjetas de colección (p. ej. landing). */
+export function getCollectionCardProgressLabel(
+  collection: CollectionProgressFields,
+): string | null {
+  const status = collection.processing_status
+  if (!status || !isPipelineInProgress(status)) return null
+
+  return formatCollectionProgressLabel(
+    snapshotFromCollectionApi(collection, ''),
+  )
+}
+
 export function snapshotFromCollectionApi(
   data: CollectionProgressFields & { name?: string },
   collectionId: string,
 ): CollectionProcessingSnapshot {
   const rawStatus = data.processing_status ?? 'idle'
-  const processingStatus = rawStatus === 'queued' ? 'idle' : rawStatus
+  const processingStatus = rawStatus
   return {
     collectionId,
     collectionName: data.name ?? 'Colección',
@@ -288,6 +304,8 @@ export function getOverallPipelinePercent(
   snapshot: CollectionProcessingSnapshot,
 ): number | null {
   switch (snapshot.processingStatus) {
+    case 'queued':
+      return null
     case 'awaiting_graph_confirmation':
       return 50
     case 'processing_text': {
@@ -325,6 +343,8 @@ export function getProcessingBannerView(
   const stageLabel =
     PIPELINE_STAGE_LABELS[snapshot.processingStatus] ?? 'Procesando'
   const showName = options?.showCollectionName !== false
+  const progressLabel = formatCollectionProgressLabel(snapshot)
+  const overall = getOverallPipelinePercent(snapshot)
 
   const title = showName
     ? `Se está procesando «${snapshot.collectionName}» — ${stageLabel}`
@@ -332,31 +352,23 @@ export function getProcessingBannerView(
 
   let subtitle: string
   let progressCaption: string
-  const overall = getOverallPipelinePercent(snapshot)
 
-  if (snapshot.processingStatus === 'awaiting_graph_confirmation') {
+  if (snapshot.processingStatus === 'queued') {
+    subtitle = 'Comenzará automáticamente cuando haya capacidad disponible.'
+    progressCaption = progressLabel
+  } else if (snapshot.processingStatus === 'awaiting_graph_confirmation') {
     subtitle =
       'El grafo se creará solo con los documentos que sí pasaron la extracción.'
-    progressCaption = 'Confirmación requerida'
-  } else if (snapshot.processingStatus === 'processing_text') {
-    const step = getStepProgressPercent(
-      snapshot.textProgressProcessed,
-      snapshot.textProgressTotal,
-    )
-    subtitle = `Extracción de documentos · ${step}%`
-    progressCaption =
-      overall !== null ? `${overall}% del pipeline` : 'Calculando progreso…'
-  } else if (snapshot.processingStatus === 'processing_graph') {
-    const step = getStepProgressPercent(
-      snapshot.graphProgressProcessed,
-      snapshot.graphProgressTotal,
-    )
-    subtitle = `Construcción del grafo · ${step}%`
-    progressCaption =
-      overall !== null ? `${overall}% del pipeline` : 'Calculando progreso…'
+    progressCaption = progressLabel
+  } else if (
+    snapshot.processingStatus === 'processing_text' ||
+    snapshot.processingStatus === 'processing_graph'
+  ) {
+    subtitle = progressLabel
+    progressCaption = progressLabel
   } else {
     subtitle = 'Procesando en segundo plano'
-    progressCaption = overall !== null ? `${overall}%` : '—'
+    progressCaption = overall !== null ? progressLabel : '—'
   }
 
   return {

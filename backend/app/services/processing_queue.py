@@ -1,162 +1,463 @@
-"""Pipeline de procesamiento: una colección activa por usuario (sin cola)."""
+"""Cola de procesamiento con Google Cloud Tasks.
+
+Modelo
+──────
+- La cola de ejecución vive en **Cloud Tasks** (GCP).
+- Supabase guarda ``processing_status`` y filas ``queued`` pendientes de despacho.
+- Límites de negocio:
+  - MAX_CONCURRENT_JOBS global (también reflejado en la cola de Cloud Tasks).
+  - 1 job activo por usuario.
+  - MAX_QUEUED_PER_USER colecciones en espera por usuario.
+
+Flujo
+─────
+  POST /process
+      ├─ hay capacidad → processing_* + encolar Cloud Task
+      └─ sin capacidad   → estado ``queued`` en Supabase (sin task aún)
+
+  Al terminar un job (worker / fallback local)
+      └─ _try_dispatch_queued_from_db() encola el siguiente candidato FIFO
+"""
 
 from __future__ import annotations
 
 import logging
 import threading
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
-from app.services import supabase_client, wukong_runner
+from app.services import cloud_tasks_client, supabase_client, wukong_runner
 
 if TYPE_CHECKING:
     from fastapi import BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
-ACTIVE_STATUSES = frozenset({"processing_text", "processing_graph"})
-_SLOT_HELD = frozenset(
-    {
-        "processing_text",
-        "processing_graph",
-        "awaiting_graph_confirmation",
-    }
-)
+MAX_CONCURRENT_JOBS: int = 2
+MAX_QUEUED_PER_USER: int = 5
 
-_running_jobs: set[str] = set()
-_running_jobs_guard = threading.Lock()
+ACTIVE_STATUSES = frozenset({"processing_text", "processing_graph"})
+QueueAction = Literal["process", "continue_graph"]
 
 
 class ProcessingSlotBusyError(Exception):
-    """Otra colección del usuario ocupa el slot de procesamiento."""
+    """Cola llena: el usuario superó MAX_QUEUED_PER_USER colecciones en espera."""
 
     def __init__(self, blocking: dict[str, Any]):
         self.blocking = blocking
         super().__init__(blocking.get("name") or blocking.get("id"))
 
 
-def _mark_job_running(collection_id: str) -> None:
-    with _running_jobs_guard:
-        _running_jobs.add(collection_id)
+# ──────────────────────────────────────────────────────────────────────────────
+# Capacidad / despacho
+# ──────────────────────────────────────────────────────────────────────────────
 
-
-def _mark_job_finished(collection_id: str) -> None:
-    with _running_jobs_guard:
-        _running_jobs.discard(collection_id)
-
-
-def _find_in_memory_blocker(
-    user_id: str,
-    *,
-    exclude_collection_id: str | None = None,
-) -> dict[str, Any] | None:
-    with _running_jobs_guard:
-        for running_id in _running_jobs:
-            if exclude_collection_id and running_id == exclude_collection_id:
-                continue
-            row = supabase_client.get_collection_by_id(running_id)
-            if row is not None and row.get("user_id") == user_id:
-                return {
-                    "id": running_id,
-                    "name": row.get("name") or "Colección",
-                    "processing_status": row.get("processing_status"),
-                }
-    return None
-
-
-def _assert_slot_available(
-    user_id: str,
-    collection_id: str,
-    *,
-    exclude_self: bool = False,
-) -> None:
-    exclude = collection_id if exclude_self else None
+def _can_dispatch(user_id: str, collection_id: str) -> bool:
     blocking = supabase_client.get_user_blocking_collection(
-        user_id,
-        exclude_collection_id=exclude,
+        user_id, exclude_collection_id=collection_id
     )
-    if blocking is None:
-        blocking = _find_in_memory_blocker(
-            user_id,
-            exclude_collection_id=exclude,
-        )
     if blocking is not None:
-        raise ProcessingSlotBusyError(blocking)
+        return False
+    active = supabase_client.count_active_processing_jobs()
+    if active >= MAX_CONCURRENT_JOBS:
+        row = supabase_client.get_collection_by_id(collection_id)
+        if row and row.get("processing_status") in ACTIVE_STATUSES:
+            return True
+        return False
+    return True
 
 
-def _dispatch_process_job(
+def _next_processing_status(action: QueueAction) -> str:
+    return "processing_graph" if action == "continue_graph" else "processing_text"
+
+
+def _enqueue_cloud_task(
+    *,
     collection_id: str,
-    custom_data_model: dict | None = None,
+    user_id: str,
+    action: QueueAction,
+    custom_data_model: dict | None,
 ) -> None:
+    if cloud_tasks_client.is_configured():
+        cloud_tasks_client.enqueue_processing_task(
+            collection_id=collection_id,
+            user_id=user_id,
+            action=action,
+            custom_data_model=custom_data_model,
+        )
+        return
+
     thread = threading.Thread(
-        target=_run_process_job,
-        args=(collection_id, custom_data_model),
+        target=_run_job_sync,
+        args=(collection_id, user_id, action, custom_data_model),
         daemon=True,
-        name=f"process-job-{collection_id}",
+        name=f"local-{action}-{collection_id}",
     )
     thread.start()
 
 
-def _dispatch_continue_graph_job(collection_id: str, custom_data_model: dict | None = None,) -> None:
-    thread = threading.Thread(
-        target=_run_continue_graph_job,
-        args=(collection_id, custom_data_model),
-        daemon=True,
-        name=f"continue-graph-{collection_id}",
+def _dispatch_job(
+    *,
+    collection_id: str,
+    user_id: str,
+    action: QueueAction,
+    custom_data_model: dict | None,
+) -> None:
+    supabase_client.clear_collection_queue_metadata(collection_id)
+    supabase_client.update_collection_processing_status(
+        collection_id, _next_processing_status(action)
     )
-    thread.start()
+    _enqueue_cloud_task(
+        collection_id=collection_id,
+        user_id=user_id,
+        action=action,
+        custom_data_model=custom_data_model,
+    )
 
+
+def _try_dispatch_queued_from_db() -> None:
+    """Despacha jobs ``queued`` en Supabase cuando hay capacidad."""
+    busy_users: set[str] = set()
+    active = supabase_client.count_active_processing_jobs()
+
+    for candidate in supabase_client.get_next_queued_jobs(
+        limit=MAX_CONCURRENT_JOBS + MAX_QUEUED_PER_USER
+    ):
+        if active >= MAX_CONCURRENT_JOBS:
+            break
+
+        user_id = candidate["user_id"]
+        collection_id = candidate["id"]
+
+        if user_id in busy_users:
+            continue
+        if supabase_client.get_user_blocking_collection(
+            user_id, exclude_collection_id=collection_id
+        ):
+            busy_users.add(user_id)
+            continue
+
+        queue_action: QueueAction = candidate.get("queue_action") or "process"
+        queue_payload = candidate.get("queue_payload") or {}
+        custom_model = (
+            queue_payload.get("custom_data_model")
+            if isinstance(queue_payload, dict)
+            else None
+        )
+
+        try:
+            _dispatch_job(
+                collection_id=collection_id,
+                user_id=user_id,
+                action=queue_action,
+                custom_data_model=custom_model,
+            )
+        except Exception as exc:
+            logger.warning(
+                "No se pudo despachar colección encolada %s: %s",
+                collection_id,
+                exc,
+            )
+            continue
+
+        busy_users.add(user_id)
+        active += 1
+
+
+def _queue_in_db(
+    *,
+    collection_id: str,
+    action: QueueAction,
+    custom_data_model: dict | None,
+) -> None:
+    payload = {"custom_data_model": custom_data_model} if custom_data_model else None
+    supabase_client.set_collection_queued(collection_id, action, payload=payload)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# API pública
+# ──────────────────────────────────────────────────────────────────────────────
 
 def request_process(
     collection_id: str,
     user_id: str,
-    background_tasks: BackgroundTasks,
+    background_tasks: "BackgroundTasks",
     *,
     custom_data_model: dict | None = None,
 ) -> str:
-    """Inicia extracción + grafo, o lanza ``ProcessingSlotBusyError``."""
     del background_tasks
-    _assert_slot_available(user_id, collection_id)
-    supabase_client.update_collection_processing_status(
-        collection_id, "processing_text"
+
+    queued_count = supabase_client.count_user_queued_collections(user_id)
+    if queued_count >= MAX_QUEUED_PER_USER:
+        raise ProcessingSlotBusyError(
+            {"name": f"Ya tienes {MAX_QUEUED_PER_USER} colecciones esperando en cola."}
+        )
+
+    if _can_dispatch(user_id, collection_id):
+        _dispatch_job(
+            collection_id=collection_id,
+            user_id=user_id,
+            action="process",
+            custom_data_model=custom_data_model,
+        )
+        return "processing_text"
+
+    _queue_in_db(
+        collection_id=collection_id,
+        action="process",
+        custom_data_model=custom_data_model,
     )
-    _dispatch_process_job(collection_id, custom_data_model)
-    return "processing_text"
+    logger.info(
+        "Colección %s encolada en Supabase (usuario %s, queued=%d)",
+        collection_id,
+        user_id,
+        queued_count + 1,
+    )
+    return "queued"
 
 
 def request_continue_graph(
     collection_id: str,
     user_id: str,
-    background_tasks: BackgroundTasks,
+    background_tasks: "BackgroundTasks",
     custom_data_model: dict | None = None,
 ) -> str:
-    """Inicia solo la fase de grafo, o lanza ``ProcessingSlotBusyError``."""
     del background_tasks
-    _assert_slot_available(user_id, collection_id, exclude_self=True)
-    supabase_client.update_collection_processing_status(
-        collection_id, "processing_graph"
-    )
-    if custom_data_model is None:
-        _dispatch_continue_graph_job(collection_id)
-    else:
-        _dispatch_continue_graph_job(
-            collection_id,
+
+    queued_count = supabase_client.count_user_queued_collections(user_id)
+    if queued_count >= MAX_QUEUED_PER_USER:
+        raise ProcessingSlotBusyError(
+            {"name": f"Ya tienes {MAX_QUEUED_PER_USER} colecciones esperando en cola."}
+        )
+
+    if _can_dispatch(user_id, collection_id):
+        _dispatch_job(
+            collection_id=collection_id,
+            user_id=user_id,
+            action="continue_graph",
             custom_data_model=custom_data_model,
         )
-    return "processing_graph"
+        return "processing_graph"
+
+    _queue_in_db(
+        collection_id=collection_id,
+        action="continue_graph",
+        custom_data_model=custom_data_model,
+    )
+    return "queued"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Worker (Cloud Tasks HTTP o hilo local en dev)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _custom_model_from_row(row: dict) -> dict | None:
+    payload = row.get("queue_payload") or {}
+    if isinstance(payload, dict):
+        return payload.get("custom_data_model")
+    return None
+
+
+def execute_job(
+    *,
+    collection_id: str,
+    user_id: str,
+    action: QueueAction,
+    custom_data_model: dict | None = None,
+) -> dict[str, str]:
+    """Ejecuta un job de procesamiento. Invocado por Cloud Tasks o fallback local."""
+    row = supabase_client.get_collection(collection_id, user_id)
+    if not row:
+        return {"status": "skipped", "detail": "Colección no encontrada."}
+
+    status = row.get("processing_status")
+    if status == "cancelled":
+        return {"status": "skipped", "detail": "Colección cancelada."}
+
+    blocking = supabase_client.get_user_blocking_collection(
+        user_id, exclude_collection_id=collection_id
+    )
+    if blocking is not None:
+        return {
+            "status": "skipped",
+            "detail": "Usuario con otra colección activa.",
+        }
+
+    active = supabase_client.count_active_processing_jobs()
+    if active >= MAX_CONCURRENT_JOBS and status not in ACTIVE_STATUSES:
+        return {"status": "skipped", "detail": "Capacidad global llena."}
+
+    model = custom_data_model or _custom_model_from_row(row)
+    supabase_client.clear_collection_queue_metadata(collection_id)
+
+    try:
+        if action == "continue_graph":
+            supabase_client.update_collection_processing_status(
+                collection_id, "processing_graph"
+            )
+            wukong_runner.process_graph_collection(
+                collection_id,
+                custom_data_model=model,
+                final_status_on_success="partial_error",
+            )
+        else:
+            if status == "processing_graph":
+                wukong_runner.process_graph_collection(
+                    collection_id,
+                    custom_data_model=model,
+                    final_status_on_success="partial_error",
+                )
+            elif status == "processing_text":
+                texts = supabase_client.get_document_texts_by_collection(collection_id)
+                if texts:
+                    supabase_client.update_collection_processing_status(
+                        collection_id, "processing_graph"
+                    )
+                    wukong_runner.process_graph_collection(
+                        collection_id,
+                        custom_data_model=model,
+                        final_status_on_success="partial_error",
+                    )
+                else:
+                    wukong_runner.process_collection(collection_id, model)
+            else:
+                supabase_client.update_collection_processing_status(
+                    collection_id, "processing_text"
+                )
+                wukong_runner.process_collection(collection_id, model)
+    finally:
+        try:
+            _try_dispatch_queued_from_db()
+        except Exception as exc:
+            logger.warning(
+                "Error al despachar cola tras job %s: %s", collection_id, exc
+            )
+
+    return {"status": "completed", "detail": ""}
+
+
+def _run_job_sync(
+    collection_id: str,
+    user_id: str,
+    action: QueueAction,
+    custom_data_model: dict | None,
+) -> None:
+    try:
+        execute_job(
+            collection_id=collection_id,
+            user_id=user_id,
+            action=action,
+            custom_data_model=custom_data_model,
+        )
+    except Exception as exc:
+        logger.exception("Job local falló para %s: %s", collection_id, exc)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Recuperación y utilidades
+# ──────────────────────────────────────────────────────────────────────────────
+
+def recover_orphaned_processing() -> None:
+    """Tras reinicio: re-encola jobs huérfanos y despacha filas ``queued``."""
+    try:
+        stale = supabase_client.list_collections_by_processing_statuses(
+            ("processing_text", "processing_graph", "queued")
+        )
+    except Exception as exc:
+        logger.warning(
+            "Recuperación de pipeline omitida al arrancar (sin acceso a DB): %s", exc
+        )
+        return
+
+    for row in stale:
+        collection_id = row["id"]
+        status = row.get("processing_status")
+        user_id = row.get("user_id")
+        if not user_id:
+            continue
+
+        if status == "queued":
+            continue
+
+        if status in ACTIVE_STATUSES:
+            logger.warning(
+                "Recuperación: re-encolando Cloud Task para %s (%s)",
+                collection_id,
+                status,
+            )
+            try:
+                try_resume_stale_job(collection_id, user_id)
+            except Exception as exc:
+                logger.warning(
+                    "No se pudo re-encolar colección %s: %s", collection_id, exc
+                )
+
+    try:
+        _try_dispatch_queued_from_db()
+    except Exception as exc:
+        logger.warning("No se pudo despachar cola tras reinicio: %s", exc)
+
+
+def try_resume_stale_job(collection_id: str, user_id: str) -> bool:
+    """Re-encola un job en ``processing_*`` tras reinicio del servidor."""
+    row = supabase_client.get_collection(collection_id, user_id)
+    if not row:
+        return False
+
+    status = row.get("processing_status")
+    if status == "queued" and row.get("queue_action"):
+        _try_dispatch_queued_from_db()
+        return True
+
+    if status not in ACTIVE_STATUSES:
+        return False
+
+    if not _can_dispatch(user_id, collection_id):
+        return False
+
+    custom_model = _custom_model_from_row(row)
+    action: QueueAction = (
+        "continue_graph" if status == "processing_graph" else "process"
+    )
+    if action == "process" and status == "processing_text":
+        texts = supabase_client.get_document_texts_by_collection(collection_id)
+        if texts:
+            action = "continue_graph"
+
+    _enqueue_cloud_task(
+        collection_id=collection_id,
+        user_id=user_id,
+        action=action,
+        custom_data_model=custom_model,
+    )
+    return True
+
+
+def ensure_collection_processing(collection_id: str, user_id: str) -> None:
+    try:
+        try_resume_stale_job(collection_id, user_id)
+        _try_dispatch_queued_from_db()
+    except Exception as exc:
+        logger.warning(
+            "ensure_collection_processing falló para %s: %s", collection_id, exc
+        )
+
+
+def nudge_processing_queue() -> None:
+    try:
+        _try_dispatch_queued_from_db()
+    except Exception as exc:
+        logger.warning("Nudge de cola falló: %s", exc)
 
 
 def drain_user_queue(user_id: str) -> None:
-    """Compatibilidad: limpia filas ``queued`` legacy (sin auto-iniciar jobs)."""
     clear_legacy_queued_collections(user_id)
 
 
 def drain_for_collection(completed_collection_id: str) -> None:
-    """Sin cola: no-op (compatibilidad con llamadas existentes)."""
     del completed_collection_id
 
 
 def clear_legacy_queued_collections(user_id: str) -> None:
-    """Estado ``queued`` ya no se usa; dejar colecciones en idle."""
     try:
         rows = supabase_client.list_collections_by_processing_statuses(
             ("queued",),
@@ -166,75 +467,17 @@ def clear_legacy_queued_collections(user_id: str) -> None:
         logger.warning("No se pudo limpiar cola legacy: %s", exc)
         return
     for row in rows:
-        supabase_client.clear_collection_queue_metadata(row["id"])
-        supabase_client.update_collection_processing_status(
-            row["id"],
-            "idle",
-            error_message="",
-        )
-
-
-def recover_orphaned_processing() -> None:
-    """Tras reinicio: resetear jobs huérfanos y cola legacy."""
-    try:
-        stale = supabase_client.list_collections_by_processing_statuses(
-            ("processing_text", "processing_graph", "queued")
-        )
-    except Exception as exc:
-        logger.warning(
-            "Recuperación de pipeline omitida al arrancar (sin acceso a DB): %s",
-            exc,
-        )
-        return
-
-    for row in stale:
-        collection_id = row["id"]
-        status = row.get("processing_status")
-        logger.warning(
-            "Recuperación: colección %s en %s tras reinicio; marcando idle",
-            collection_id,
-            status,
-        )
-        supabase_client.clear_collection_queue_metadata(collection_id)
-        message = (
-            "Procesamiento interrumpido al reiniciar el servidor. "
-            "Puedes generar el grafo de nuevo."
-            if status in ACTIVE_STATUSES
-            else ""
-        )
-        supabase_client.update_collection_processing_status(
-            collection_id,
-            "idle",
-            error_message=message,
-        )
-
-
-def _run_process_job(
-    collection_id: str,
-    custom_data_model: dict | None = None,
-) -> None:
-    _mark_job_running(collection_id)
-    try:
-        wukong_runner.process_collection(collection_id, custom_data_model)
-    finally:
-        _mark_job_finished(collection_id)
-
-
-def _run_continue_graph_job(collection_id: str, custom_data_model: dict | None = None,) -> None:
-    _mark_job_running(collection_id)
-    try:
-        wukong_runner.process_graph_collection(
-            collection_id,
-            custom_data_model=custom_data_model,
-            final_status_on_success="partial_error",
-        )
-    finally:
-        _mark_job_finished(collection_id)
+        if not row.get("queue_action"):
+            supabase_client.clear_collection_queue_metadata(row["id"])
+            supabase_client.update_collection_processing_status(
+                row["id"], "idle", error_message=""
+            )
 
 
 def busy_detail_message(blocking: dict[str, Any]) -> str:
-    name = blocking.get("name") or "Otra colección"
-    return (
-        f"Se está procesando «{name}». "
-        "Espera a que termine antes de generar el grafo en otra colección."
-    )
+    return blocking.get("name") or "Cola llena"
+
+
+def is_job_running(collection_id: str) -> bool:
+    row = supabase_client.get_collection_by_id(collection_id)
+    return bool(row and row.get("processing_status") in ACTIVE_STATUSES)

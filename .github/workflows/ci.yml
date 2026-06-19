@@ -17,6 +17,10 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # wukong-engine es privado; GITHUB_TOKEN no alcanza. PAT con lectura en ambos repos.
+          token: ${{ secrets.SUBMODULES_PAT }}
 
       - name: Set up Python 3.13
         uses: actions/setup-python@v5

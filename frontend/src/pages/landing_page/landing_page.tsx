@@ -5,6 +5,7 @@ import { useAuth0 } from '@auth0/auth0-react' // Para validar contra el usuario 
 import { Pencil, Trash2, Loader2 } from 'lucide-react'
 import {
   getCollectionCardProgressLabel,
+  isPipelineInProgress,
   isPipelineRunning,
   MODAL_ETAPA_KEY,
   clearActiveCollectionStorageIfMatch,
@@ -207,7 +208,7 @@ function LandingPage() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       const hayProcesando = coleccionesRef.current.some((c) =>
-        isPipelineRunning(c.processing_status),
+        isPipelineInProgress(c.processing_status),
       )
       if (!hayProcesando) return
       void refreshColecciones({ silent: true })
