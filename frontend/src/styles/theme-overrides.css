@@ -10,6 +10,7 @@ html.bc-dark {
   --popup-error-bg: rgba(246, 213, 238, 0.12);
   --popup-error-text: #f6d5ee;
   --popup-error-border: rgba(216, 139, 187, 0.45);
+  --btn-text: #ffffff;
   --navbar-bg: rgba(232, 236, 248, 0.94);
   --navbar-border: rgba(171, 163, 246, 0.28);
   --navbar-shadow: rgba(0, 0, 0, 0.08);
@@ -23,6 +24,7 @@ html.bc-dark .bc-root {
   --text-1: #dce4f5;
   --text-2: #8394b4;
   --text-3: #465672;
+  --btn-text: #ffffff;
   --red-bg: rgba(239, 68, 68, 0.1);
   --hl-bg: rgba(251, 255, 161, 0.2);
   --hl-text: var(--imfd-yellow-bright);
