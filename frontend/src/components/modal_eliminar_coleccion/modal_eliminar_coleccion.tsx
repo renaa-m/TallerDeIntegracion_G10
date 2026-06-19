@@ -41,7 +41,7 @@ function ModalEliminarColeccion({
           </svg>
         </div>
 
-        <h3 className="mea-title">{titulo}</h3>
+        <h3 className="mea-title-2">{titulo}</h3>
 
         <p className="mea-text">
           ¿Estás seguro de que quieres eliminar{' '}
