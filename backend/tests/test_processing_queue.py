@@ -132,6 +132,69 @@ class TestTryDispatchQueued:
         mock_dispatch.assert_not_called()
 
 
+class TestTryResumeStaleJob:
+    def test_processing_text_parcial_sigue_en_process(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.get_collection",
+                return_value={
+                    "processing_status": "processing_text",
+                    "queue_payload": None,
+                },
+            ),
+            patch(
+                "app.services.processing_queue._can_dispatch",
+                return_value=True,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_documents_by_collection",
+                return_value=[{"id": "d1"}, {"id": "d2"}],
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_document_texts_by_collection",
+                return_value=[{"document_id": "d1"}],
+            ),
+            patch(
+                "app.services.processing_queue._enqueue_cloud_task",
+            ) as mock_enqueue,
+        ):
+            ok = processing_queue.try_resume_stale_job(COL_A, USER_A)
+
+        assert ok is True
+        mock_enqueue.assert_called_once()
+        assert mock_enqueue.call_args.kwargs["action"] == "process"
+
+    def test_processing_text_completo_usa_continue_graph(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.get_collection",
+                return_value={
+                    "processing_status": "processing_text",
+                    "queue_payload": None,
+                },
+            ),
+            patch(
+                "app.services.processing_queue._can_dispatch",
+                return_value=True,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_documents_by_collection",
+                return_value=[{"id": "d1"}],
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_document_texts_by_collection",
+                return_value=[{"document_id": "d1"}],
+            ),
+            patch(
+                "app.services.processing_queue._enqueue_cloud_task",
+            ) as mock_enqueue,
+        ):
+            ok = processing_queue.try_resume_stale_job(COL_A, USER_A)
+
+        assert ok is True
+        assert mock_enqueue.call_args.kwargs["action"] == "continue_graph"
+
+
 class TestExecuteJob:
     def test_omite_si_usuario_ocupado(self):
         with (

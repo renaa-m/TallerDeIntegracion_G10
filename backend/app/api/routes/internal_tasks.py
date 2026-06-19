@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Literal
 
@@ -34,7 +35,8 @@ async def run_processing_task(
     _: None = Depends(verify_cloud_tasks_caller),
 ) -> TaskRunResponse:
     """Worker HTTP: ejecuta extracción y/o grafo para una colección."""
-    result = processing_queue.execute_job(
+    result = await asyncio.to_thread(
+        processing_queue.execute_job,
         collection_id=body.collection_id,
         user_id=body.user_id,
         action=body.action,

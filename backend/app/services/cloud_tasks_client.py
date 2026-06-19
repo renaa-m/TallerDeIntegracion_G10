@@ -24,9 +24,16 @@ def is_configured() -> bool:
     )
 
 
+def task_worker_base_url() -> str:
+    """URL base del servicio que ejecuta jobs (worker dedicado o monolito)."""
+    explicit = settings.cloud_tasks_worker_url.strip()
+    if explicit:
+        return explicit.rstrip("/")
+    return settings.cloud_tasks_service_url.rstrip("/")
+
+
 def _task_handler_url() -> str:
-    base = settings.cloud_tasks_service_url.rstrip("/")
-    return f"{base}/internal/tasks/run"
+    return f"{task_worker_base_url()}/internal/tasks/run"
 
 
 def _task_id(action: str, collection_id: str) -> str:
@@ -64,9 +71,13 @@ def enqueue_processing_task(
         "action": action,
         "custom_data_model": custom_data_model,
     }
+    from google.protobuf import duration_pb2
+
     handler_url = _task_handler_url()
+    deadline = max(15, min(settings.cloud_tasks_dispatch_deadline_seconds, 1800))
     task: dict[str, Any] = {
         "name": task_name,
+        "dispatch_deadline": duration_pb2.Duration(seconds=deadline),
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
             "url": handler_url,

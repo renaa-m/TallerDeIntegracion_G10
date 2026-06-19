@@ -7,7 +7,7 @@ import logging
 from fastapi import HTTPException, Request
 
 from app.config import settings
-from app.services.cloud_tasks_client import is_configured
+from app.services.cloud_tasks_client import is_configured, task_worker_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ async def verify_cloud_tasks_caller(request: Request) -> None:
         raise HTTPException(status_code=403, detail="Token OIDC requerido.")
 
     token = auth.removeprefix("Bearer ").strip()
-    audience = f"{settings.cloud_tasks_service_url.rstrip('/')}/internal/tasks/run"
+    audience = f"{task_worker_base_url()}/internal/tasks/run"
 
     try:
         from google.auth.transport import requests as google_requests
