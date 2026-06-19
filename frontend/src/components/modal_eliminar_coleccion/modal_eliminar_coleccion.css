@@ -99,7 +99,7 @@
   font-family: var(--font-sans);
   font-size: 20px;
   font-weight: 700;
-  color: var(--text-1, #111111);
+  color: var(--text-1);
   margin: 0 0 12px;
   line-height: 1.25;
   letter-spacing: -0.01em;
@@ -109,13 +109,13 @@
   font-size: 14px;
   font-weight: 500;
   line-height: 1.6;
-  color: var(--text-2, #4f4f5c);
+  color: var(--text-2);
   margin: 0 0 8px;
 }
 
 .mea-filename {
   font-weight: 700;
-  color: var(--text-1, #111111);
+  color: var(--text-1);
   word-break: break-word;
 }
 
@@ -146,14 +146,14 @@
 
 .mea-btn-cancel {
   background: transparent;
-  border-color: var(--border, rgba(171, 163, 246, 0.3));
-  color: var(--text-2, #4f4f5c);
+  border-color: var(--border);
+  color: var(--text-1);
 }
 
 .mea-btn-cancel:hover {
-  background: var(--surface-2, rgba(255, 255, 255, 0.45));
-  border-color: var(--accent, #aba3f6);
-  color: var(--text-1, #111111);
+  background: var(--surface-2);
+  border-color: var(--accent);
+  color: var(--text-1);
 }
 
 .mea-btn-confirm {

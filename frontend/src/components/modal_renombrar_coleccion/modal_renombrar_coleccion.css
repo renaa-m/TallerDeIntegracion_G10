@@ -114,7 +114,7 @@
 .mrc-btn-cancel {
   background: transparent;
   border-color: var(--border);
-  color: var(--text-2);
+  color: var(--text-1);
 }
 
 .mrc-btn-cancel:hover:not(:disabled) {
