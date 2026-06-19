@@ -208,29 +208,27 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
                 f"{failed_part}",
             )
             return
-        
+
         if n_errored > 0:
-            if _skip_if_user_cancelled(
-                collection_id, "marcar awaiting tras extracción parcial"
-            ):
-                return
-            supabase_client.update_collection_processing_status(
+            logger.info(
+                "Colección %s: %d documento(s) no se extrajeron; "
+                "continuando grafo con %d documento(s) válidos",
                 collection_id,
-                "awaiting_graph_confirmation",
-                error_message=(
-                    f"{n_errored} documento(s) no se extrajeron "
-                    f"({', '.join(failed_doc_labels)}). "
-                    f"El grafo se creará solo con {n_extracted} documento(s) "
-                    f"que sí pasaron la extracción."
-                ),
+                n_errored,
+                n_extracted,
             )
-            return
+
         if _skip_if_user_cancelled(collection_id, "iniciar grafo tras extracción"):
             return
+        logger.info(
+            "Colección %s: extracción completada (%d doc(s)); iniciando Wukong",
+            collection_id,
+            n_extracted,
+        )
         process_graph_collection(
             collection_id,
             custom_data_model=custom_data_model,
-            final_status_on_success="graph_ready",
+            final_status_on_success="partial_error" if n_errored > 0 else "graph_ready",
         )
         return
 

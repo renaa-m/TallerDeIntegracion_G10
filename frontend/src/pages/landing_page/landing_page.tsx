@@ -15,6 +15,7 @@ import ModalEliminarColeccion from '../../components/modal_eliminar_coleccion/mo
 import ModalRenombrarColeccion from '../../components/modal_renombrar_coleccion/modal_renombrar_coleccion'
 import {
   getCollectionCardProgressLabel,
+  isPipelineInProgress,
   isPipelineRunning,
   MODAL_ETAPA_KEY,
   clearActiveCollectionStorageIfMatch,
@@ -251,7 +252,7 @@ function LandingPage() {
   useEffect(() => {
     const interval = window.setInterval(() => {
       const hayProcesando = coleccionesRef.current.some((c) =>
-        isPipelineRunning(c.processing_status),
+        isPipelineInProgress(c.processing_status),
       )
       if (!hayProcesando) return
       void refreshColecciones({ silent: true })

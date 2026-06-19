@@ -1,4 +1,4 @@
-"""Tests del slot de procesamiento (sin cola)."""
+"""Tests de la cola con Google Cloud Tasks (despacho vía Supabase + Tasks)."""
 
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -8,108 +8,150 @@ import pytest
 from app.services import processing_queue
 from app.services.processing_queue import ProcessingSlotBusyError
 
-USER_ID = "auth0|test-user"
+USER_A = "auth0|user-a"
 COL_A = str(uuid4())
 COL_B = str(uuid4())
-BLOCKING = {"id": COL_A, "name": "Colección A", "processing_status": "processing_text"}
 
 
-class TestProcessingQueue:
-    def test_request_process_inicia_cuando_slot_libre(self):
+class TestRequestProcess:
+    def test_despacha_cuando_hay_capacidad(self):
         bg = MagicMock()
         with (
             patch(
-                "app.services.processing_queue.supabase_client.get_user_blocking_collection",
-                return_value=None,
+                "app.services.processing_queue.supabase_client.count_user_queued_collections",
+                return_value=0,
             ),
             patch(
-                "app.services.processing_queue._find_in_memory_blocker",
-                return_value=None,
+                "app.services.processing_queue._can_dispatch",
+                return_value=True,
             ),
             patch(
-                "app.services.processing_queue.supabase_client.update_collection_processing_status",
-            ) as mock_upd,
-            patch(
-                "app.services.processing_queue._dispatch_process_job",
+                "app.services.processing_queue._dispatch_job",
             ) as mock_dispatch,
         ):
-            status = processing_queue.request_process(COL_B, USER_ID, bg)
+            status = processing_queue.request_process(COL_A, USER_A, bg)
 
         assert status == "processing_text"
-        mock_upd.assert_called_once_with(COL_B, "processing_text")
-        mock_dispatch.assert_called_once_with(COL_B, None)
+        mock_dispatch.assert_called_once_with(
+            collection_id=COL_A,
+            user_id=USER_A,
+            action="process",
+            custom_data_model=None,
+        )
 
-    def test_request_process_lanza_si_slot_ocupado(self):
+    def test_encola_en_supabase_sin_capacidad(self):
         bg = MagicMock()
         with (
             patch(
-                "app.services.processing_queue.supabase_client.get_user_blocking_collection",
-                return_value=BLOCKING,
+                "app.services.processing_queue.supabase_client.count_user_queued_collections",
+                return_value=0,
             ),
             patch(
-                "app.services.processing_queue.supabase_client.update_collection_processing_status",
-            ) as mock_upd,
+                "app.services.processing_queue._can_dispatch",
+                return_value=False,
+            ),
             patch(
-                "app.services.processing_queue._dispatch_process_job",
+                "app.services.processing_queue._queue_in_db",
+            ) as mock_queue,
+            patch(
+                "app.services.processing_queue._dispatch_job",
             ) as mock_dispatch,
         ):
-            with pytest.raises(ProcessingSlotBusyError) as exc_info:
-                processing_queue.request_process(COL_B, USER_ID, bg)
+            status = processing_queue.request_process(COL_B, USER_A, bg)
 
-        assert exc_info.value.blocking["name"] == "Colección A"
-        mock_upd.assert_not_called()
+        assert status == "queued"
+        mock_queue.assert_called_once()
         mock_dispatch.assert_not_called()
 
-    def test_request_continue_graph_excluye_la_misma_coleccion(self):
+    def test_rechaza_si_cola_usuario_llena(self):
         bg = MagicMock()
         with (
             patch(
-                "app.services.processing_queue.supabase_client.get_user_blocking_collection",
-                return_value=None,
-            ) as mock_blocking,
-            patch(
-                "app.services.processing_queue._find_in_memory_blocker",
-                return_value=None,
+                "app.services.processing_queue.supabase_client.count_user_queued_collections",
+                return_value=processing_queue.MAX_QUEUED_PER_USER,
             ),
             patch(
-                "app.services.processing_queue.supabase_client.update_collection_processing_status",
-            ) as mock_upd,
-            patch(
-                "app.services.processing_queue._dispatch_continue_graph_job",
+                "app.services.processing_queue._dispatch_job",
             ) as mock_dispatch,
+            pytest.raises(ProcessingSlotBusyError),
         ):
-            status = processing_queue.request_continue_graph(COL_A, USER_ID, bg)
+            processing_queue.request_process(COL_B, USER_A, bg)
 
-        assert status == "processing_graph"
-        mock_blocking.assert_called_once_with(
-            USER_ID,
-            exclude_collection_id=COL_A,
-        )
-        mock_upd.assert_called_once_with(COL_A, "processing_graph")
-        mock_dispatch.assert_called_once_with(COL_A)
+        mock_dispatch.assert_not_called()
 
-    def test_drain_user_queue_limpia_legacy_queued(self):
+
+class TestTryDispatchQueued:
+    def test_despacha_siguiente_en_fifo(self):
+        candidate = {
+            "id": COL_B,
+            "user_id": USER_A,
+            "queue_action": "process",
+            "queue_payload": None,
+        }
         with (
             patch(
-                "app.services.processing_queue.supabase_client.list_collections_by_processing_statuses",
-                return_value=[{"id": COL_B, "user_id": USER_ID}],
+                "app.services.processing_queue.supabase_client.count_active_processing_jobs",
+                return_value=0,
             ),
             patch(
-                "app.services.processing_queue.supabase_client.clear_collection_queue_metadata",
-            ) as mock_clear,
+                "app.services.processing_queue.supabase_client.get_next_queued_jobs",
+                return_value=[candidate],
+            ),
             patch(
-                "app.services.processing_queue.supabase_client.update_collection_processing_status",
-            ) as mock_upd,
+                "app.services.processing_queue.get_user_blocking_collection",
+                create=True,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_user_blocking_collection",
+                return_value=None,
+            ),
+            patch(
+                "app.services.processing_queue._dispatch_job",
+            ) as mock_dispatch,
         ):
-            processing_queue.drain_user_queue(USER_ID)
+            processing_queue._try_dispatch_queued_from_db()
 
-        mock_clear.assert_called_once_with(COL_B)
-        mock_upd.assert_called_once_with(COL_B, "idle", error_message="")
+        mock_dispatch.assert_called_once()
 
-    def test_drain_for_collection_es_noop(self):
-        processing_queue.drain_for_collection(COL_A)
+    def test_no_despacha_si_capacidad_global_llena(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.count_active_processing_jobs",
+                return_value=processing_queue.MAX_CONCURRENT_JOBS,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_next_queued_jobs",
+                return_value=[{"id": COL_B, "user_id": USER_A, "queue_action": "process"}],
+            ),
+            patch(
+                "app.services.processing_queue._dispatch_job",
+            ) as mock_dispatch,
+        ):
+            processing_queue._try_dispatch_queued_from_db()
 
-    def test_busy_detail_message_incluye_nombre(self):
-        msg = processing_queue.busy_detail_message(BLOCKING)
-        assert "Colección A" in msg
-        assert "Se está procesando" in msg
+        mock_dispatch.assert_not_called()
+
+
+class TestExecuteJob:
+    def test_omite_si_usuario_ocupado(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.get_collection",
+                return_value={"processing_status": "queued"},
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_user_blocking_collection",
+                return_value={"id": COL_A, "name": "Otra"},
+            ),
+            patch(
+                "app.services.processing_queue.wukong_runner.process_collection",
+            ) as mock_run,
+        ):
+            result = processing_queue.execute_job(
+                collection_id=COL_B,
+                user_id=USER_A,
+                action="process",
+            )
+
+        assert result["status"] == "skipped"
+        mock_run.assert_not_called()

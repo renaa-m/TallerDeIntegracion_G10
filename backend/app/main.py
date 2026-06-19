@@ -6,7 +6,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import health, collections, documentos, usuarios, search
+from app.api.routes import (
+    health,
+    collections,
+    documentos,
+    usuarios,
+    search,
+    internal_tasks,
+)
 from app.config import settings
 from app.services import processing_queue
 
@@ -42,11 +49,27 @@ app.include_router(collections.router)
 app.include_router(documentos.router)
 app.include_router(usuarios.router)
 app.include_router(search.router)
+app.include_router(internal_tasks.router)
 
 
 @app.on_event("startup")
 def _recover_processing_queue_on_startup() -> None:
     processing_queue.recover_orphaned_processing()
+    _warn_if_wukong_missing()
+
+
+def _warn_if_wukong_missing() -> None:
+    import logging
+
+    log = logging.getLogger(__name__)
+    try:
+        import wukong_engine  # noqa: F401
+    except ImportError:
+        log.error(
+            "wukong_engine NO está instalado. "
+            "Ejecuta: cd backend && pip install -e ./wukong-engine "
+            "— el grafo no se podrá generar hasta instalarlo."
+        )
 
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
