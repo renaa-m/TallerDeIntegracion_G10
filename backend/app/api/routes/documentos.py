@@ -2,6 +2,8 @@ import asyncio
 import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
+from datetime import datetime, timedelta
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
@@ -255,29 +257,43 @@ async def listar_documentos(
     return documentos
 
 
+from datetime import datetime, timedelta
+import secrets
+
 @router.get("/signed-url")
 async def get_signed_url(
     path: str,
     user_id: str = Depends(get_current_user),
 ):
-    """Genera una URL firmada para acceder a un documento en Supabase Storage.
-
-    Debe llamarse solo cuando el usuario decide abrir el archivo, no de forma
-    masiva para todos los resultados de búsqueda.
+    """
+    Genera una URL firmada temporal para acceder a un documento en Supabase Storage.
+    La URL expira en 5 minutos y solo funciona para este usuario específico.
     """
     safe_user_id = supabase_client.storage_path_user_folder(user_id)
     if not path.startswith(safe_user_id + "/"):
         raise HTTPException(status_code=403, detail="Acceso denegado.")
+    
     try:
-        url = await asyncio.to_thread(supabase_client.create_signed_url, path)
-        return {"url": url}
+        # Supabase genera URL firmada que expira en 5 minutos (300 segundos)
+        url = await asyncio.to_thread(
+            supabase_client.create_signed_url, 
+            path,
+            expires_in=30  # ← 5 minutos de expiración
+        )
+        
+        # Calcular cuándo expira (aproximadamente)
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        
+        return {
+            "url": url,
+            "expires_at": expires_at.isoformat(),
+            "expires_in_seconds": 300
+        }
     except Exception as exc:
         raise HTTPException(
             status_code=502,
             detail="No se pudo generar el enlace de descarga.",
         ) from exc
-
-
 
 @router.get("/{doc_id}", response_model=DocumentResponse)
 async def obtener_documento(
