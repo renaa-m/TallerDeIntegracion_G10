@@ -29,8 +29,14 @@ class Settings(BaseSettings):
     cloud_tasks_location: str = ""
     # URL pública del servicio Cloud Run (sin slash final). Target del HTTP task.
     cloud_tasks_service_url: str = ""
-    # Service account que Cloud Tasks usa para firmar el OIDC token del worker.
+    cloud_tasks_worker_url: str = ""
     cloud_tasks_invoker_sa: str = ""
+    imfd_service_role: str = "all"
+    # Dev local: API encola jobs vía HTTP al worker (sin Cloud Tasks). Ej. http://127.0.0.1:8081
+    dev_worker_http_url: str = ""
+    cloud_tasks_dispatch_deadline_seconds: int = 1800
+    # Docs por lote de extracción (todas las colecciones; si N ≤ batch → 1 sola task).
+    pipeline_extraction_batch_size: int = 15
 
     # HU-13: Upload resilience — configurable via .env, sensible defaults apply
     max_upload_retries: int = 3
