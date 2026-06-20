@@ -315,7 +315,25 @@ const BuscadorColeccion = () => {
   // 6. ESTADO: DOCUMENTOS
   // ─────────────────────────────────────────
 
-  const [fuentes, setFuentes] = useState([])
+  interface Fuente {
+    id: string
+    filename: string
+    file_type: string
+    storage_path: string
+    status: string
+    url?: string
+  }
+
+  interface DocumentoAPI {
+    id: string
+    filename: string
+    file_type: string
+    storage_path: string
+    status: string
+    url?: string
+  }
+
+  const [fuentes, setFuentes] = useState<Fuente[]>([])
 
   // ─────────────────────────────────────────
   // 7. ESTADO: FILTROS
@@ -537,7 +555,18 @@ const BuscadorColeccion = () => {
       )
       if (resDocs.ok) {
         const docs = await resDocs.json()
-        setFuentes(docs)
+
+        // ✅ Asegurar que cada documento tiene storage_path
+        const fuentesConPath = docs.map((doc: DocumentoAPI) => ({
+          id: doc.id,
+          filename: doc.filename,
+          file_type: doc.file_type,
+          storage_path: doc.storage_path || '',
+          status: doc.status,
+          url: doc.url,
+        }))
+
+        setFuentes(fuentesConPath)
       }
     } catch (e) {
       console.error('Error cargando datos:', e)
@@ -721,14 +750,26 @@ const BuscadorColeccion = () => {
       { headers: { Authorization: `Bearer ${token}` } },
     )
     if (!res.ok) throw new Error('Error obteniendo URL')
-    const { url } = await res.json()
-    return url
+
+    const data = await res.json()
+
+    return {
+      url: data.url,
+      expiresAt: new Date(data.expires_at),
+      expiresInSeconds: data.expires_in_seconds,
+    }
   }
 
   const handleOpenDocument = async (path: string) => {
     try {
-      const url = await getSignedUrl(path)
-      window.open(url, '_blank')
+      const urlData = await getSignedUrl(path)
+
+      // Mostrar notificación de seguridad
+      const minutesLeft = Math.floor(urlData.expiresInSeconds / 60)
+      console.log(`⏱️ Enlace válido por ${minutesLeft} minutos`)
+
+      // Abrir documento - El enlace solo funciona durante 5 minutos
+      window.open(urlData.url, '_blank')
     } catch (e) {
       console.error('No se pudo abrir el documento', e)
     }

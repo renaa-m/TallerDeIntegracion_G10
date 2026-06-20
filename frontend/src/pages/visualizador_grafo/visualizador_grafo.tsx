@@ -107,30 +107,46 @@ const GraphViewer = () => {
     setOpeningDocument(true)
     try {
       const token = await getAccessTokenSilently()
-      const res = await fetch(
-        `${API_URL}/api/documentos/${String(docId)}/signed-url`,
+
+      // Obtener documento para conseguir storage_path
+      const res = await fetch(`${API_URL}/api/documentos/${String(docId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      if (!res.ok) throw new Error('No se pudo obtener el documento.')
+
+      const documento = await res.json()
+      const storagePath = documento.storage_path
+
+      if (!storagePath) {
+        throw new Error(
+          'El documento no tiene una ruta de almacenamiento válida.',
+        )
+      }
+
+      // Obtener URL temporal firmada (expira en 5 minutos)
+      const urlRes = await fetch(
+        `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(storagePath)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         },
       )
 
-      if (!res.ok) throw new Error('No se pudo obtener la URL del documento.')
+      if (!urlRes.ok) throw new Error('No se pudo generar la URL temporal.')
 
-      const data = await res.json()
-      console.log('Respuesta de la API de documentos:', data) // <--- REVISA ESTO EN LA CONSOLA
-
-      // Cambia 'signed_url' por la propiedad real que veas en el console.log si difiere
-      const urlFinal = data.signed_url || data.url
+      const urlData = await urlRes.json()
+      const urlFinal = urlData.url
 
       if (!urlFinal) {
-        throw new Error(
-          'La API no devolvió ninguna URL válida en la respuesta.',
-        )
+        throw new Error('La API no devolvió una URL válida.')
       }
 
       window.open(urlFinal, '_blank')
     } catch (err) {
       console.error('Error abriendo documento fuente:', err)
+      alert(
+        `No se pudo abrir el documento.\n\n${err instanceof Error ? err.message : 'Intenta de nuevo.'}`,
+      )
     } finally {
       setOpeningDocument(false)
     }

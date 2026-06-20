@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
@@ -260,50 +261,77 @@ async def listar_documentos(
         user_id, str(coleccion_id) if coleccion_id is not None else None
     )
     
-    # Agregar la URL a cada documento antes de retornar
+    # NO generar URLs aquí - dejar que el frontend las genere bajo demanda
+    # Esto evita que las URLs expiren antes de usarse (30 segundos es muy corto)
     for doc in documentos:
-        storage_path = doc.get("storage_path")
-        if storage_path:
-            try:
-                signed = await asyncio.to_thread(
-                    supabase_client.create_signed_url, storage_path
-                )
-                if isinstance(signed, str) and signed.strip().startswith("http"):
-                    doc["url"] = signed.strip()
-                else:
-                    doc["url"] = None
-            except Exception:
-                doc["url"] = None
-        else:
-            doc["url"] = None
+        # storage_path ya viene del backend
+        # El frontend lo usará para generar URLs temporales cuando sea necesario
+        doc["url"] = None
 
     return documentos
-
 
 @router.get("/signed-url")
 async def get_signed_url(
     path: str,
     user_id: str = Depends(get_current_user),
 ):
-    """Genera una URL firmada para acceder a un documento en Supabase Storage.
-
-    Debe llamarse solo cuando el usuario decide abrir el archivo, no de forma
-    masiva para todos los resultados de búsqueda.
+    """
+    Genera una URL firmada temporal para acceder a un documento en Supabase Storage.
+    Valida que el documento pertenece al usuario autenticado.
     """
     safe_user_id = supabase_client.storage_path_user_folder(user_id)
+    
+    # VALIDACIÓN 1: El path debe empezar con la carpeta del usuario
     if not path.startswith(safe_user_id + "/"):
         raise HTTPException(status_code=403, detail="Acceso denegado.")
+    
     try:
-        url = await asyncio.to_thread(supabase_client.create_signed_url, path)
-        return {"url": url}
+        # VALIDACIÓN 2: Buscar el documento por storage_path (no por doc_id del path)
+        # Verificar que existe y pertenece a este usuario
+        documentos = await supabase_client.list_documents(user_id, None)
+        
+        documento = None
+        for doc in documentos:
+            if doc.get("storage_path") == path:
+                documento = doc
+                break
+        
+        if not documento:
+            raise HTTPException(
+                status_code=403, 
+                detail="El documento no existe o no tienes acceso a él."
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"ERROR validating document: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="Error al validar el documento.",
+        ) from exc
+    
+    try:
+        # Generar URL firmada (30 segundos)
+        url = await asyncio.to_thread(
+            supabase_client.create_signed_url, 
+            path,
+            expires_in=30
+        )
+        
+        expires_at = datetime.utcnow() + timedelta(seconds=30)
+        
+        return {
+            "url": url,
+            "expires_at": expires_at.isoformat(),
+            "expires_in_seconds": 30
+        }
     except Exception as exc:
         raise HTTPException(
             status_code=502,
             detail="No se pudo generar el enlace de descarga.",
         ) from exc
-
-
-
+    
 @router.get("/{doc_id}", response_model=DocumentResponse)
 async def obtener_documento(
     doc_id: UUID,
