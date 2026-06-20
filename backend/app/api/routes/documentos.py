@@ -3,7 +3,6 @@ import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
 from datetime import datetime, timedelta
-import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 
@@ -257,8 +256,6 @@ async def listar_documentos(
     return documentos
 
 
-from datetime import datetime, timedelta
-import secrets
 
 @router.get("/signed-url")
 async def get_signed_url(
