@@ -315,16 +315,25 @@ const BuscadorColeccion = () => {
   // 6. ESTADO: DOCUMENTOS
   // ─────────────────────────────────────────
 
-interface Fuente {
-  id: string
-  filename: string
-  file_type: string
-  storage_path: string
-  status: string
-  url?: string
-}
+  interface Fuente {
+    id: string
+    filename: string
+    file_type: string
+    storage_path: string
+    status: string
+    url?: string
+  }
 
-const [fuentes, setFuentes] = useState<Fuente[]>([])
+  interface DocumentoAPI {
+    id: string
+    filename: string
+    file_type: string
+    storage_path: string
+    status: string
+    url?: string
+  }
+
+  const [fuentes, setFuentes] = useState<Fuente[]>([])
 
   // ─────────────────────────────────────────
   // 7. ESTADO: FILTROS
@@ -498,78 +507,78 @@ const [fuentes, setFuentes] = useState<Fuente[]>([])
     }
   }, [id_coleccion, getAccessTokenSilently])
 
-const cargarDatos = useCallback(async () => {
-  if (!id_coleccion || id_coleccion === 'nueva') return
-  if (collectionMissingRef.current) return
+  const cargarDatos = useCallback(async () => {
+    if (!id_coleccion || id_coleccion === 'nueva') return
+    if (collectionMissingRef.current) return
 
-  try {
-    const token = await getAccessTokenSilently()
-    const headers = { Authorization: `Bearer ${token}` }
+    try {
+      const token = await getAccessTokenSilently()
+      const headers = { Authorization: `Bearer ${token}` }
 
-    const resColl = await fetch(
-      `${API_URL}/api/collections/${id_coleccion}`,
-      { headers },
-    )
-    if (resColl.status === 404) {
-      redirectIfCollectionMissing()
-      return
-    }
-    let collectionStatus = 'idle'
-    if (resColl.ok) {
-      const data = await resColl.json()
-      setNombreColeccion(data.name)
-      collectionStatus = data.processing_status ?? 'idle'
-      setCollectionProcessingStatus(collectionStatus)
-      const processing = isPipelineInProgress(collectionStatus)
-      setIsCollectionProcessing(processing)
-      if (processing) {
-        setCurrentProcessingSnapshot(
-          snapshotFromCollectionApi(data, id_coleccion),
-        )
-        if (
-          isPipelineRunning(collectionStatus) ||
-          collectionStatus === 'queued'
-        ) {
-          localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
-          localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-        }
-      } else {
-        setCurrentProcessingSnapshot(null)
+      const resColl = await fetch(
+        `${API_URL}/api/collections/${id_coleccion}`,
+        { headers },
+      )
+      if (resColl.status === 404) {
+        redirectIfCollectionMissing()
+        return
       }
-    }
+      let collectionStatus = 'idle'
+      if (resColl.ok) {
+        const data = await resColl.json()
+        setNombreColeccion(data.name)
+        collectionStatus = data.processing_status ?? 'idle'
+        setCollectionProcessingStatus(collectionStatus)
+        const processing = isPipelineInProgress(collectionStatus)
+        setIsCollectionProcessing(processing)
+        if (processing) {
+          setCurrentProcessingSnapshot(
+            snapshotFromCollectionApi(data, id_coleccion),
+          )
+          if (
+            isPipelineRunning(collectionStatus) ||
+            collectionStatus === 'queued'
+          ) {
+            localStorage.setItem(ACTIVE_COLLECTION_KEY, id_coleccion)
+            localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
+          }
+        } else {
+          setCurrentProcessingSnapshot(null)
+        }
+      }
 
-    if (isGrafoView) return
+      if (isGrafoView) return
 
-    const resDocs = await fetch(
-      `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
-      { headers },
-    )
-    if (resDocs.ok) {
-      const docs = await resDocs.json()
-      
-      // ✅ Asegurar que cada documento tiene storage_path
-      const fuentesConPath = docs.map((doc: any) => ({
-        id: doc.id,
-        filename: doc.filename,
-        file_type: doc.file_type,
-        storage_path: doc.storage_path || '', // ← Incluir storage_path
-        status: doc.status,
-        url: doc.url,
-      }))
-      
-      setFuentes(fuentesConPath)
+      const resDocs = await fetch(
+        `${API_URL}/api/documentos?coleccion_id=${id_coleccion}`,
+        { headers },
+      )
+      if (resDocs.ok) {
+        const docs = await resDocs.json()
+
+        // ✅ Asegurar que cada documento tiene storage_path
+        const fuentesConPath = docs.map((doc: DocumentoAPI) => ({
+          id: doc.id,
+          filename: doc.filename,
+          file_type: doc.file_type,
+          storage_path: doc.storage_path || '',
+          status: doc.status,
+          url: doc.url,
+        }))
+
+        setFuentes(fuentesConPath)
+      }
+    } catch (e) {
+      console.error('Error cargando datos:', e)
+    } finally {
+      setCollectionInitialLoadDone(true)
     }
-  } catch (e) {
-    console.error('Error cargando datos:', e)
-  } finally {
-    setCollectionInitialLoadDone(true)
-  }
-}, [
-  id_coleccion,
-  isGrafoView,
-  getAccessTokenSilently,
-  redirectIfCollectionMissing,
-])
+  }, [
+    id_coleccion,
+    isGrafoView,
+    getAccessTokenSilently,
+    redirectIfCollectionMissing,
+  ])
 
   // ─────────────────────────────────────────
   // 15. CALLBACKS: BÚSQUEDA

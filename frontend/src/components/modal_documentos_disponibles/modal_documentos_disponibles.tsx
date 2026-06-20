@@ -35,59 +35,61 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
   if (!isOpen) return null
 
   // Función para obtener URL temporal firmada
-const getSignedUrl = async (storagePath: string): Promise<string> => {
-  try {
-    const token = await getAccessTokenSilently()
-    const res = await fetch(
-      `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(storagePath)}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
-    )
-
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}))
-      console.error('Error response:', errorData) // ← AGREGA ESTO
-      throw new Error(
-        errorData.detail || `Error ${res.status}: No se pudo generar la URL`
+  const getSignedUrl = async (storagePath: string): Promise<string> => {
+    try {
+      const token = await getAccessTokenSilently()
+      const res = await fetch(
+        `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(storagePath)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
       )
-    }
 
-    const data = await res.json()
-    
-    if (!data.url) {
-      throw new Error('La respuesta del servidor no contiene una URL válida')
-    }
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        console.error('Error response:', errorData) // ← AGREGA ESTO
+        throw new Error(
+          errorData.detail || `Error ${res.status}: No se pudo generar la URL`,
+        )
+      }
 
-    return data.url
-  } catch (error) {
-    console.error('Error obteniendo URL firmada:', error)
-    throw error
+      const data = await res.json()
+
+      if (!data.url) {
+        throw new Error('La respuesta del servidor no contiene una URL válida')
+      }
+
+      return data.url
+    } catch (error) {
+      console.error('Error obteniendo URL firmada:', error)
+      throw error
+    }
   }
-}
 
   // Función mejorada para acceder al documento
-const handleAccessDocument = async (
-  e: React.MouseEvent,
-  docId: string,
-  storagePath: string
-) => {
-  e.stopPropagation()
+  const handleAccessDocument = async (
+    e: React.MouseEvent,
+    docId: string,
+    storagePath: string,
+  ) => {
+    e.stopPropagation()
 
-  console.log('📝 Storage path enviado:', storagePath) // ← AGREGA ESTO
+    console.log('📝 Storage path enviado:', storagePath) // ← AGREGA ESTO
 
-  setLoadingStates(prev => ({ ...prev, [docId]: true }))
+    setLoadingStates((prev) => ({ ...prev, [docId]: true }))
 
-  try {
-    const signedUrl = await getSignedUrl(storagePath)
-    window.open(signedUrl, '_blank')
-  } catch (error) {
-    console.error('Error al acceder al documento:', error)
-    alert(`No se pudo abrir el documento.\n\n${error instanceof Error ? error.message : 'Intenta de nuevo.'}`)
-  } finally {
-    setLoadingStates(prev => ({ ...prev, [docId]: false }))
+    try {
+      const signedUrl = await getSignedUrl(storagePath)
+      window.open(signedUrl, '_blank')
+    } catch (error) {
+      console.error('Error al acceder al documento:', error)
+      alert(
+        `No se pudo abrir el documento.\n\n${error instanceof Error ? error.message : 'Intenta de nuevo.'}`,
+      )
+    } finally {
+      setLoadingStates((prev) => ({ ...prev, [docId]: false }))
+    }
   }
-}
   return (
     <div className="mdd-overlay" onClick={onClose}>
       <div className="mdd-panel" onClick={(e) => e.stopPropagation()}>
