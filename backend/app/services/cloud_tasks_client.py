@@ -83,10 +83,9 @@ def enqueue_processing_task(
             "url": handler_url,
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps(payload).encode("utf-8"),
-            "oidc_token": {
-                "service_account_email": settings.cloud_tasks_invoker_sa,
-                "audience": handler_url,
-            },
+            # OIDC deshabilitado: el dispatch de Cloud Tasks se bloqueaba
+            # indefinidamente al intentar generar el token. El endpoint
+            # valida que el caller sea Google-Cloud-Tasks por User-Agent.
         },
     }
     try:
