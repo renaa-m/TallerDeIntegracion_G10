@@ -235,22 +235,20 @@ async def listar_documentos(
         user_id, str(coleccion_id) if coleccion_id is not None else None
     )
     
-    # Agregar la URL a cada documento antes de retornar
-    for doc in documentos:
+    async def _resolve_url(doc: dict) -> None:
         storage_path = doc.get("storage_path")
-        if storage_path:
-            try:
-                signed = await asyncio.to_thread(
-                    supabase_client.create_signed_url, storage_path
-                )
-                if isinstance(signed, str) and signed.strip().startswith("http"):
-                    doc["url"] = signed.strip()
-                else:
-                    doc["url"] = None
-            except Exception:
-                doc["url"] = None
-        else:
+        if not storage_path:
             doc["url"] = None
+            return
+        try:
+            signed = await asyncio.to_thread(
+                supabase_client.create_signed_url, storage_path
+            )
+            doc["url"] = signed.strip() if isinstance(signed, str) and signed.strip().startswith("http") else None
+        except Exception:
+            doc["url"] = None
+
+    await asyncio.gather(*(_resolve_url(doc) for doc in documentos))
 
     return documentos
 
