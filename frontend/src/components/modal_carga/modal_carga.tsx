@@ -31,6 +31,7 @@ import {
   getPipelineProgressDisplay,
   snapshotFromCollectionApi,
 } from '../../lib/collection_processing'
+import { fetchCollectionCached } from '../../lib/collection_fetch_cache'
 import DEFAULT_DATA_MODEL from '../../data/defaultDataModel'
 
 interface ModalCargaProps {
@@ -399,9 +400,10 @@ const ModalCarga = ({
 
       try {
         const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetchCollectionCached(
+          `${API_BASE}/api/collections/${collectionId}`,
+          { Authorization: `Bearer ${token}` },
+        )
         if (!isOpenRef.current || isCancelling) return
         if (res.status === 404) {
           if (localStorage.getItem(ACTIVE_COLLECTION_KEY) === collectionId) {
@@ -725,6 +727,26 @@ const ModalCarga = ({
   }, [scopeCollectionId, getAccessTokenSilently])
 
   // --- 3. Polling de Pipeline (solo con modal abierto y colección de la ruta) ---
+  const isCancellingRef = useRef(isCancelling)
+  useEffect(() => {
+    isCancellingRef.current = isCancelling
+  }, [isCancelling])
+
+  const onProcessingChangeRef = useRef(onProcessingChange)
+  useEffect(() => {
+    onProcessingChangeRef.current = onProcessingChange
+  }, [onProcessingChange])
+
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  }, [onClose])
+
+  const resetUploadFormRef = useRef(resetUploadForm)
+  useEffect(() => {
+    resetUploadFormRef.current = resetUploadForm
+  }, [resetUploadForm])
+
   useEffect(() => {
     if (
       !isOpen ||
@@ -733,28 +755,35 @@ const ModalCarga = ({
       !resolvedCollectionId ||
       (scopeCollectionId &&
         scopeCollectionId !== 'nueva' &&
-        resolvedCollectionId !== scopeCollectionId) ||
-      ['graph_ready', 'partial_error', 'error', 'idle'].includes(pipelineStatus)
+        resolvedCollectionId !== scopeCollectionId)
     )
       return
+
+    const terminalStatuses = ['graph_ready', 'partial_error', 'error', 'idle']
+    if (terminalStatuses.includes(pipelineStatusRef.current)) return
 
     const collectionId = resolvedCollectionId
     const interval = window.setInterval(async () => {
       try {
+        if (!isOpenRef.current || isCancellingRef.current) {
+          clearInterval(interval)
+          return
+        }
         const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!isOpenRef.current || isCancelling) {
+        const res = await fetchCollectionCached(
+          `${API_BASE}/api/collections/${collectionId}`,
+          { Authorization: `Bearer ${token}` },
+        )
+        if (!isOpenRef.current || isCancellingRef.current) {
           clearInterval(interval)
           return
         }
         if (res.status === 404) {
           clearActiveCollectionStorageIfMatch(collectionId)
           clearInterval(interval)
-          resetUploadForm()
-          onProcessingChange?.(false)
-          onClose()
+          resetUploadFormRef.current()
+          onProcessingChangeRef.current?.(false)
+          onCloseRef.current()
           return
         }
         if (!res.ok) return
@@ -778,7 +807,7 @@ const ModalCarga = ({
           )
         ) {
           setPipelineStatus(status)
-          onProcessingChange?.(isPipelineInProgress(data.processing_status))
+          onProcessingChangeRef.current?.(isPipelineInProgress(data.processing_status))
         }
         if (
           status === 'graph_ready' ||
@@ -794,14 +823,7 @@ const ModalCarga = ({
           if (data.processing_status === 'cancelled') {
             setPipelineError('')
           }
-          if (
-            status === 'graph_ready' ||
-            status === 'partial_error' ||
-            status === 'error' ||
-            data.processing_status === 'cancelled'
-          ) {
-            onProcessingChange?.(false)
-          }
+          onProcessingChangeRef.current?.(false)
           clearInterval(interval)
         } else if (status === 'awaiting_graph_confirmation') {
           setPipelineError(data.processing_error_message ?? '')
@@ -817,11 +839,7 @@ const ModalCarga = ({
     resolvedEtapa,
     resolvedCollectionId,
     scopeCollectionId,
-    pipelineStatus,
     getAccessTokenSilently,
-    onProcessingChange,
-    onClose,
-    resetUploadForm,
   ])
   const isAllowedFile = (file: File) => {
     const fileName = file.name.toLowerCase()

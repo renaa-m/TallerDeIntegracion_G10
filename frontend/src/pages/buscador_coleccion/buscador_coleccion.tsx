@@ -64,6 +64,7 @@ import {
   readBuscadorFiltersFromSearchParams,
 } from '../../lib/buscador_search_params'
 
+import { fetchCollectionCached } from '../../lib/collection_fetch_cache'
 import './buscador_coleccion.css'
 
 const API_URL = import.meta.env.VITE_API_URL || ''
@@ -497,9 +498,9 @@ const BuscadorColeccion = () => {
       const token = await getAccessTokenSilently()
       const headers = { Authorization: `Bearer ${token}` }
 
-      const resColl = await fetch(
+      const resColl = await fetchCollectionCached(
         `${API_URL}/api/collections/${id_coleccion}`,
-        { headers },
+        headers,
       )
       if (resColl.status === 404) {
         redirectIfCollectionMissing()
@@ -839,9 +840,10 @@ const BuscadorColeccion = () => {
     const cleanupSubidaRefresh = async () => {
       try {
         const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_URL}/api/collections/${collectionId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetchCollectionCached(
+          `${API_URL}/api/collections/${collectionId}`,
+          { Authorization: `Bearer ${token}` },
+        )
         if (cancelled) return
         if (res.ok) {
           const data = await res.json()
@@ -910,34 +912,6 @@ const BuscadorColeccion = () => {
     }
   }, [collectionProcessingStatus, cargarEntidades])
 
-  useEffect(() => {
-    if (!id_coleccion || id_coleccion === 'nueva') return
-
-    const estaLista =
-      collectionProcessingStatus === 'graph_ready' ||
-      collectionProcessingStatus === 'partial_error'
-    if (!estaLista) return
-
-    const fetchEntities = async () => {
-      try {
-        const token = await getAccessTokenSilently()
-        const res = await fetch(
-          `${API_URL}/api/collections/${id_coleccion}/entities`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        )
-        if (res.ok) {
-          const data = await res.json()
-          setEntidades(data.entidades || [])
-          setTiposEntidad(data.tipos || [])
-        }
-      } catch (e) {
-        console.error('Error cargando entidades:', e)
-      }
-    }
-
-    void fetchEntities()
-  }, [id_coleccion, collectionProcessingStatus, getAccessTokenSilently])
-
   // ─────────────────────────────────────────
   // 24. EFFECTS: BÚSQUEDA CON DEBOUNCE
   // ─────────────────────────────────────────
@@ -953,6 +927,11 @@ const BuscadorColeccion = () => {
   // 25. EFFECTS: POLLING COLECCIÓN ACTUAL
   // ─────────────────────────────────────────
 
+  const isCollectionProcessingRef = useRef(isCollectionProcessing)
+  useEffect(() => {
+    isCollectionProcessingRef.current = isCollectionProcessing
+  }, [isCollectionProcessing])
+
   useEffect(() => {
     if (
       modalCargaOpen ||
@@ -966,7 +945,7 @@ const BuscadorColeccion = () => {
     }
 
     const needsPolling =
-      isCollectionProcessing ||
+      isCollectionProcessingRef.current ||
       isPipelineInProgress(collectionProcessingStatusRef.current) ||
       isAwaitingGraphForCollection(
         id_coleccion,
@@ -990,9 +969,10 @@ const BuscadorColeccion = () => {
       if (collectionMissingRef.current) return false
       try {
         const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_URL}/api/collections/${id_coleccion}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetchCollectionCached(
+          `${API_URL}/api/collections/${id_coleccion}`,
+          { Authorization: `Bearer ${token}` },
+        )
         if (cancelled) return false
         if (res.status === 404) {
           redirectIfCollectionMissing()
@@ -1052,7 +1032,6 @@ const BuscadorColeccion = () => {
     modalCargaOpen,
     isGrafoView,
     collectionInitialLoadDone,
-    isCollectionProcessing,
     getAccessTokenSilently,
     redirectIfCollectionMissing,
   ])
@@ -1081,9 +1060,10 @@ const BuscadorColeccion = () => {
     const pollBackground = async () => {
       try {
         const token = await getAccessTokenSilently()
-        const res = await fetch(`${API_URL}/api/collections/${trackedId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetchCollectionCached(
+          `${API_URL}/api/collections/${trackedId}`,
+          { Authorization: `Bearer ${token}` },
+        )
         if (cancelled) return
         if (res.status === 404) {
           clearActiveCollectionStorageIfMatch(trackedId)
