@@ -3,8 +3,6 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-
-logging.basicConfig(level=logging.INFO)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +17,8 @@ from app.api.routes import (
 )
 from app.config import settings
 from app.services import processing_queue
+
+logging.basicConfig(level=logging.INFO)
 
 # Clientes de Google Cloud leen credenciales solo desde os.environ.
 _backend_root = Path(__file__).resolve().parent.parent
