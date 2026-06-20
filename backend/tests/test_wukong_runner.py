@@ -422,12 +422,11 @@ class TestRunWukong:
         cfg = _stub_wukong_config_path(tmp_path)
         process = mock_popen.return_value
         process.poll.side_effect = [1]
-        process.communicate.return_value = ("", "boom")
         process.returncode = 1
         with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
             result = wukong_runner._run_wukong(tmp_path)
         assert result is not None
-        assert "boom" in result
+        assert "exit 1" in result
 
     @patch("app.services.wukong_runner.subprocess.Popen")
     def test_wukong_no_instalado_devuelve_mensaje_claro(self, mock_popen, tmp_path):
