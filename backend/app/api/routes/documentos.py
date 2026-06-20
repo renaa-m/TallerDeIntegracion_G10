@@ -45,6 +45,31 @@ def _validar_archivo(filename: str | None, contenido: bytes) -> str:
             status_code=422,
             detail=f"El archivo supera el tamaño máximo permitido de {_TAMANO_MAXIMO_MB} MB.",
         )
+
+    if len(contenido) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo está vacío",
+        )
+
+    if extension == ".pdf" and contenido[:5] != b"%PDF-":
+        raise HTTPException(
+            status_code=400,
+            detail="El archivo no es un PDF válido (el contenido no corresponde a un archivo PDF)",
+        )
+
+    if extension == ".txt":
+        try:
+            contenido.decode("utf-8")
+        except UnicodeDecodeError:
+            try:
+                contenido.decode("latin-1")
+            except UnicodeDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="El archivo no es un texto válido (no se pudo decodificar como UTF-8 ni Latin-1)",
+                )
+
     return extension
 
 

@@ -1,9 +1,11 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
+from app.api.routes.documentos import _validar_archivo
 from app.main import app
 from app.middleware.auth import get_current_user
 
@@ -175,6 +177,30 @@ class TestUploadDocumento:
         safe_user_id = MOCK_USER_ID.replace("|", "_")
         assert ruta_llamada.startswith(safe_user_id)
 
+    def test_upload_pdf_vacio_retorna_400(self, client):
+        response = client.post(
+            f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
+            files={"file": ("vacio.pdf", b"", "application/pdf")},
+        )
+
+        assert response.status_code == 400
+        assert "vacío" in response.json()["detail"]
+
+    def test_upload_pdf_sin_magic_bytes_retorna_400(self, client):
+        response = client.post(
+            f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
+            files={
+                "file": (
+                    "informe.pdf",
+                    b"PK\x03\x04 contenido de un excel renombrado",
+                    "application/pdf",
+                )
+            },
+        )
+
+        assert response.status_code == 400
+        assert "PDF" in response.json()["detail"]
+
 
 # ── Listar ─────────────────────────────────────────────────────────────────────
 
@@ -313,6 +339,41 @@ class TestBatchUploadDocumentos:
         assert data["exitos"] == []
         assert data["duplicados"] == []
 
+    def test_batch_pdf_vacio_se_reporta_como_fallido(self, client):
+        response = client.post(
+            f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+            files=[("files", ("vacio.pdf", b"", "application/pdf"))],
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["fallidos"]) == 1
+        assert data["fallidos"][0]["filename"] == "vacio.pdf"
+        assert data["exitos"] == []
+        assert data["duplicados"] == []
+
+    def test_batch_pdf_sin_magic_bytes_se_reporta_como_fallido(self, client):
+        response = client.post(
+            f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+            files=[
+                (
+                    "files",
+                    (
+                        "informe.pdf",
+                        b"PK\x03\x04 contenido de un excel renombrado",
+                        "application/pdf",
+                    ),
+                )
+            ],
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["fallidos"]) == 1
+        assert data["fallidos"][0]["filename"] == "informe.pdf"
+        assert data["exitos"] == []
+        assert data["duplicados"] == []
+
     def test_sin_autenticacion_retorna_403(self, client_sin_auth):
         response = client_sin_auth.post(
             f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
@@ -320,3 +381,26 @@ class TestBatchUploadDocumentos:
         )
 
         assert response.status_code == 403
+
+
+# ── Validación de contenido (_validar_archivo) ──────────────────────────────────
+
+
+class TestValidarArchivoContenidoNoDecodificable:
+    def test_txt_no_decodificable_en_utf8_ni_latin1_lanza_400(self):
+        # Latin-1 nunca falla con bytes reales (mapea 1:1 los 256 valores de
+        # byte), así que esta rama es defensiva e inalcanzable vía HTTP real.
+        # Se prueba a nivel unitario, mockeando decode para forzar el fallo
+        # en ambas llamadas. Es compartida por upload single y batch (misma
+        # función), por eso un solo test cubre ambos endpoints.
+        contenido = MagicMock(spec=bytes)
+        contenido.__len__.return_value = 10
+        contenido.decode.side_effect = UnicodeDecodeError(
+            "utf-8", b"\x00", 0, 1, "invalid"
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            _validar_archivo("notas.txt", contenido)
+
+        assert exc_info.value.status_code == 400
+        assert "no es un texto válido" in exc_info.value.detail
