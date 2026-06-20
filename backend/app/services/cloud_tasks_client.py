@@ -57,6 +57,10 @@ def enqueue_processing_task(
     custom_data_model: dict | None = None,
 ) -> None:
     """Encola un HTTP task hacia el worker interno del backend."""
+    logger.info(
+        "enqueue_processing_task: action=%s collection=%s is_configured=%s",
+        action, collection_id, is_configured(),
+    )
     if not is_configured():
         raise RuntimeError("Cloud Tasks no está configurado.")
 
@@ -74,6 +78,10 @@ def enqueue_processing_task(
 
     handler_url = _task_handler_url()
     deadline = max(15, min(settings.cloud_tasks_dispatch_deadline_seconds, 1800))
+    logger.info(
+        "Cloud Tasks: creando task → queue=%s url=%s deadline=%ds",
+        parent, handler_url, deadline,
+    )
     task: dict[str, Any] = {
         "dispatch_deadline": duration_pb2.Duration(seconds=deadline),
         "http_request": {
@@ -81,15 +89,17 @@ def enqueue_processing_task(
             "url": handler_url,
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps(payload).encode("utf-8"),
-            # OIDC deshabilitado: el dispatch de Cloud Tasks se bloqueaba
-            # indefinidamente al intentar generar el token. El endpoint
-            # valida que el caller sea Google-Cloud-Tasks por User-Agent.
         },
     }
-    client.create_task(request={"parent": parent, "task": task})
-    logger.info(
-        "Cloud Task encolada: action=%s collection=%s user=%s",
-        action,
-        collection_id,
-        user_id,
-    )
+    try:
+        result = client.create_task(request={"parent": parent, "task": task})
+        logger.info(
+            "Cloud Task CREADA OK: action=%s collection=%s task_name=%s",
+            action, collection_id, result.name,
+        )
+    except Exception as exc:
+        logger.error(
+            "Cloud Task FALLÓ: action=%s collection=%s error=%s",
+            action, collection_id, exc,
+        )
+        raise

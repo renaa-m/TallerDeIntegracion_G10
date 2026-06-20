@@ -35,18 +35,27 @@ async def run_processing_task(
     _: None = Depends(verify_cloud_tasks_caller),
 ) -> TaskRunResponse:
     """Worker HTTP: ejecuta extracción y/o grafo para una colección."""
-    result = await asyncio.to_thread(
-        processing_queue.execute_job,
-        collection_id=body.collection_id,
-        user_id=body.user_id,
-        action=body.action,
-        custom_data_model=body.custom_data_model,
-    )
     logger.info(
-        "Task %s collection=%s → %s",
-        body.action,
-        body.collection_id,
-        result["status"],
+        ">>> /internal/tasks/run RECIBIDO: action=%s collection=%s user=%s",
+        body.action, body.collection_id, body.user_id,
+    )
+    try:
+        result = await asyncio.to_thread(
+            processing_queue.execute_job,
+            collection_id=body.collection_id,
+            user_id=body.user_id,
+            action=body.action,
+            custom_data_model=body.custom_data_model,
+        )
+    except Exception as exc:
+        logger.exception(
+            ">>> /internal/tasks/run EXCEPCIÓN: action=%s collection=%s",
+            body.action, body.collection_id,
+        )
+        raise
+    logger.info(
+        ">>> /internal/tasks/run RESULTADO: action=%s collection=%s → status=%s detail=%s",
+        body.action, body.collection_id, result["status"], result.get("detail", ""),
     )
     if processing_queue.should_retry_cloud_task(result):
         raise HTTPException(
