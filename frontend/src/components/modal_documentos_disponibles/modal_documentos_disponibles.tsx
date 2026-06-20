@@ -147,7 +147,7 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
                         ? 'Documento en procesamiento'
                         : loadingStates[f.id]
                           ? 'Generando enlace...'
-                          : 'Acceder al documento (enlace válido 5 minutos)'
+                          : 'Acceder al documento (enlace válido 30 segundos)'
                     }
                     aria-label={
                       f.status === 'processing'

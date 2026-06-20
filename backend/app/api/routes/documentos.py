@@ -275,16 +275,16 @@ async def get_signed_url(
         url = await asyncio.to_thread(
             supabase_client.create_signed_url, 
             path,
-            expires_in=30  # ← 5 minutos de expiración
+            expires_in=30  # ← 30 segundos de expiración
         )
         
         # Calcular cuándo expira (aproximadamente)
-        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        expires_at = datetime.utcnow() + timedelta(seconds=30)
         
         return {
             "url": url,
             "expires_at": expires_at.isoformat(),
-            "expires_in_seconds": 300
+            "expires_in_seconds": 30
         }
     except Exception as exc:
         raise HTTPException(
