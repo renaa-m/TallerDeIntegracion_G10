@@ -349,3 +349,19 @@ class TestShouldRetryCloudTask:
         assert not processing_queue.should_retry_cloud_task(
             {"status": "skipped", "detail": "Colección cancelada."}
         )
+
+
+class TestEnsureCollectionProcessing:
+    def test_polling_no_reencola_stale_jobs(self):
+        with (
+            patch(
+                "app.services.processing_queue.try_resume_stale_job",
+            ) as mock_resume,
+            patch(
+                "app.services.processing_queue._try_dispatch_queued_from_db",
+            ) as mock_dispatch,
+        ):
+            processing_queue.ensure_collection_processing(COL_A, USER_A)
+
+        mock_resume.assert_not_called()
+        mock_dispatch.assert_called_once()

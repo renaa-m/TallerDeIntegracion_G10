@@ -3,14 +3,14 @@
 # Uso: ./infra/cloud_tasks/setup.sh PROJECT_ID REGION QUEUE_NAME SERVICE_URL
 #
 # Ejemplo:
-#   ./infra/cloud_tasks/setup.sh titulo-grupo10 us-central1 imfd-processing \
+#   ./infra/cloud_tasks/setup.sh titulo-grupo10 us-central1 imfd-processing-v2 \
 #     https://imfd-backend-xxxxx-uc.a.run.app
 
 set -euo pipefail
 
 PROJECT_ID="${1:?PROJECT_ID requerido}"
 REGION="${2:-us-central1}"
-QUEUE_NAME="${3:-imfd-processing}"
+QUEUE_NAME="${3:-imfd-processing-v2}"
 SERVICE_URL="${4:-}"
 
 SA_NAME="imfd-tasks-invoker"
