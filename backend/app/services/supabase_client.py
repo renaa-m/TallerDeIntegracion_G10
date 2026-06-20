@@ -638,11 +638,10 @@ def _get_document_sync(doc_id: str, user_id: str) -> dict | None:
         .table("documents")
         .select("*")
         .eq("id", doc_id)
-        .eq("user_id", user_id)
+        .eq("user_id", user_id)  # ← Verificación de ownership
         .execute()
     )
     return result.data[0] if result.data else None
-
 
 def _list_documents_sync(user_id: str, collection_id: str | None) -> list[dict]:
     query = get_supabase_client().table("documents").select("*").eq("user_id", user_id)
@@ -777,7 +776,13 @@ async def list_documents(user_id: str, collection_id: str | None = None) -> list
 
 
 async def get_document(doc_id: str, user_id: str) -> dict | None:
-    return await asyncio.to_thread(_get_document_sync, doc_id, user_id)
+    """
+    Obtiene un documento solo si pertenece al user_id especificado.
+    Verifica ownership en la BD antes de generar URLs firmadas.
+    """
+    return await asyncio.to_thread(
+        _get_document_sync, doc_id, user_id
+    )
 
 # ── Chunk Sources / Graph Helpers ──────────────────────────────────────────
 
