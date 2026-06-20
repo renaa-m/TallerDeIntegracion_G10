@@ -27,6 +27,7 @@ FROM python:3.13-slim AS backend
 WORKDIR /app
 COPY backend/requirements.txt .
 COPY backend/wukong-engine ./wukong-engine
+RUN pip install --no-cache-dir --prefix=/install torch --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt && \
     pip install --no-cache-dir --prefix=/install ./wukong-engine
 
