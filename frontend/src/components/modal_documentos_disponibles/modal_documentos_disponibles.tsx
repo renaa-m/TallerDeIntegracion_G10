@@ -43,18 +43,18 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
         `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(storagePath)}`,
         {
           headers: { Authorization: `Bearer ${token}` },
-        }
+        },
       )
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}))
         throw new Error(
-          errorData.detail || `Error ${res.status}: No se pudo generar la URL`
+          errorData.detail || `Error ${res.status}: No se pudo generar la URL`,
         )
       }
 
       const data = await res.json()
-      
+
       if (!data.url) {
         throw new Error('La respuesta del servidor no contiene una URL válida')
       }
@@ -70,11 +70,11 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
   const handleAccessDocument = async (
     e: React.MouseEvent,
     docId: string,
-    storagePath: string
+    storagePath: string,
   ) => {
     e.stopPropagation()
 
-    setLoadingStates(prev => ({ ...prev, [docId]: true }))
+    setLoadingStates((prev) => ({ ...prev, [docId]: true }))
 
     try {
       // Obtener URL temporal firmada (expira en 5 minutos)
@@ -84,9 +84,11 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
       window.open(signedUrl, '_blank')
     } catch (error) {
       console.error('Error al acceder al documento:', error)
-      alert(`No se pudo abrir el documento.\n\n${error instanceof Error ? error.message : 'Intenta de nuevo.'}`)
+      alert(
+        `No se pudo abrir el documento.\n\n${error instanceof Error ? error.message : 'Intenta de nuevo.'}`,
+      )
     } finally {
-      setLoadingStates(prev => ({ ...prev, [docId]: false }))
+      setLoadingStates((prev) => ({ ...prev, [docId]: false }))
     }
   }
 

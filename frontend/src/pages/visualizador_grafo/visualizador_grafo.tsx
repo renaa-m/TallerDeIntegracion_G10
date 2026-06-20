@@ -94,64 +94,63 @@ const GraphViewer = () => {
     cyInstance.layout(layoutOptions).run()
   }, [])
 
-const openSourceDocument = useCallback(async () => {
-  const docId = selectedData?.source_document_id
-  if (!docId) {
-    console.error(
-      'No hay source_document_id en el nodo seleccionado',
-      selectedData,
-    )
-    return
-  }
-
-  setOpeningDocument(true)
-  try {
-    const token = await getAccessTokenSilently()
-    
-    // Obtener documento para conseguir storage_path
-    const res = await fetch(
-      `${API_URL}/api/documentos/${String(docId)}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    )
-
-    if (!res.ok) throw new Error('No se pudo obtener el documento.')
-
-    const documento = await res.json()
-    const storagePath = documento.storage_path
-
-    if (!storagePath) {
-      throw new Error('El documento no tiene una ruta de almacenamiento válida.')
+  const openSourceDocument = useCallback(async () => {
+    const docId = selectedData?.source_document_id
+    if (!docId) {
+      console.error(
+        'No hay source_document_id en el nodo seleccionado',
+        selectedData,
+      )
+      return
     }
 
-    // Obtener URL temporal firmada (expira en 5 minutos)
-    const urlRes = await fetch(
-      `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(storagePath)}`,
-      {
+    setOpeningDocument(true)
+    try {
+      const token = await getAccessTokenSilently()
+
+      // Obtener documento para conseguir storage_path
+      const res = await fetch(`${API_URL}/api/documentos/${String(docId)}`, {
         headers: { Authorization: `Bearer ${token}` },
-      },
-    )
+      })
 
-    if (!urlRes.ok) throw new Error('No se pudo generar la URL temporal.')
+      if (!res.ok) throw new Error('No se pudo obtener el documento.')
 
-    const urlData = await urlRes.json()
-    const urlFinal = urlData.url
+      const documento = await res.json()
+      const storagePath = documento.storage_path
 
-    if (!urlFinal) {
-      throw new Error('La API no devolvió una URL válida.')
+      if (!storagePath) {
+        throw new Error(
+          'El documento no tiene una ruta de almacenamiento válida.',
+        )
+      }
+
+      // Obtener URL temporal firmada (expira en 5 minutos)
+      const urlRes = await fetch(
+        `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(storagePath)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      )
+
+      if (!urlRes.ok) throw new Error('No se pudo generar la URL temporal.')
+
+      const urlData = await urlRes.json()
+      const urlFinal = urlData.url
+
+      if (!urlFinal) {
+        throw new Error('La API no devolvió una URL válida.')
+      }
+
+      window.open(urlFinal, '_blank')
+    } catch (err) {
+      console.error('Error abriendo documento fuente:', err)
+      alert(
+        `No se pudo abrir el documento.\n\n${err instanceof Error ? err.message : 'Intenta de nuevo.'}`,
+      )
+    } finally {
+      setOpeningDocument(false)
     }
-
-    window.open(urlFinal, '_blank')
-  } catch (err) {
-    console.error('Error abriendo documento fuente:', err)
-    alert(
-      `No se pudo abrir el documento.\n\n${err instanceof Error ? err.message : 'Intenta de nuevo.'}`
-    )
-  } finally {
-    setOpeningDocument(false)
-  }
-}, [getAccessTokenSilently, selectedData])
+  }, [getAccessTokenSilently, selectedData])
 
   useEffect(() => {
     if (cyRef && elements.length > 0) {

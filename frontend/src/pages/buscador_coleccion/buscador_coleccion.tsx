@@ -714,38 +714,37 @@ const BuscadorColeccion = () => {
   // 17. CALLBACKS: DOCUMENTOS
   // ─────────────────────────────────────────
 
-const getSignedUrl = async (path: string) => {
-  const token = await getAccessTokenSilently()
-  const res = await fetch(
-    `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  )
-  if (!res.ok) throw new Error('Error obteniendo URL')
-  
-  const data = await res.json()
-  
-  return {
-    url: data.url,
-    expiresAt: new Date(data.expires_at),
-    expiresInSeconds: data.expires_in_seconds
-  }
-}
+  const getSignedUrl = async (path: string) => {
+    const token = await getAccessTokenSilently()
+    const res = await fetch(
+      `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(path)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!res.ok) throw new Error('Error obteniendo URL')
 
-const handleOpenDocument = async (path: string) => {
-  try {
-    const urlData = await getSignedUrl(path)
-    
-    // Mostrar notificación de seguridad
-    const minutesLeft = Math.floor(urlData.expiresInSeconds / 60)
-    console.log(`⏱️ Enlace válido por ${minutesLeft} minutos`)
-    
-    // Abrir documento - El enlace solo funciona durante 5 minutos
-    window.open(urlData.url, '_blank')
-    
-  } catch (e) {
-    console.error('No se pudo abrir el documento', e)
+    const data = await res.json()
+
+    return {
+      url: data.url,
+      expiresAt: new Date(data.expires_at),
+      expiresInSeconds: data.expires_in_seconds,
+    }
   }
-}
+
+  const handleOpenDocument = async (path: string) => {
+    try {
+      const urlData = await getSignedUrl(path)
+
+      // Mostrar notificación de seguridad
+      const minutesLeft = Math.floor(urlData.expiresInSeconds / 60)
+      console.log(`⏱️ Enlace válido por ${minutesLeft} minutos`)
+
+      // Abrir documento - El enlace solo funciona durante 5 minutos
+      window.open(urlData.url, '_blank')
+    } catch (e) {
+      console.error('No se pudo abrir el documento', e)
+    }
+  }
 
   // ─────────────────────────────────────────
   // 18. CALLBACKS: FILTROS & ENTIDADES
