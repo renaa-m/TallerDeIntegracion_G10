@@ -6,6 +6,10 @@ type CacheEntry = {
 const cache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 2000
 
+function safeClone(res: Response): Response {
+  return typeof res.clone === 'function' ? res.clone() : res
+}
+
 export function fetchCollectionCached(
   url: string,
   headers: Record<string, string>,
@@ -14,7 +18,7 @@ export function fetchCollectionCached(
   const existing = cache.get(url)
 
   if (existing && now - existing.timestamp < CACHE_TTL_MS) {
-    return existing.promise.then((res) => res.clone())
+    return existing.promise.then(safeClone)
   }
 
   const promise = fetch(url, { headers })
@@ -31,5 +35,9 @@ export function fetchCollectionCached(
       }, CACHE_TTL_MS)
     })
 
-  return promise.then((res) => res.clone())
+  return promise
+}
+
+export function clearCollectionFetchCache(): void {
+  cache.clear()
 }

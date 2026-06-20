@@ -386,7 +386,11 @@ const ModalCarga = ({
       if (scopeCollectionId && scopeCollectionId !== 'nueva') {
         collectionId = scopeCollectionId
       } else if (scopeCollectionId === 'nueva') {
-        collectionId = nuevaSessionCollectionId ?? null
+        collectionId =
+          nuevaSessionCollectionId ??
+          (localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1'
+            ? localStorage.getItem(ACTIVE_COLLECTION_KEY)
+            : null)
       }
 
       if (!collectionId) return
@@ -746,20 +750,23 @@ const ModalCarga = ({
     resetUploadFormRef.current = resetUploadForm
   }, [resetUploadForm])
 
+  const isPipelineActive =
+    pipelineStatus === 'processing_text' ||
+    pipelineStatus === 'processing_graph' ||
+    pipelineStatus === 'queued'
+
   useEffect(() => {
     if (
       !isOpen ||
       isCancelling ||
       resolvedEtapa !== 'pipeline' ||
       !resolvedCollectionId ||
+      !isPipelineActive ||
       (scopeCollectionId &&
         scopeCollectionId !== 'nueva' &&
         resolvedCollectionId !== scopeCollectionId)
     )
       return
-
-    const terminalStatuses = ['graph_ready', 'partial_error', 'error', 'idle']
-    if (terminalStatuses.includes(pipelineStatusRef.current)) return
 
     const collectionId = resolvedCollectionId
     const interval = window.setInterval(async () => {
@@ -840,6 +847,7 @@ const ModalCarga = ({
     resolvedEtapa,
     resolvedCollectionId,
     scopeCollectionId,
+    isPipelineActive,
     getAccessTokenSilently,
   ])
   const isAllowedFile = (file: File) => {

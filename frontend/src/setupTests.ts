@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom'
 import { TextEncoder, TextDecoder } from 'util'
 import { syncThemeClass } from './lib/theme'
+import { clearCollectionFetchCache } from './lib/collection_fetch_cache'
 
 Object.assign(globalThis, {
   TextEncoder,
@@ -22,4 +23,5 @@ Object.defineProperty(window, 'matchMedia', {
 beforeEach(() => {
   document.documentElement.classList.remove('bc-dark')
   syncThemeClass()
+  clearCollectionFetchCache()
 })
