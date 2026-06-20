@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from app.api.routes import (
 )
 from app.config import settings
 from app.services import processing_queue
+
+logging.basicConfig(level=logging.INFO)
 
 # Clientes de Google Cloud leen credenciales solo desde os.environ.
 _backend_root = Path(__file__).resolve().parent.parent

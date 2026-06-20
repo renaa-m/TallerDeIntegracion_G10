@@ -109,21 +109,17 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _wukong_python_executable() -> str:
-    """Intérprete para ``python -m wukong_engine`` (wukong-engine exige Python >= 3.13).
+    """Intérprete para ``python -m wukong_engine``.
 
-    Si el proceso FastAPI corre con 3.12 por error, Wukong seguía usando ese binario y fallaba
-    con ``No module named wukong_engine``. Preferimos ``.venv/bin/python3.13`` cuando exista.
+    En Docker, sys.executable puede apuntar al Python del builder en vez
+    del container final. Usamos shutil.which para encontrar el Python real.
     """
-    if sys.version_info >= (3, 13):
-        return sys.executable
-    v313 = BACKEND_ROOT / ".venv" / "bin" / "python3.13"
-    if v313.is_file():
-        logger.info(
-            "Wukong: el servidor usa Python %s; ejecutando Wukong con %s",
-            sys.version.split()[0],
-            v313,
-        )
-        return str(v313)
+    import shutil
+    real = shutil.which("python3") or shutil.which("python")
+    if real:
+        logger.info("Wukong: usando intérprete %s", real)
+        return real
+    logger.warning("Wukong: no se encontró python3 en PATH, usando sys.executable=%s", sys.executable)
     return sys.executable
 
 # Debe coincidir con parameters.included_documents en default_data_model_*.json
