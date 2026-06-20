@@ -114,6 +114,11 @@ def _enqueue_cloud_task(
     action: QueueAction,
     custom_data_model: dict | None,
 ) -> None:
+    logger.info(
+        "_enqueue_cloud_task: action=%s collection=%s cloud_tasks_configured=%s dev_worker=%s",
+        action, collection_id, cloud_tasks_client.is_configured(),
+        bool(settings.dev_worker_http_url.strip()),
+    )
     if cloud_tasks_client.is_configured():
         cloud_tasks_client.enqueue_processing_task(
             collection_id=collection_id,
@@ -133,6 +138,7 @@ def _enqueue_cloud_task(
         thread.start()
         return
 
+    logger.info("_enqueue_cloud_task: fallback a hilo local para %s", collection_id)
     thread = threading.Thread(
         target=_run_job_sync,
         args=(collection_id, user_id, action, custom_data_model),

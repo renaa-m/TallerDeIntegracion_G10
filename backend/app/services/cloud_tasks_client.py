@@ -57,6 +57,10 @@ def enqueue_processing_task(
     custom_data_model: dict | None = None,
 ) -> None:
     """Encola un HTTP task hacia el worker interno del backend."""
+    logger.info(
+        "enqueue_processing_task: action=%s collection=%s is_configured=%s",
+        action, collection_id, is_configured(),
+    )
     if not is_configured():
         raise RuntimeError("Cloud Tasks no está configurado.")
 
@@ -64,7 +68,6 @@ def enqueue_processing_task(
 
     client = tasks_v2.CloudTasksClient()
     parent = _queue_path(client)
-    task_name = f"{parent}/tasks/{_task_id(action, collection_id)}"
     payload = {
         "collection_id": collection_id,
         "user_id": user_id,
@@ -75,33 +78,28 @@ def enqueue_processing_task(
 
     handler_url = _task_handler_url()
     deadline = max(15, min(settings.cloud_tasks_dispatch_deadline_seconds, 1800))
+    logger.info(
+        "Cloud Tasks: creando task → queue=%s url=%s deadline=%ds",
+        parent, handler_url, deadline,
+    )
     task: dict[str, Any] = {
-        "name": task_name,
         "dispatch_deadline": duration_pb2.Duration(seconds=deadline),
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
             "url": handler_url,
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps(payload).encode("utf-8"),
-            # OIDC deshabilitado: el dispatch de Cloud Tasks se bloqueaba
-            # indefinidamente al intentar generar el token. El endpoint
-            # valida que el caller sea Google-Cloud-Tasks por User-Agent.
         },
     }
     try:
-        client.create_task(request={"parent": parent, "task": task})
+        result = client.create_task(request={"parent": parent, "task": task})
         logger.info(
-            "Cloud Task encolada: action=%s collection=%s user=%s",
-            action,
-            collection_id,
-            user_id,
+            "Cloud Task CREADA OK: action=%s collection=%s task_name=%s",
+            action, collection_id, result.name,
         )
     except Exception as exc:
-        if "AlreadyExists" in type(exc).__name__ or "ALREADY_EXISTS" in str(exc):
-            logger.info(
-                "Cloud Task ya existía (idempotente): action=%s collection=%s",
-                action,
-                collection_id,
-            )
-            return
+        logger.error(
+            "Cloud Task FALLÓ: action=%s collection=%s error=%s",
+            action, collection_id, exc,
+        )
         raise
