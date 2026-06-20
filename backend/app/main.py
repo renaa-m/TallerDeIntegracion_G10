@@ -1,4 +1,3 @@
-import logging
 import os
 from pathlib import Path
 
@@ -18,8 +17,6 @@ from app.api.routes import (
 from app.config import settings
 from app.services import processing_queue
 
-logging.basicConfig(level=logging.INFO)
-
 # Clientes de Google Cloud leen credenciales solo desde os.environ.
 _backend_root = Path(__file__).resolve().parent.parent
 if settings.google_application_credentials.strip():
@@ -28,42 +25,35 @@ if settings.google_application_credentials.strip():
         _p = _backend_root / _p
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(_p.resolve())
 
-_SERVICE_ROLE = settings.imfd_service_role.strip().lower() or "all"
-_IS_WORKER = _SERVICE_ROLE == "worker"
-_IS_API = _SERVICE_ROLE in ("api", "all")
-
 app = FastAPI(
     title=settings.app_name,
     version="0.1.0",
-    docs_url="/docs" if _IS_API else None,
-    redoc_url="/redoc" if _IS_API else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5173",  # FIX: agregar esta variante
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# FIX: cada router incluido una sola vez
 app.include_router(health.router)
+app.include_router(collections.router)
+app.include_router(documentos.router)
+app.include_router(usuarios.router)
+app.include_router(search.router)
 app.include_router(internal_tasks.router)
-
-if _IS_API:
-    app.include_router(collections.router)
-    app.include_router(documentos.router)
-    app.include_router(usuarios.router)
-    app.include_router(search.router)
 
 
 @app.on_event("startup")
 def _recover_processing_queue_on_startup() -> None:
-    if not _IS_API:
-        return
     processing_queue.recover_orphaned_processing()
     _warn_if_wukong_missing()
 
@@ -84,7 +74,7 @@ def _warn_if_wukong_missing() -> None:
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
-if _IS_API and STATIC_DIR.is_dir():
+if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/{full_path:path}")

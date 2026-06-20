@@ -24,16 +24,9 @@ def is_configured() -> bool:
     )
 
 
-def task_worker_base_url() -> str:
-    """URL base del servicio que ejecuta jobs (worker dedicado o monolito)."""
-    explicit = settings.cloud_tasks_worker_url.strip()
-    if explicit:
-        return explicit.rstrip("/")
-    return settings.cloud_tasks_service_url.rstrip("/")
-
-
 def _task_handler_url() -> str:
-    return f"{task_worker_base_url()}/internal/tasks/run"
+    base = settings.cloud_tasks_service_url.rstrip("/")
+    return f"{base}/internal/tasks/run"
 
 
 def _task_id(action: str, collection_id: str) -> str:
@@ -57,10 +50,6 @@ def enqueue_processing_task(
     custom_data_model: dict | None = None,
 ) -> None:
     """Encola un HTTP task hacia el worker interno del backend."""
-    logger.info(
-        "enqueue_processing_task: action=%s collection=%s is_configured=%s",
-        action, collection_id, is_configured(),
-    )
     if not is_configured():
         raise RuntimeError("Cloud Tasks no está configurado.")
 
@@ -68,38 +57,41 @@ def enqueue_processing_task(
 
     client = tasks_v2.CloudTasksClient()
     parent = _queue_path(client)
+    task_name = f"{parent}/tasks/{_task_id(action, collection_id)}"
     payload = {
         "collection_id": collection_id,
         "user_id": user_id,
         "action": action,
         "custom_data_model": custom_data_model,
     }
-    from google.protobuf import duration_pb2
-
     handler_url = _task_handler_url()
-    deadline = max(15, min(settings.cloud_tasks_dispatch_deadline_seconds, 1800))
-    logger.info(
-        "Cloud Tasks: creando task → queue=%s url=%s deadline=%ds",
-        parent, handler_url, deadline,
-    )
     task: dict[str, Any] = {
-        "dispatch_deadline": duration_pb2.Duration(seconds=deadline),
+        "name": task_name,
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
             "url": handler_url,
             "headers": {"Content-Type": "application/json"},
             "body": json.dumps(payload).encode("utf-8"),
+            "oidc_token": {
+                "service_account_email": settings.cloud_tasks_invoker_sa,
+                "audience": handler_url,
+            },
         },
     }
     try:
-        result = client.create_task(request={"parent": parent, "task": task})
+        client.create_task(request={"parent": parent, "task": task})
         logger.info(
-            "Cloud Task CREADA OK: action=%s collection=%s task_name=%s",
-            action, collection_id, result.name,
+            "Cloud Task encolada: action=%s collection=%s user=%s",
+            action,
+            collection_id,
+            user_id,
         )
     except Exception as exc:
-        logger.error(
-            "Cloud Task FALLÓ: action=%s collection=%s error=%s",
-            action, collection_id, exc,
-        )
+        if "AlreadyExists" in type(exc).__name__ or "ALREADY_EXISTS" in str(exc):
+            logger.info(
+                "Cloud Task ya existía (idempotente): action=%s collection=%s",
+                action,
+                collection_id,
+            )
+            return
         raise
