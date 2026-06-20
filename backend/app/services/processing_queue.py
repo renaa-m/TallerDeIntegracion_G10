@@ -491,7 +491,8 @@ def _processing_job_stale(row: dict) -> bool:
     """True si la fila no se actualizó recientemente (worker probablemente caído)."""
     raw = row.get("updated_at")
     if not raw:
-        return True
+        # Sin timestamp no podemos saber si hay un job activo; no reencolar por polling.
+        return False
     try:
         if isinstance(raw, str):
             updated = datetime.fromisoformat(raw.replace("Z", "+00:00"))
@@ -556,12 +557,18 @@ def try_resume_stale_job(
 
 
 def ensure_collection_processing(collection_id: str, user_id: str) -> None:
+    """Despacha filas ``queued`` en Supabase. No reencola Cloud Tasks en polling.
+
+    Reencolar ``processing_*`` desde el GET del frontend duplicaba tasks
+    (``continue_graph`` mientras ``process`` seguía corriendo). La recuperación
+    de jobs huérfanos queda solo en ``recover_orphaned_processing`` al arrancar.
+    """
+    del collection_id, user_id
     try:
-        try_resume_stale_job(collection_id, user_id, from_startup_recovery=False)
         _try_dispatch_queued_from_db()
     except Exception as exc:
         logger.warning(
-            "ensure_collection_processing falló para %s: %s", collection_id, exc
+            "ensure_collection_processing falló al despachar cola: %s", exc
         )
 
 

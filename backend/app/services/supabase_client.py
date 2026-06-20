@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime, timezone
 from functools import lru_cache
 from uuid import uuid4
 
@@ -14,6 +15,10 @@ BUCKET = "documentos"
 # objeto = `{collection_id}.qm`. Ruta legacy (borrado): .../knowledge_graph.qm
 LEGACY_QM_BASENAME = "knowledge_graph.qm"
 UPLOAD_SEMAPHORE = asyncio.Semaphore(5)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def storage_path_user_folder(user_id: str) -> str:
@@ -208,7 +213,10 @@ def update_collection_processing_status(
     conviene pasar también processed_at con el timestamp ISO.
     """
     client = _get_service_client()
-    payload: dict = {"processing_status": processing_status}
+    payload: dict = {
+        "processing_status": processing_status,
+        "updated_at": _now_iso(),
+    }
     if error_message is not None:
         payload["processing_error_message"] = error_message
     if processed_at is not None:
@@ -432,6 +440,8 @@ def update_collection_progress(
 
     if not payload:
         return None
+
+    payload["updated_at"] = _now_iso()
 
     response = (
         client.table("collections")
