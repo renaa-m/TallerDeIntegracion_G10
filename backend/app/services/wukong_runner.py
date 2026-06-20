@@ -31,8 +31,11 @@ import shutil # para copiar el workdir de Wukong a disco
 import subprocess # para ejecutar Wukong
 import sys # para ejecutar Wukong
 import tempfile # para crear un directorio temporal para el workdir de Wukong
+import time
 from datetime import datetime, timezone # para manejar fechas y horas en UTC
 from pathlib import Path # para manejar rutas de archivos   
+
+import httpx
 
 from app.config import (
     WUKONG_DATA_MODEL_LANGUAGES,
@@ -49,13 +52,60 @@ from app.services.text_extraction import (
 
 logger = logging.getLogger(__name__) # para registrar errores
 
+# Intervalo entre chequeos de cancelación mientras Wukong corre (subprocess).
+WUKONG_CANCEL_POLL_SECONDS = 3
+_SUPABASE_READ_ATTEMPTS = 4
+_SUPABASE_READ_BASE_DELAY_SECONDS = 0.5
+
 
 class ProcessingCancelled(Exception):
     """El cliente pidió cancelar; el estado en DB ya es ``cancelled``."""
 
 
+def _is_transient_supabase_error(exc: BaseException) -> bool:
+    """Errores de red recuperables al leer Supabase (p. ej. bajo carga en Cloud Run)."""
+    if isinstance(exc, httpx.TransportError):
+        return True
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) in (11, 35):
+        return True
+    return False
+
+
+def _fetch_collection_row(collection_id: str) -> dict | None:
+    """Lee una colección con reintentos ante fallos transitorios de red."""
+    last_exc: BaseException | None = None
+    for attempt in range(_SUPABASE_READ_ATTEMPTS):
+        try:
+            return supabase_client.get_collection_by_id(collection_id)
+        except Exception as exc:
+            if not _is_transient_supabase_error(exc):
+                raise
+            last_exc = exc
+            if attempt + 1 < _SUPABASE_READ_ATTEMPTS:
+                delay = _SUPABASE_READ_BASE_DELAY_SECONDS * (2**attempt)
+                logger.warning(
+                    "Lectura Supabase transitoria (%s) para %s; reintento %s/%s en %.1fs",
+                    type(exc).__name__,
+                    collection_id,
+                    attempt + 2,
+                    _SUPABASE_READ_ATTEMPTS,
+                    delay,
+                )
+                time.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
 def _check_cancelled(collection_id: str) -> None:
-    row = supabase_client.get_collection_by_id(collection_id)
+    try:
+        row = _fetch_collection_row(collection_id)
+    except Exception as exc:
+        logger.warning(
+            "No se pudo verificar cancelación para %s (%s); se continúa.",
+            collection_id,
+            exc,
+        )
+        return
     if row is None:
         raise ProcessingCancelled()
     if row.get("processing_status") == "cancelled":
@@ -64,7 +114,16 @@ def _check_cancelled(collection_id: str) -> None:
 
 def _skip_if_user_cancelled(collection_id: str, where: str) -> bool:
     """Si ya está ``cancelled`` o borrada, no sobrescribir estado. Devuelve True si hay que salir."""
-    row = supabase_client.get_collection_by_id(collection_id)
+    try:
+        row = _fetch_collection_row(collection_id)
+    except Exception as exc:
+        logger.warning(
+            "No se pudo verificar cancelación (%s) para %s (%s); se continúa.",
+            where,
+            collection_id,
+            exc,
+        )
+        return False
     if row is None:
         logger.info(
             "Omitiendo %s: colección %s ya no existe.", where, collection_id
@@ -699,8 +758,7 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
                 process.wait()
                 return f"Wukong superó el timeout de {timeout_seconds}s."
 
-            import time
-            time.sleep(1)
+            time.sleep(WUKONG_CANCEL_POLL_SECONDS)
 
         stdout, stderr = process.communicate()
 
