@@ -47,7 +47,7 @@ async def run_processing_task(
             action=body.action,
             custom_data_model=body.custom_data_model,
         )
-    except Exception as exc:
+    except Exception:
         logger.exception(
             ">>> /internal/tasks/run EXCEPCIÓN: action=%s collection=%s",
             body.action, body.collection_id,
