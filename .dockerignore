@@ -1,0 +1,12 @@
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.git/
+.github/
+.venv/
+venv/
+node_modules/
+frontend/node_modules/
+backend/venv/
+backend/.venv/
