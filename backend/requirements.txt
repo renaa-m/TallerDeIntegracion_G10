@@ -70,6 +70,5 @@ google-cloud-vision==3.10.1
 google-cloud-tasks==2.19.1
 google-auth==2.38.0
 
-# Wukong (grafo). Requiere el submódulo backend/wukong-engine:
-#   pip install ./wukong-engine
-./wukong-engine
+# Wukong (grafo): se instala en el Dockerfile, no aquí,
+# porque Dependabot no tiene acceso al submódulo privado.
