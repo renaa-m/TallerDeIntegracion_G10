@@ -278,9 +278,10 @@ const ModalCarga = ({
       return 'pipeline'
     }
 
-    const trackedId =
-      resolveModalCollectionId(scopeCollectionId, activeCollectionId) ??
-      (scopeCollectionId === 'nueva' ? readNuevaSessionCollectionId() : null)
+    const trackedId = resolveModalCollectionId(
+      scopeCollectionId,
+      activeCollectionId,
+    )
     if (
       trackedId &&
       localStorage.getItem(ACTIVE_COLLECTION_KEY) === trackedId &&
@@ -292,7 +293,7 @@ const ModalCarga = ({
     if (
       forcePipelineEtapa &&
       scopeCollectionId === 'nueva' &&
-      readNuevaSessionCollectionId() &&
+      activeCollectionId &&
       localStorage.getItem(MODAL_ETAPA_KEY) === 'pipeline'
     ) {
       return 'pipeline'
@@ -381,14 +382,12 @@ const ModalCarga = ({
     const syncStatus = async () => {
       if (!isOpen || isCancelling || isSubmittingPipelineRef.current) return
 
-      const collectionId =
-        scopeCollectionId && scopeCollectionId !== 'nueva'
-          ? scopeCollectionId
-          : (nuevaSessionCollectionId ??
-            readNuevaSessionCollectionId() ??
-            (localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1'
-              ? localStorage.getItem(ACTIVE_COLLECTION_KEY)
-              : null))
+      let collectionId: string | null = null
+      if (scopeCollectionId && scopeCollectionId !== 'nueva') {
+        collectionId = scopeCollectionId
+      } else if (scopeCollectionId === 'nueva') {
+        collectionId = nuevaSessionCollectionId ?? null
+      }
 
       if (!collectionId) return
 
