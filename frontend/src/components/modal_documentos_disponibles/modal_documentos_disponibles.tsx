@@ -1,11 +1,15 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { X, FileText, Loader2, ExternalLink } from 'lucide-react'
+import { useAuth0 } from '@auth0/auth0-react'
 import './modal_documentos_disponibles.css'
+
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface Fuente {
   id: string
   filename: string
   file_type: string
+  storage_path: string
   status: string
   url?: string
 }
@@ -16,21 +20,73 @@ interface ModalProps {
   onClose: () => void
 }
 
+interface LoadingStates {
+  [key: string]: boolean
+}
+
 const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
   isOpen,
   fuentes,
   onClose,
 }) => {
+  const { getAccessTokenSilently } = useAuth0()
+  const [loadingStates, setLoadingStates] = useState<LoadingStates>({})
+
   if (!isOpen) return null
 
-  // Función simplificada usando el enlace directo
-  const handleAccessDocument = (e: React.MouseEvent, url?: string) => {
-    e.stopPropagation() // Evita que se dispare el onClick de la tarjeta
+  // Función para obtener URL temporal firmada
+  const getSignedUrl = async (storagePath: string): Promise<string> => {
+    try {
+      const token = await getAccessTokenSilently()
 
-    if (url) {
-      window.open(url, '_blank')
-    } else {
-      console.error('El documento no tiene un enlace disponible')
+      const res = await fetch(
+        `${API_URL}/api/documentos/signed-url?path=${encodeURIComponent(storagePath)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(
+          errorData.detail || `Error ${res.status}: No se pudo generar la URL`
+        )
+      }
+
+      const data = await res.json()
+      
+      if (!data.url) {
+        throw new Error('La respuesta del servidor no contiene una URL válida')
+      }
+
+      return data.url
+    } catch (error) {
+      console.error('Error obteniendo URL firmada:', error)
+      throw error
+    }
+  }
+
+  // Función mejorada para acceder al documento
+  const handleAccessDocument = async (
+    e: React.MouseEvent,
+    docId: string,
+    storagePath: string
+  ) => {
+    e.stopPropagation()
+
+    setLoadingStates(prev => ({ ...prev, [docId]: true }))
+
+    try {
+      // Obtener URL temporal firmada (expira en 5 minutos)
+      const signedUrl = await getSignedUrl(storagePath)
+
+      // Abrir documento en nueva pestaña
+      window.open(signedUrl, '_blank')
+    } catch (error) {
+      console.error('Error al acceder al documento:', error)
+      alert(`No se pudo abrir el documento.\n\n${error instanceof Error ? error.message : 'Intenta de nuevo.'}`)
+    } finally {
+      setLoadingStates(prev => ({ ...prev, [docId]: false }))
     }
   }
 
@@ -63,6 +119,8 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
                   <div className="mdd-card-icon">
                     {f.status === 'processing' ? (
                       <Loader2 className="mdd-spin" size={20} />
+                    ) : loadingStates[f.id] ? (
+                      <Loader2 className="mdd-spin" size={20} />
                     ) : (
                       <FileText size={20} />
                     )}
@@ -72,15 +130,27 @@ const ModalDocumentosDisponibles: React.FC<ModalProps> = ({
                     <span className="mdd-card-title">{f.filename}</span>
                   </div>
 
-                  {/* BOTÓN DE ACCESO USANDO LA URL FIRMADA */}
+                  {/* BOTÓN DE ACCESO CON URL TEMPORAL FIRMADA */}
                   <button
                     type="button"
                     className="mdd-access-btn"
-                    onClick={(e) => handleAccessDocument(e, f.url)}
-                    disabled={!f.url || f.status === 'processing'}
-                    title={f.url ? 'Acceder al documento' : 'URL no disponible'}
+                    onClick={(e) =>
+                      handleAccessDocument(e, f.id, f.storage_path)
+                    }
+                    disabled={
+                      f.status === 'processing' || loadingStates[f.id] === true
+                    }
+                    title={
+                      f.status === 'processing'
+                        ? 'Documento en procesamiento'
+                        : loadingStates[f.id]
+                          ? 'Generando enlace...'
+                          : 'Acceder al documento (enlace válido 5 minutos)'
+                    }
                     aria-label={
-                      f.url ? 'Acceder al documento' : 'URL no disponible'
+                      f.status === 'processing'
+                        ? 'Documento en procesamiento'
+                        : 'Acceder al documento'
                     }
                   >
                     <ExternalLink size={16} />
