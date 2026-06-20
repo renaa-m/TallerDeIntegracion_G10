@@ -71,5 +71,5 @@ google-cloud-tasks==2.19.1
 google-auth==2.38.0
 
 # Wukong (grafo). Requiere el submódulo backend/wukong-engine:
-#   pip install -e ./wukong-engine
--e ./wukong-engine
+#   pip install ./wukong-engine
+./wukong-engine
