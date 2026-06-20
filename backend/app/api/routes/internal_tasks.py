@@ -6,7 +6,7 @@ import asyncio
 import logging
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.middleware.cloud_tasks_auth import verify_cloud_tasks_caller
@@ -48,4 +48,9 @@ async def run_processing_task(
         body.collection_id,
         result["status"],
     )
+    if processing_queue.should_retry_cloud_task(result):
+        raise HTTPException(
+            status_code=503,
+            detail=result.get("detail") or "Reintento de Cloud Tasks.",
+        )
     return TaskRunResponse(status=result["status"], detail=result.get("detail", ""))

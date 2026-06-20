@@ -133,7 +133,25 @@ class TestTryDispatchQueued:
 
 
 class TestTryResumeStaleJob:
-    def test_processing_text_parcial_sigue_en_process(self):
+    def test_processing_text_parcial_no_reencola_en_polling(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.get_collection",
+                return_value={
+                    "processing_status": "processing_text",
+                    "queue_payload": None,
+                },
+            ),
+            patch(
+                "app.services.processing_queue._enqueue_cloud_task",
+            ) as mock_enqueue,
+        ):
+            ok = processing_queue.try_resume_stale_job(COL_A, USER_A)
+
+        assert ok is False
+        mock_enqueue.assert_not_called()
+
+    def test_processing_text_parcial_reencola_process_en_recovery(self):
         with (
             patch(
                 "app.services.processing_queue.supabase_client.get_collection",
@@ -158,13 +176,15 @@ class TestTryResumeStaleJob:
                 "app.services.processing_queue._enqueue_cloud_task",
             ) as mock_enqueue,
         ):
-            ok = processing_queue.try_resume_stale_job(COL_A, USER_A)
+            ok = processing_queue.try_resume_stale_job(
+                COL_A, USER_A, from_startup_recovery=True
+            )
 
         assert ok is True
         mock_enqueue.assert_called_once()
         assert mock_enqueue.call_args.kwargs["action"] == "process"
 
-    def test_processing_text_completo_usa_continue_graph(self):
+    def test_processing_text_completo_usa_continue_graph_en_recovery(self):
         with (
             patch(
                 "app.services.processing_queue.supabase_client.get_collection",
@@ -189,10 +209,30 @@ class TestTryResumeStaleJob:
                 "app.services.processing_queue._enqueue_cloud_task",
             ) as mock_enqueue,
         ):
-            ok = processing_queue.try_resume_stale_job(COL_A, USER_A)
+            ok = processing_queue.try_resume_stale_job(
+                COL_A, USER_A, from_startup_recovery=True
+            )
 
         assert ok is True
         assert mock_enqueue.call_args.kwargs["action"] == "continue_graph"
+
+    def test_processing_text_completo_no_reencola_en_polling(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.get_collection",
+                return_value={
+                    "processing_status": "processing_text",
+                    "queue_payload": None,
+                },
+            ),
+            patch(
+                "app.services.processing_queue._enqueue_cloud_task",
+            ) as mock_enqueue,
+        ):
+            ok = processing_queue.try_resume_stale_job(COL_A, USER_A)
+
+        assert ok is False
+        mock_enqueue.assert_not_called()
 
 
 class TestExecuteJob:
@@ -218,3 +258,94 @@ class TestExecuteJob:
 
         assert result["status"] == "skipped"
         mock_run.assert_not_called()
+
+    def test_continue_graph_omite_si_textos_incompletos(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.get_collection",
+                return_value={"processing_status": "processing_text"},
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_user_blocking_collection",
+                return_value=None,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.count_active_processing_jobs",
+                return_value=0,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_documents_by_collection",
+                return_value=[{"id": "d1"}, {"id": "d2"}],
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_document_texts_by_collection",
+                return_value=[{"document_id": "d1"}],
+            ),
+            patch(
+                "app.services.processing_queue.wukong_runner.process_graph_collection",
+            ) as mock_graph,
+        ):
+            result = processing_queue.execute_job(
+                collection_id=COL_A,
+                user_id=USER_A,
+                action="continue_graph",
+            )
+
+        assert result["status"] == "skipped"
+        assert "Extracción" in result["detail"]
+        mock_graph.assert_not_called()
+
+    def test_incomplete_si_queda_en_processing_graph(self):
+        with (
+            patch(
+                "app.services.processing_queue.supabase_client.get_collection",
+                side_effect=[
+                    {"processing_status": "processing_graph"},
+                    {"processing_status": "processing_graph"},
+                ],
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.get_user_blocking_collection",
+                return_value=None,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.count_active_processing_jobs",
+                return_value=0,
+            ),
+            patch(
+                "app.services.processing_queue._text_extraction_complete",
+                return_value=True,
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.clear_collection_queue_metadata",
+            ),
+            patch(
+                "app.services.processing_queue.supabase_client.update_collection_processing_status",
+            ),
+            patch(
+                "app.services.processing_queue.wukong_runner.process_graph_collection",
+            ),
+            patch(
+                "app.services.processing_queue._try_dispatch_queued_from_db",
+            ),
+        ):
+            result = processing_queue.execute_job(
+                collection_id=COL_A,
+                user_id=USER_A,
+                action="continue_graph",
+            )
+
+        assert result["status"] == "incomplete"
+        assert processing_queue.should_retry_cloud_task(result)
+
+
+class TestShouldRetryCloudTask:
+    def test_reintenta_capacidad_llena(self):
+        assert processing_queue.should_retry_cloud_task(
+            {"status": "skipped", "detail": "Capacidad global llena."}
+        )
+
+    def test_no_reintenta_cancelada(self):
+        assert not processing_queue.should_retry_cloud_task(
+            {"status": "skipped", "detail": "Colección cancelada."}
+        )
