@@ -98,12 +98,10 @@ jobs:
             MILLENNIUMDB_HOST=${{ secrets.MILLENNIUMDB_HOST }}
             MILLENNIUMDB_PORT=${{ secrets.MILLENNIUMDB_PORT }}
             GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-            IMFD_SERVICE_ROLE=all
             CLOUD_TASKS_QUEUE=imfd-processing-v3
             CLOUD_TASKS_LOCATION=${{ secrets.CLOUD_TASKS_LOCATION }}
             CLOUD_TASKS_SERVICE_URL=${{ secrets.CLOUD_TASKS_SERVICE_URL }}
             CLOUD_TASKS_INVOKER_SA=${{ secrets.CLOUD_TASKS_INVOKER_SA }}
-            CLOUD_TASKS_DISPATCH_DEADLINE_SECONDS=1800
             DEBUG=false
             MAX_UPLOAD_RETRIES=3
             UPLOAD_RETRY_DELAY_SECONDS=1.0

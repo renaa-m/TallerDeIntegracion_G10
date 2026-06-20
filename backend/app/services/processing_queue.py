@@ -23,12 +23,8 @@ from __future__ import annotations
 
 import logging
 import threading
-from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Literal
 
-import requests
-
-from app.config import settings
 from app.services import cloud_tasks_client, supabase_client, wukong_runner
 
 if TYPE_CHECKING:
@@ -38,8 +34,6 @@ logger = logging.getLogger(__name__)
 
 MAX_CONCURRENT_JOBS: int = 2
 MAX_QUEUED_PER_USER: int = 5
-# Sin actualizaciones en DB durante este intervalo → job probablemente huérfano.
-STALE_PROCESSING_SECONDS: int = 120
 
 ACTIVE_STATUSES = frozenset({"processing_text", "processing_graph"})
 QueueAction = Literal["process", "continue_graph"]
@@ -76,37 +70,6 @@ def _next_processing_status(action: QueueAction) -> str:
     return "processing_graph" if action == "continue_graph" else "processing_text"
 
 
-def _post_dev_worker_job(
-    collection_id: str,
-    user_id: str,
-    action: QueueAction,
-    custom_data_model: dict | None,
-) -> None:
-    url = f"{settings.dev_worker_http_url.rstrip('/')}/internal/tasks/run"
-    payload = {
-        "collection_id": collection_id,
-        "user_id": user_id,
-        "action": action,
-        "custom_data_model": custom_data_model,
-    }
-    try:
-        response = requests.post(url, json=payload, timeout=3600)
-        response.raise_for_status()
-        logger.info(
-            "Dev worker completó job action=%s collection=%s status=%s",
-            action,
-            collection_id,
-            response.status_code,
-        )
-    except Exception as exc:
-        logger.exception(
-            "Dev worker HTTP falló action=%s collection=%s: %s",
-            action,
-            collection_id,
-            exc,
-        )
-
-
 def _enqueue_cloud_task(
     *,
     collection_id: str,
@@ -114,11 +77,6 @@ def _enqueue_cloud_task(
     action: QueueAction,
     custom_data_model: dict | None,
 ) -> None:
-    logger.info(
-        "_enqueue_cloud_task: action=%s collection=%s cloud_tasks_configured=%s dev_worker=%s",
-        action, collection_id, cloud_tasks_client.is_configured(),
-        bool(settings.dev_worker_http_url.strip()),
-    )
     if cloud_tasks_client.is_configured():
         cloud_tasks_client.enqueue_processing_task(
             collection_id=collection_id,
@@ -128,17 +86,6 @@ def _enqueue_cloud_task(
         )
         return
 
-    if settings.dev_worker_http_url.strip():
-        thread = threading.Thread(
-            target=_post_dev_worker_job,
-            args=(collection_id, user_id, action, custom_data_model),
-            daemon=True,
-            name=f"dev-worker-{action}-{collection_id}",
-        )
-        thread.start()
-        return
-
-    logger.info("_enqueue_cloud_task: fallback a hilo local para %s", collection_id)
     thread = threading.Thread(
         target=_run_job_sync,
         args=(collection_id, user_id, action, custom_data_model),
@@ -340,13 +287,6 @@ def execute_job(
         return {"status": "skipped", "detail": "Capacidad global llena."}
 
     model = custom_data_model or _custom_model_from_row(row)
-
-    if action == "continue_graph" and not _text_extraction_complete(collection_id):
-        return {
-            "status": "skipped",
-            "detail": "Extracción de textos aún en curso.",
-        }
-
     supabase_client.clear_collection_queue_metadata(collection_id)
 
     try:
@@ -367,7 +307,8 @@ def execute_job(
                     final_status_on_success="partial_error",
                 )
             elif status == "processing_text":
-                if _text_extraction_complete(collection_id):
+                texts = supabase_client.get_document_texts_by_collection(collection_id)
+                if texts:
                     supabase_client.update_collection_processing_status(
                         collection_id, "processing_graph"
                     )
@@ -391,32 +332,7 @@ def execute_job(
                 "Error al despachar cola tras job %s: %s", collection_id, exc
             )
 
-    final_row = supabase_client.get_collection(collection_id, user_id)
-    if final_row and final_row.get("processing_status") in ACTIVE_STATUSES:
-        logger.warning(
-            "Job %s terminó pero colección %s sigue en %s",
-            action,
-            collection_id,
-            final_row.get("processing_status"),
-        )
-        return {"status": "incomplete", "detail": "Pipeline no finalizó."}
-
     return {"status": "completed", "detail": ""}
-
-
-def should_retry_cloud_task(result: dict[str, str]) -> bool:
-    """True si Cloud Tasks debe reintentar (HTTP 503)."""
-    status = result.get("status")
-    if status == "incomplete":
-        return True
-    if status != "skipped":
-        return False
-    detail = result.get("detail", "")
-    return detail in (
-        "Capacidad global llena.",
-        "Usuario con otra colección activa.",
-        "Extracción de textos aún en curso.",
-    )
 
 
 def _run_job_sync(
@@ -469,9 +385,7 @@ def recover_orphaned_processing() -> None:
                 status,
             )
             try:
-                try_resume_stale_job(
-                    collection_id, user_id, from_startup_recovery=True
-                )
+                try_resume_stale_job(collection_id, user_id)
             except Exception as exc:
                 logger.warning(
                     "No se pudo re-encolar colección %s: %s", collection_id, exc
@@ -483,46 +397,8 @@ def recover_orphaned_processing() -> None:
         logger.warning("No se pudo despachar cola tras reinicio: %s", exc)
 
 
-def _text_extraction_complete(collection_id: str) -> bool:
-    """True si todos los documentos de la colección ya tienen fila en document_texts."""
-    documents = supabase_client.get_documents_by_collection(collection_id)
-    if not documents:
-        return False
-    texts = supabase_client.get_document_texts_by_collection(collection_id)
-    text_doc_ids = {str(row["document_id"]) for row in texts}
-    return all(str(doc["id"]) in text_doc_ids for doc in documents)
-
-
-def _processing_job_stale(row: dict) -> bool:
-    """True si la fila no se actualizó recientemente (worker probablemente caído)."""
-    raw = row.get("updated_at")
-    if not raw:
-        # Sin timestamp no podemos saber si hay un job activo; no reencolar por polling.
-        return False
-    try:
-        if isinstance(raw, str):
-            updated = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-        else:
-            updated = raw
-        if updated.tzinfo is None:
-            updated = updated.replace(tzinfo=timezone.utc)
-        age = (datetime.now(timezone.utc) - updated).total_seconds()
-        return age >= STALE_PROCESSING_SECONDS
-    except (TypeError, ValueError):
-        return True
-
-
-def try_resume_stale_job(
-    collection_id: str,
-    user_id: str,
-    *,
-    from_startup_recovery: bool = False,
-) -> bool:
-    """Re-encola un job en ``processing_*`` si quedó huérfano.
-
-    ``from_startup_recovery=True`` (arranque del API): reencola agresivamente.
-    En polling del frontend (``False``): no compite con un Cloud Task ya en vuelo.
-    """
+def try_resume_stale_job(collection_id: str, user_id: str) -> bool:
+    """Re-encola un job en ``processing_*`` tras reinicio del servidor."""
     row = supabase_client.get_collection(collection_id, user_id)
     if not row:
         return False
@@ -535,13 +411,6 @@ def try_resume_stale_job(
     if status not in ACTIVE_STATUSES:
         return False
 
-    if not from_startup_recovery:
-        # El task ``process`` hace extracción + grafo en la misma petición HTTP.
-        if status == "processing_text":
-            return False
-        if status == "processing_graph" and not _processing_job_stale(row):
-            return False
-
     if not _can_dispatch(user_id, collection_id):
         return False
 
@@ -549,8 +418,9 @@ def try_resume_stale_job(
     action: QueueAction = (
         "continue_graph" if status == "processing_graph" else "process"
     )
-    if from_startup_recovery and action == "process" and status == "processing_text":
-        if _text_extraction_complete(collection_id):
+    if action == "process" and status == "processing_text":
+        texts = supabase_client.get_document_texts_by_collection(collection_id)
+        if texts:
             action = "continue_graph"
 
     _enqueue_cloud_task(
@@ -563,18 +433,12 @@ def try_resume_stale_job(
 
 
 def ensure_collection_processing(collection_id: str, user_id: str) -> None:
-    """Despacha filas ``queued`` en Supabase. No reencola Cloud Tasks en polling.
-
-    Reencolar ``processing_*`` desde el GET del frontend duplicaba tasks
-    (``continue_graph`` mientras ``process`` seguía corriendo). La recuperación
-    de jobs huérfanos queda solo en ``recover_orphaned_processing`` al arrancar.
-    """
-    del collection_id, user_id
     try:
+        try_resume_stale_job(collection_id, user_id)
         _try_dispatch_queued_from_db()
     except Exception as exc:
         logger.warning(
-            "ensure_collection_processing falló al despachar cola: %s", exc
+            "ensure_collection_processing falló para %s: %s", collection_id, exc
         )
 
 

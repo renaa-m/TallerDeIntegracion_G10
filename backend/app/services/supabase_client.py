@@ -1,69 +1,19 @@
 import asyncio
 import logging
-import time
-from collections.abc import Callable
-from datetime import datetime, timezone
 from functools import lru_cache
-from typing import TypeVar
 from uuid import uuid4
 
-import httpx
 from supabase import Client, create_client
 
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar("T")
-
-# Reintentos ante fallos transitorios de red (p. ej. httpx.ReadError errno 11 en Cloud Run).
-_SUPABASE_REQUEST_ATTEMPTS = 5
-_SUPABASE_REQUEST_BASE_DELAY_SECONDS = 0.75
-
 BUCKET = "documentos"
 # Primer segmento del path: igual que en upload de documentos (Storage rechaza '|' en la clave).
 # objeto = `{collection_id}.qm`. Ruta legacy (borrado): .../knowledge_graph.qm
 LEGACY_QM_BASENAME = "knowledge_graph.qm"
 UPLOAD_SEMAPHORE = asyncio.Semaphore(5)
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def is_transient_supabase_error(exc: BaseException) -> bool:
-    """Errores de red recuperables (EAGAIN, reset, timeout) al hablar con Supabase."""
-    if isinstance(exc, httpx.TransportError):
-        return True
-    if isinstance(exc, OSError) and getattr(exc, "errno", None) in (11, 35):
-        return True
-    return False
-
-
-def _run_with_retry(fn: Callable[[], T], *, context: str = "Supabase") -> T:
-    """Ejecuta una operación PostgREST/Storage con backoff exponencial."""
-    last_exc: BaseException | None = None
-    for attempt in range(_SUPABASE_REQUEST_ATTEMPTS):
-        try:
-            return fn()
-        except Exception as exc:
-            if not is_transient_supabase_error(exc):
-                raise
-            last_exc = exc
-            if attempt + 1 < _SUPABASE_REQUEST_ATTEMPTS:
-                delay = _SUPABASE_REQUEST_BASE_DELAY_SECONDS * (2**attempt)
-                logger.warning(
-                    "%s: error transitorio (%s): %s; reintento %s/%s en %.1fs",
-                    context,
-                    type(exc).__name__,
-                    exc,
-                    attempt + 2,
-                    _SUPABASE_REQUEST_ATTEMPTS,
-                    delay,
-                )
-                time.sleep(delay)
-    assert last_exc is not None
-    raise last_exc
 
 
 def storage_path_user_folder(user_id: str) -> str:
@@ -258,23 +208,17 @@ def update_collection_processing_status(
     conviene pasar también processed_at con el timestamp ISO.
     """
     client = _get_service_client()
-    payload: dict = {
-        "processing_status": processing_status,
-        "updated_at": _now_iso(),
-    }
+    payload: dict = {"processing_status": processing_status}
     if error_message is not None:
         payload["processing_error_message"] = error_message
     if processed_at is not None:
         payload["processed_at"] = processed_at
 
-    response = _run_with_retry(
-        lambda: (
-            client.table("collections")
-            .update(payload)
-            .eq("id", collection_id)
-            .execute()
-        ),
-        context=f"update_collection_processing_status({collection_id})",
+    response = (
+        client.table("collections")
+        .update(payload)
+        .eq("id", collection_id)
+        .execute()
     )
     return response.data[0] if response.data else None
 
@@ -378,14 +322,11 @@ def set_collection_queued(
         "processing_error_message": None,
         "queued_at": datetime.now(timezone.utc).isoformat(),
     }
-    response = _run_with_retry(
-        lambda: (
-            client.table("collections")
-            .update(row)
-            .eq("id", collection_id)
-            .execute()
-        ),
-        context=f"set_collection_queued({collection_id})",
+    response = (
+        client.table("collections")
+        .update(row)
+        .eq("id", collection_id)
+        .execute()
     )
     return response.data[0] if response.data else None
 
@@ -492,16 +433,11 @@ def update_collection_progress(
     if not payload:
         return None
 
-    payload["updated_at"] = _now_iso()
-
-    response = _run_with_retry(
-        lambda: (
-            client.table("collections")
-            .update(payload)
-            .eq("id", collection_id)
-            .execute()
-        ),
-        context=f"update_collection_progress({collection_id})",
+    response = (
+        client.table("collections")
+        .update(payload)
+        .eq("id", collection_id)
+        .execute()
     )
 
     return response.data[0] if response.data else None
@@ -628,14 +564,11 @@ def get_documents_by_collection(collection_id: str) -> list:
     endpoint que llama).
     """
     client = _get_service_client()
-    response = _run_with_retry(
-        lambda: (
-            client.table("documents")
-            .select("*")
-            .eq("collection_id", collection_id)
-            .execute()
-        ),
-        context=f"get_documents_by_collection({collection_id})",
+    response = (
+        client.table("documents")
+        .select("*")
+        .eq("collection_id", collection_id)
+        .execute()
     )
     return response.data
 
@@ -650,15 +583,12 @@ def update_document_status(
     payload: dict = {"status": status}
     if error_message is not None:
         payload["error_message"] = error_message
-    response = _run_with_retry(
-        lambda: (
-            client.table("documents")
-            .update(payload)
-            .eq("id", document_id)
-            .eq("user_id", user_id)
-            .execute()
-        ),
-        context=f"update_document_status({document_id})",
+    response = (
+        client.table("documents")
+        .update(payload)
+        .eq("id", document_id)
+        .eq("user_id", user_id)
+        .execute()
     )
     return response.data[0] if response.data else None
 
@@ -671,21 +601,18 @@ def save_document_text(
     extraction_method: str,
 ) -> dict:
     client = get_supabase_client()
-    response = _run_with_retry(
-        lambda: (
-            client.table("document_texts")
-            .insert(
-                {
-                    "document_id": document_id,
-                    "user_id": user_id,
-                    "collection_id": collection_id,
-                    "extracted_text": extracted_text,
-                    "extraction_method": extraction_method,
-                }
-            )
-            .execute()
-        ),
-        context=f"save_document_text({document_id})",
+    response = (
+        client.table("document_texts")
+        .insert(
+            {
+                "document_id": document_id,
+                "user_id": user_id,
+                "collection_id": collection_id,
+                "extracted_text": extracted_text,
+                "extraction_method": extraction_method,
+            }
+        )
+        .execute()
     )
     return response.data[0]
 
@@ -696,14 +623,11 @@ def get_document_texts_by_collection(collection_id: str) -> list[dict]:
     Cada elemento tiene al menos: document_id, extracted_text, extraction_method.
     """
     client = _get_service_client()
-    response = _run_with_retry(
-        lambda: (
-            client.table("document_texts")
-            .select("document_id, extracted_text, extraction_method")
-            .eq("collection_id", collection_id)
-            .execute()
-        ),
-        context=f"get_document_texts_by_collection({collection_id})",
+    response = (
+        client.table("document_texts")
+        .select("document_id, extracted_text, extraction_method")
+        .eq("collection_id", collection_id)
+        .execute()
     )
     return response.data or []
 
@@ -730,17 +654,8 @@ def _list_documents_sync(user_id: str, collection_id: str | None) -> list[dict]:
 def get_collection_by_id(collection_id: str) -> dict | None:
     """Busca una colección por su ID para verificar su propietario."""
     client = get_supabase_client()
-
-    def _query() -> dict | None:
-        response = (
-            client.table("collections").select("*").eq("id", collection_id).execute()
-        )
-        return response.data[0] if response.data else None
-
-    found = _run_with_retry(
-        _query,
-        context=f"get_collection_by_id({collection_id})",
-    )
+    response = client.table("collections").select("*").eq("id", collection_id).execute()
+    found = response.data[0] if response.data else None
     if not found:
         logger.debug(
             "get_collection_by_id: 0 filas para id=%r (tipo=%s)",
@@ -779,18 +694,15 @@ def create_signed_url(storage_path: str, expires_in: int = 3600) -> str:
 def _upload_sync(
     path: str, content: bytes, content_type: str, *, upsert: bool = False
 ) -> None:
-    def _do_upload() -> None:
-        client = create_client(settings.supabase_url, settings.supabase_service_key)
-        opts: dict[str, str] = {"content-type": content_type}
-        if upsert:
-            opts["upsert"] = "true"
-        client.storage.from_(BUCKET).upload(
-            path=path,
-            file=content,
-            file_options=opts,
-        )
-
-    _run_with_retry(_do_upload, context=f"storage.upload({path})")
+    client = create_client(settings.supabase_url, settings.supabase_service_key)
+    opts: dict[str, str] = {"content-type": content_type}
+    if upsert:
+        opts["upsert"] = "true"
+    client.storage.from_(BUCKET).upload(
+        path=path,
+        file=content,
+        file_options=opts,
+    )
 
 
 def classify_upload_error(exc: Exception) -> str:
@@ -911,10 +823,7 @@ def save_chunk_embeddings(records: list[dict]) -> None:
         }
         for r in records
     ]
-    _run_with_retry(
-        lambda: client.table("chunk_embeddings").insert(rows).execute(),
-        context=f"save_chunk_embeddings({len(rows)} rows)",
-    )
+    client.table("chunk_embeddings").insert(rows).execute()
 
 
 def search_chunks(

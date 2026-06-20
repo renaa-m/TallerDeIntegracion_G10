@@ -31,7 +31,6 @@ import shutil # para copiar el workdir de Wukong a disco
 import subprocess # para ejecutar Wukong
 import sys # para ejecutar Wukong
 import tempfile # para crear un directorio temporal para el workdir de Wukong
-import time
 from datetime import datetime, timezone # para manejar fechas y horas en UTC
 from pathlib import Path # para manejar rutas de archivos   
 
@@ -50,29 +49,13 @@ from app.services.text_extraction import (
 
 logger = logging.getLogger(__name__) # para registrar errores
 
-# Intervalo entre chequeos de cancelación mientras Wukong corre (subprocess).
-WUKONG_CANCEL_POLL_SECONDS = 3
-
 
 class ProcessingCancelled(Exception):
     """El cliente pidió cancelar; el estado en DB ya es ``cancelled``."""
 
 
-def _fetch_collection_row(collection_id: str) -> dict | None:
-    """Lee una colección (reintentos en supabase_client.get_collection_by_id)."""
-    return supabase_client.get_collection_by_id(collection_id)
-
-
 def _check_cancelled(collection_id: str) -> None:
-    try:
-        row = _fetch_collection_row(collection_id)
-    except Exception as exc:
-        logger.warning(
-            "No se pudo verificar cancelación para %s (%s); se continúa.",
-            collection_id,
-            exc,
-        )
-        return
+    row = supabase_client.get_collection_by_id(collection_id)
     if row is None:
         raise ProcessingCancelled()
     if row.get("processing_status") == "cancelled":
@@ -81,16 +64,7 @@ def _check_cancelled(collection_id: str) -> None:
 
 def _skip_if_user_cancelled(collection_id: str, where: str) -> bool:
     """Si ya está ``cancelled`` o borrada, no sobrescribir estado. Devuelve True si hay que salir."""
-    try:
-        row = _fetch_collection_row(collection_id)
-    except Exception as exc:
-        logger.warning(
-            "No se pudo verificar cancelación (%s) para %s (%s); se continúa.",
-            where,
-            collection_id,
-            exc,
-        )
-        return False
+    row = supabase_client.get_collection_by_id(collection_id)
     if row is None:
         logger.info(
             "Omitiendo %s: colección %s ya no existe.", where, collection_id
@@ -109,17 +83,21 @@ BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def _wukong_python_executable() -> str:
-    """Intérprete para ``python -m wukong_engine``.
+    """Intérprete para ``python -m wukong_engine`` (wukong-engine exige Python >= 3.13).
 
-    En Docker, sys.executable puede apuntar al Python del builder en vez
-    del container final. Usamos shutil.which para encontrar el Python real.
+    Si el proceso FastAPI corre con 3.12 por error, Wukong seguía usando ese binario y fallaba
+    con ``No module named wukong_engine``. Preferimos ``.venv/bin/python3.13`` cuando exista.
     """
-    import shutil
-    real = shutil.which("python3") or shutil.which("python")
-    if real:
-        logger.info("Wukong: usando intérprete %s", real)
-        return real
-    logger.warning("Wukong: no se encontró python3 en PATH, usando sys.executable=%s", sys.executable)
+    if sys.version_info >= (3, 13):
+        return sys.executable
+    v313 = BACKEND_ROOT / ".venv" / "bin" / "python3.13"
+    if v313.is_file():
+        logger.info(
+            "Wukong: el servidor usa Python %s; ejecutando Wukong con %s",
+            sys.version.split()[0],
+            v313,
+        )
+        return str(v313)
     return sys.executable
 
 # Debe coincidir con parameters.included_documents en default_data_model_*.json
@@ -258,12 +236,6 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
         logger.info("Procesamiento cancelado (colección %s)", collection_id)
         return
     except Exception as exc:
-        if supabase_client.is_transient_supabase_error(exc):
-            logger.warning(
-                "Red transitoria a Supabase en colección %s; propagando para reintento",
-                collection_id,
-            )
-            raise
         logger.exception("Error inesperado procesando colección %s", collection_id)
         if not _skip_if_user_cancelled(collection_id, "error inesperado"):
             _mark_collection_error(
@@ -410,12 +382,6 @@ def process_graph_collection(collection_id: str, custom_data_model: dict | None 
         return
 
     except Exception as exc:
-        if supabase_client.is_transient_supabase_error(exc):
-            logger.warning(
-                "Red transitoria a Supabase en grafo %s; propagando para reintento",
-                collection_id,
-            )
-            raise
         logger.exception(
             "Error inesperado construyendo grafo %s",
             collection_id,
@@ -733,7 +699,8 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
                 process.wait()
                 return f"Wukong superó el timeout de {timeout_seconds}s."
 
-            time.sleep(WUKONG_CANCEL_POLL_SECONDS)
+            import time
+            time.sleep(1)
 
         stdout, stderr = process.communicate()
 

@@ -646,14 +646,6 @@ export function getPipelineProgressDisplay(
   )
 
   switch (snapshot.processingStatus) {
-    case 'queued':
-      return {
-        overallPercent: null,
-        textCardPercentLabel: '0%',
-        textCardBarWidth: 0,
-        graphCardPercentLabel: '—',
-        graphCardBarWidth: 0,
-      }
     case 'processing_text':
       return {
         overallPercent: overall,

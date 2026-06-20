@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 async def verify_cloud_tasks_caller(request: Request) -> None:
-    """Valida que la petición venga de Google Cloud Tasks."""
+    """Exige un ID token OIDC válido cuando Cloud Tasks está configurado."""
     if not is_configured():
         if settings.debug:
             return
@@ -22,6 +22,22 @@ async def verify_cloud_tasks_caller(request: Request) -> None:
             detail="Cloud Tasks no configurado en este entorno.",
         )
 
-    user_agent = request.headers.get("User-Agent", "")
-    if "Google-Cloud-Tasks" not in user_agent:
-        raise HTTPException(status_code=403, detail="Acceso denegado.")
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(status_code=403, detail="Token OIDC requerido.")
+
+    token = auth.removeprefix("Bearer ").strip()
+    audience = f"{settings.cloud_tasks_service_url.rstrip('/')}/internal/tasks/run"
+
+    try:
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token
+
+        id_token.verify_oauth2_token(
+            token,
+            google_requests.Request(),
+            audience=audience,
+        )
+    except Exception as exc:
+        logger.warning("Token Cloud Tasks inválido: %s", exc)
+        raise HTTPException(status_code=403, detail="Token OIDC inválido.") from exc

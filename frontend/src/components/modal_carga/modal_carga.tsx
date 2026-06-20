@@ -270,14 +270,6 @@ const ModalCarga = ({
     scopeCollectionId === 'nueva' ? activeCollectionId : null
   const resolvedEtapa: Etapa = useMemo(() => {
     if (
-      isSubmittingPipeline ||
-      isPipelineInProgress(pipelineStatus) ||
-      pipelineStatus === 'queued'
-    ) {
-      return 'pipeline'
-    }
-
-    if (
       forcePipelineEtapa &&
       scopeCollectionId &&
       scopeCollectionId !== 'nueva'
@@ -306,14 +298,7 @@ const ModalCarga = ({
     }
 
     return etapa
-  }, [
-    forcePipelineEtapa,
-    scopeCollectionId,
-    activeCollectionId,
-    etapa,
-    isSubmittingPipeline,
-    pipelineStatus,
-  ])
+  }, [forcePipelineEtapa, scopeCollectionId, activeCollectionId, etapa])
   const isPipelineRunning =
     pipelineStatus === 'processing_text' ||
     pipelineStatus === 'processing_graph'
@@ -529,11 +514,7 @@ const ModalCarga = ({
             setEtapa('pipeline')
             localStorage.setItem(ACTIVE_COLLECTION_KEY, collectionId)
             localStorage.setItem(MODAL_ETAPA_KEY, 'pipeline')
-          } else if (
-            !isSubmittingPipelineRef.current &&
-            !isPipelineInProgress(pipelineStatusRef.current) &&
-            pipelineStatusRef.current !== 'queued'
-          ) {
+          } else {
             setEtapa('subida')
           }
         }
@@ -758,25 +739,25 @@ const ModalCarga = ({
       return
 
     const collectionId = resolvedCollectionId
-    let cancelled = false
-
-    const pollPipeline = async () => {
+    const interval = window.setInterval(async () => {
       try {
         const token = await getAccessTokenSilently()
         const res = await fetch(`${API_BASE}/api/collections/${collectionId}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-        if (cancelled || !isOpenRef.current || isCancelling) {
-          return false
+        if (!isOpenRef.current || isCancelling) {
+          clearInterval(interval)
+          return
         }
         if (res.status === 404) {
           clearActiveCollectionStorageIfMatch(collectionId)
+          clearInterval(interval)
           resetUploadForm()
           onProcessingChange?.(false)
           onClose()
-          return false
+          return
         }
-        if (!res.ok) return true
+        if (!res.ok) return
         const data = await res.json()
         setTextProgress({
           total: data.text_progress_total ?? 0,
@@ -821,29 +802,15 @@ const ModalCarga = ({
           ) {
             onProcessingChange?.(false)
           }
-          return false
-        }
-        if (status === 'awaiting_graph_confirmation') {
+          clearInterval(interval)
+        } else if (status === 'awaiting_graph_confirmation') {
           setPipelineError(data.processing_error_message ?? '')
         }
-        return true
       } catch (e) {
         console.error('Error en polling:', e)
-        return true
-      }
-    }
-
-    void pollPipeline()
-    const interval = window.setInterval(async () => {
-      const keepPolling = await pollPipeline()
-      if (!keepPolling) {
-        clearInterval(interval)
       }
     }, 3000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
+    return () => clearInterval(interval)
   }, [
     isOpen,
     isCancelling,
@@ -1055,12 +1022,6 @@ const ModalCarga = ({
     setIsSubmittingPipeline(true)
     setPipelineError('')
     setEtapa('pipeline')
-    pipelineStatusRef.current = 'queued'
-    setPipelineStatus('queued')
-    persistBackgroundProcessing(resolvedCollectionId, {
-      nuevaSession: scopeCollectionId === 'nueva',
-    })
-    onProcessingChange?.(true)
     try {
       const token = await getAccessTokenSilently()
       const customDataModel = buildCustomDataModel()
@@ -1088,9 +1049,6 @@ const ModalCarga = ({
       setPipelineError(
         e instanceof Error ? e.message : 'Error al iniciar el procesamiento',
       )
-      pipelineStatusRef.current = 'idle'
-      setPipelineStatus('idle')
-      onProcessingChange?.(false)
     } finally {
       setIsSubmittingPipeline(false)
     }
@@ -1446,8 +1404,7 @@ const ModalCarga = ({
               </p>
             )}
             <div className="mc-progress-stack">
-              {(pipelineStatus === 'queued' ||
-                pipelineStatus === 'processing_text' ||
+              {(pipelineStatus === 'processing_text' ||
                 pipelineStatus === 'awaiting_graph_confirmation' ||
                 pipelineStatus === 'processing_graph' ||
                 pipelineStatus === 'graph_ready' ||
