@@ -27,9 +27,9 @@ describe('ModalDocumentosDisponibles', () => {
 
   beforeAll(() => {
     // Define window.open como una función mock de Jest
-    window.open = jest.fn();
-  });
-  
+    window.open = jest.fn()
+  })
+
   beforeEach(() => {
     jest.clearAllMocks()
     ;(useAuth0 as jest.Mock).mockReturnValue({
@@ -82,7 +82,9 @@ describe('ModalDocumentosDisponibles', () => {
 
   test('llama onClose al hacer click en el botón cerrar', () => {
     const { onClose } = renderModal()
-    const closeButton = document.querySelector('.mdd-close') as HTMLButtonElement
+    const closeButton = document.querySelector(
+      '.mdd-close',
+    ) as HTMLButtonElement
     fireEvent.click(closeButton)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -129,7 +131,7 @@ describe('ModalDocumentosDisponibles', () => {
 
   test('obtiene URL temporal y abre el documento', async () => {
     const user = userEvent.setup()
-    
+
     mockGetAccessTokenSilently.mockResolvedValue('test-token')
     ;(global.fetch as jest.Mock).mockResolvedValueOnce({
       ok: true,
@@ -143,7 +145,7 @@ describe('ModalDocumentosDisponibles', () => {
     renderModal()
 
     const buttons = screen.getAllByRole('button', { hidden: true })
-    const accessButton = buttons.find(btn => {
+    const accessButton = buttons.find((btn) => {
       const title = btn.getAttribute('title') || ''
       const disabled = btn.getAttribute('disabled')
       return title.includes('segundos') && !disabled
@@ -165,7 +167,9 @@ describe('ModalDocumentosDisponibles', () => {
 
   test('deshabilita el botón cuando el documento está en procesamiento', () => {
     renderModal()
-    const processingButton = screen.getByTitle('Documento en procesamiento') as HTMLButtonElement
+    const processingButton = screen.getByTitle(
+      'Documento en procesamiento',
+    ) as HTMLButtonElement
     expect(processingButton).toBeDisabled()
   })
 
@@ -183,7 +187,7 @@ describe('ModalDocumentosDisponibles', () => {
     renderModal()
 
     const buttons = screen.getAllByRole('button', { hidden: true })
-    const accessButton = buttons.find(btn => {
+    const accessButton = buttons.find((btn) => {
       const title = btn.getAttribute('title') || ''
       const disabled = btn.getAttribute('disabled')
       return title.includes('segundos') && !disabled
