@@ -29,8 +29,7 @@ gcloud run deploy "${SERVICE}" \
   --no-cpu-throttling \
   --min-instances=0 \
   --max-instances=2 \
-  --update-env-vars="IMFD_SERVICE_ROLE=worker,DEBUG=false" \
-  --to-latest
+  --update-env-vars="IMFD_SERVICE_ROLE=worker,DEBUG=false"
 
 WORKER_URL="$(gcloud run services describe "${SERVICE}" \
   --project="${PROJECT_ID}" \
