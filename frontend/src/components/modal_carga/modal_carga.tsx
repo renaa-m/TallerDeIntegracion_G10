@@ -307,6 +307,7 @@ const ModalCarga = ({
 
   const abortControllersRef = useRef<AbortController[]>([])
   const isOpenRef = useRef(isOpen)
+  const hasRestoredNuevaSessionRef = useRef(false)
 
   useEffect(() => {
     isOpenRef.current = isOpen
@@ -386,11 +387,15 @@ const ModalCarga = ({
       if (scopeCollectionId && scopeCollectionId !== 'nueva') {
         collectionId = scopeCollectionId
       } else if (scopeCollectionId === 'nueva') {
-        collectionId =
-          nuevaSessionCollectionId ??
-          (localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1'
-            ? localStorage.getItem(ACTIVE_COLLECTION_KEY)
-            : null)
+        if (nuevaSessionCollectionId) {
+          collectionId = nuevaSessionCollectionId
+        } else if (
+          !hasRestoredNuevaSessionRef.current &&
+          localStorage.getItem(MODAL_NUEVA_SESSION_KEY) === '1'
+        ) {
+          hasRestoredNuevaSessionRef.current = true
+          collectionId = localStorage.getItem(ACTIVE_COLLECTION_KEY)
+        }
       }
 
       if (!collectionId) return
