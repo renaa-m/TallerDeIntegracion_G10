@@ -1,6 +1,7 @@
 import json
 from unittest.mock import patch
 
+import httpx
 import pytest
 
 from app.services import wukong_runner
@@ -404,6 +405,36 @@ def _stub_wukong_config_path(tmp_path):
     p = tmp_path / "wukong-default-stub.toml"
     p.write_text("# stub para tests\n", encoding="utf-8")
     return p
+
+
+class TestResilientSupabaseReads:
+    @patch("app.services.wukong_runner.time.sleep")
+    @patch("app.services.wukong_runner.supabase_client.get_collection_by_id")
+    def test_skip_if_user_cancelled_reintenta_y_continua(self, mock_get, _mock_sleep):
+        mock_get.side_effect = [
+            httpx.ReadError("[Errno 11] Resource temporarily unavailable"),
+            {"id": MOCK_COL_ID, "processing_status": "processing_graph"},
+        ]
+        assert wukong_runner._skip_if_user_cancelled(MOCK_COL_ID, "test") is False
+        assert mock_get.call_count == 2
+
+    @patch("app.services.wukong_runner.time.sleep")
+    @patch("app.services.wukong_runner.supabase_client.get_collection_by_id")
+    def test_skip_if_user_cancelled_no_aborta_si_supabase_falla(self, mock_get, _mock_sleep):
+        mock_get.side_effect = httpx.ReadError(
+            "[Errno 11] Resource temporarily unavailable"
+        )
+        assert wukong_runner._skip_if_user_cancelled(MOCK_COL_ID, "test") is False
+        assert mock_get.call_count == wukong_runner._SUPABASE_READ_ATTEMPTS
+
+    @patch("app.services.wukong_runner.time.sleep")
+    @patch("app.services.wukong_runner.supabase_client.get_collection_by_id")
+    def test_check_cancelled_no_lanza_si_supabase_falla(self, mock_get, _mock_sleep):
+        mock_get.side_effect = httpx.ReadError(
+            "[Errno 11] Resource temporarily unavailable"
+        )
+        wukong_runner._check_cancelled(MOCK_COL_ID)
+        assert mock_get.call_count == wukong_runner._SUPABASE_READ_ATTEMPTS
 
 
 class TestRunWukong:
