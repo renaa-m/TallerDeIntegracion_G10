@@ -651,22 +651,6 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
     if not WUKONG_DEFAULT_CONFIG.is_file():
         return f"No existe la config de Wukong: {WUKONG_DEFAULT_CONFIG}"
     try:
-        #subprocess.run(
-            # Arma el comando equivalente a:
-            # <tu python> -m wukong_engine <workdir> --config <ruta al default.toml>
-            #[
-                #_wukong_python_executable(),
-                #"-m", # ejecuta el módulo wukong_engine
-                #"wukong_engine", # el nombre del módulo que contiene la función main() de Wukong
-                #str(workdir), # la ruta al workdir de Wukong
-                #"--config", # la ruta al archivo de configuración de Wukong
-                #str(WUKONG_DEFAULT_CONFIG), # la ruta al archivo de configuración de Wukong
-            #],
-            #check=True, # para que el proceso termine correctamente
-            #capture_output=True, # para capturar la salida de Wukong
-            #text=True, # para que el resultado sea un string legible
-            #timeout=timeout_seconds, # para que no se quede corriendo eternamente
-        #)
         process = subprocess.Popen(
             [
                 _wukong_python_executable(),
@@ -676,9 +660,8 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
                 "--config",
                 str(WUKONG_DEFAULT_CONFIG),
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stdout=None,
+            stderr=None,
         )
 
         started_at = datetime.now(timezone.utc)
@@ -702,18 +685,9 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
             import time
             time.sleep(1)
 
-        stdout, stderr = process.communicate()
-
         if process.returncode != 0:
-            err = (stderr or stdout or "").strip()
-            return f"Wukong falló (exit {process.returncode}): {err[:500]}"
+            return f"Wukong falló (exit {process.returncode})"
         return None
-    except subprocess.CalledProcessError as exc:
-        # el proceso Wukong sí arrancó y terminó, pero con código de salida distinto de 0, Suele ser un bug en datos, config, API key del LLM, etc.
-        stderr = (exc.stderr or "").strip() or str(exc) # exc.stderr: mensajes de error que Wukong escribió a stderr (si hay). Si está vacío, usa str(exc).
-        return f"Wukong falló (exit {exc.returncode}): {stderr[:500]}"
-        # exc.returncode: el número que devolvió el proceso (≠ 0).
-        # stderr[:500]: los primeros 500 caracteres del mensaje de error.
     except subprocess.TimeoutExpired:
         return f"Wukong superó el timeout de {timeout_seconds}s."
     except FileNotFoundError:
