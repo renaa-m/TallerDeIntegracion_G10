@@ -806,7 +806,9 @@ const ModalCarga = ({
           )
         ) {
           setPipelineStatus(status)
-          onProcessingChangeRef.current?.(isPipelineInProgress(data.processing_status))
+          onProcessingChangeRef.current?.(
+            isPipelineInProgress(data.processing_status),
+          )
         }
         if (
           status === 'graph_ready' ||
