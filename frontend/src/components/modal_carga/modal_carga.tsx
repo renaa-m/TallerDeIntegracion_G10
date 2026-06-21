@@ -1303,6 +1303,24 @@ const ModalCarga = ({
                 <AlertCircle size={14} /> {error}
               </p>
             )}
+            {uploadIssues.length > 0 && (
+              <div className="mc-progress-errors">
+                <div className="mc-progress-errors-header">
+                  <strong>No se subieron: </strong>
+                  <span>{uploadIssues.length} archivo(s)</span>
+                </div>
+                <ul className="mc-progress-errors-list">
+                  {uploadIssues.map((issue) => (
+                    <li key={`upload-${issue.filename}`}>
+                      {issue.filename}
+                      {issue.status === 'duplicate'
+                        ? ' — ya existía en la colección'
+                        : ` — ${issue.reason}`}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {isUploading && (
               <p className="mc-success-message">
                 Subiendo {uploadedCount} de {uploadTotal || files.length}...
