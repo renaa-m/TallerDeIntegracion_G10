@@ -201,6 +201,76 @@ class TestUploadDocumento:
         assert response.status_code == 400
         assert "PDF" in response.json()["detail"]
 
+    def test_upload_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.documentos.supabase_client.get_collection_by_id",
+            return_value=None,
+        ):
+            response = client.post(
+                f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
+                files={"file": ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf")},
+            )
+
+        assert response.status_code == 404
+
+    def test_upload_coleccion_de_otro_usuario_retorna_403(self, client):
+        with patch(
+            "app.api.routes.documentos.supabase_client.get_collection_by_id",
+            return_value={"user_id": "otro_user_id"},
+        ):
+            response = client.post(
+                f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
+                files={"file": ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf")},
+            )
+
+        assert response.status_code == 403
+
+    def test_upload_duplicado_retorna_409(self, client):
+        with patch(
+            "app.api.routes.documentos.supabase_client.find_document_by_hash",
+            new_callable=AsyncMock,
+            return_value=MOCK_DOC,
+        ):
+            response = client.post(
+                f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
+                files={"file": ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf")},
+            )
+
+        assert response.status_code == 409
+
+    def test_upload_fallo_storage_retorna_502(self, client):
+        with patch(
+            "app.api.routes.documentos.supabase_client.upload_file",
+            new_callable=AsyncMock,
+            side_effect=Exception("storage error"),
+        ):
+            response = client.post(
+                f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
+                files={"file": ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf")},
+            )
+
+        assert response.status_code == 502
+
+    def test_upload_fallo_db_retorna_502(self, client):
+        with (
+            patch(
+                "app.api.routes.documentos.supabase_client.upload_file",
+                new_callable=AsyncMock,
+                return_value="path/doc.pdf",
+            ),
+            patch(
+                "app.api.routes.documentos.supabase_client.insert_document",
+                new_callable=AsyncMock,
+                side_effect=Exception("db error"),
+            ),
+        ):
+            response = client.post(
+                f"/api/documentos/upload?coleccion_id={MOCK_COLECCION_ID}",
+                files={"file": ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf")},
+            )
+
+        assert response.status_code == 502
+
 
 # ── Listar ─────────────────────────────────────────────────────────────────────
 
@@ -261,6 +331,60 @@ class TestObtenerDocumento:
     def test_obtener_sin_autenticacion_retorna_403(self, client_sin_auth):
         response = client_sin_auth.get(f"/api/documentos/{MOCK_DOC_ID}")
         assert response.status_code == 403
+
+
+# ── Signed URL ──────────────────────────────────────────────────────────────────
+
+
+class TestObtenerDocumentoSignedUrl:
+    def test_signed_url_exitoso(self, client):
+        with (
+            patch(
+                "app.api.routes.documentos.supabase_client.get_document",
+                new_callable=AsyncMock,
+                return_value=MOCK_DOC,
+            ),
+            patch(
+                "app.api.routes.documentos.supabase_client.create_signed_url",
+                return_value="https://example.com/doc.pdf",
+            ),
+        ):
+            response = client.get(
+                f"/api/documentos/{MOCK_DOC_ID}/signed-url"
+            )
+
+        assert response.status_code == 200
+        assert response.json()["url"] == "https://example.com/doc.pdf"
+
+    def test_signed_url_documento_no_encontrado_retorna_404(self, client):
+        with patch(
+            "app.api.routes.documentos.supabase_client.get_document",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = client.get(
+                f"/api/documentos/{MOCK_DOC_ID}/signed-url"
+            )
+
+        assert response.status_code == 404
+
+    def test_signed_url_fallo_storage_retorna_502(self, client):
+        with (
+            patch(
+                "app.api.routes.documentos.supabase_client.get_document",
+                new_callable=AsyncMock,
+                return_value=MOCK_DOC,
+            ),
+            patch(
+                "app.api.routes.documentos.supabase_client.create_signed_url",
+                side_effect=Exception("storage error"),
+            ),
+        ):
+            response = client.get(
+                f"/api/documentos/{MOCK_DOC_ID}/signed-url"
+            )
+
+        assert response.status_code == 502
 
 
 # ── Batch Upload ────────────────────────────────────────────────────────────────
@@ -381,6 +505,48 @@ class TestBatchUploadDocumentos:
         )
 
         assert response.status_code == 403
+
+    def test_batch_archivo_supera_tamano_se_reporta_como_fallido(self, client):
+        contenido_grande = b"x" * (51 * 1024 * 1024)
+        with (
+            patch(
+                "app.api.routes.documentos.supabase_client.upload_file",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.api.routes.documentos.supabase_client.insert_document",
+                new_callable=AsyncMock,
+                return_value=MOCK_DOC,
+            ),
+        ):
+            response = client.post(
+                f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+                files=[
+                    ("files", ("grande.pdf", contenido_grande, "application/pdf")),
+                    ("files", ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf")),
+                ],
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert any(f["filename"] == "grande.pdf" for f in data["fallidos"])
+        assert any(e["filename"] == "doc.pdf" for e in data["exitos"])
+
+    def test_batch_fallo_storage_se_reporta_como_fallido(self, client):
+        with patch(
+            "app.api.routes.documentos.supabase_client.upload_file",
+            new_callable=AsyncMock,
+            side_effect=Exception("storage error"),
+        ):
+            response = client.post(
+                f"/api/documentos/upload/batch?coleccion_id={MOCK_COLECCION_ID}",
+                files=[("files", ("doc.pdf", b"%PDF-1.4 contenido", "application/pdf"))],
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["fallidos"]) == 1
+        assert data["fallidos"][0]["filename"] == "doc.pdf"
 
 
 # ── Validación de contenido (_validar_archivo) ──────────────────────────────────

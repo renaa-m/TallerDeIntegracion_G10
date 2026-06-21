@@ -275,9 +275,125 @@ class TestProcesarColeccion:
         assert data["processing_status"] == "processing_text"
         assert "en curso" in data["detail"].lower()
 
+    def test_procesar_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=None,
+        ):
+            response = client.post(f"/api/collections/{uuid4()}/process")
+
+        assert response.status_code == 404
+
+    def test_procesar_awaiting_graph_confirmation_retorna_409(self, client):
+        coleccion_awaiting = {
+            **MOCK_COLLECTION,
+            "processing_status": "awaiting_graph_confirmation",
+        }
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=coleccion_awaiting,
+        ):
+            response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
+
+        assert response.status_code == 409
+
+    def test_procesar_sin_documentos_retorna_422(self, client):
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=MOCK_COLLECTION,
+            ),
+            patch(
+                "app.api.routes.collections.supabase_client.get_documents",
+                return_value=[],
+            ),
+        ):
+            response = client.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
+
+        assert response.status_code == 422
+
     def test_procesar_sin_autenticacion_retorna_403(self, client_sin_auth):
         response = client_sin_auth.post(f"/api/collections/{MOCK_COLLECTION_ID}/process")
         assert response.status_code == 403
+
+
+# ── Continuar grafo (process/continue-graph) ───────────────────────────────────
+
+
+class TestContinuarGrafo:
+    def test_continuar_grafo_exitoso_retorna_202(self, client):
+        coleccion_awaiting = {
+            **MOCK_COLLECTION,
+            "processing_status": "awaiting_graph_confirmation",
+        }
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_awaiting,
+            ),
+            patch(
+                "app.api.routes.collections.processing_queue.request_continue_graph",
+                return_value="processing_graph",
+            ) as mock_request,
+        ):
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/process/continue-graph"
+            )
+
+        assert response.status_code == 202
+        data = response.json()
+        assert data["processing_status"] == "processing_graph"
+        mock_request.assert_called_once()
+
+    def test_continuar_grafo_coleccion_no_encontrada_retorna_404(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=None,
+        ):
+            response = client.post(
+                f"/api/collections/{uuid4()}/process/continue-graph"
+            )
+
+        assert response.status_code == 404
+
+    def test_continuar_grafo_estado_incorrecto_retorna_409(self, client):
+        with patch(
+            "app.api.routes.collections.supabase_client.get_collection",
+            return_value=MOCK_COLLECTION,  # processing_status: "idle"
+        ):
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/process/continue-graph"
+            )
+
+        assert response.status_code == 409
+
+    def test_continuar_grafo_cola_llena_retorna_429(self, client):
+        from app.services.processing_queue import ProcessingSlotBusyError
+
+        coleccion_awaiting = {
+            **MOCK_COLLECTION,
+            "processing_status": "awaiting_graph_confirmation",
+        }
+        blocking = {
+            "id": str(uuid4()),
+            "name": "Otra colección",
+            "processing_status": "processing_text",
+        }
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=coleccion_awaiting,
+            ),
+            patch(
+                "app.api.routes.collections.processing_queue.request_continue_graph",
+                side_effect=ProcessingSlotBusyError(blocking),
+            ),
+        ):
+            response = client.post(
+                f"/api/collections/{MOCK_COLLECTION_ID}/process/continue-graph"
+            )
+
+        assert response.status_code == 429
 
 
 # ── Cancelar procesamiento ─────────────────────────────────────────────────────
