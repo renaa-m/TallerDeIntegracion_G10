@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from app.services import wukong_runner
+from app.services.ai_models import ModelUnavailableError
 
 MOCK_COL_ID = "11111111-2222-3333-4444-555555555555"
 MOCK_USER_ID = "auth0|testuser123"
@@ -676,3 +677,64 @@ class TestTransicionEstados:
             for call in mock_sb.update_collection_processing_status.call_args_list
         ]
         assert statuses[-1] == "graph_ready"
+
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
+    @patch("app.services.wukong_runner._generate_and_store_embeddings",
+           side_effect=ModelUnavailableError("embeddings"))
+    @patch("app.services.wukong_runner.supabase_client")
+    @patch("app.services.wukong_runner._run_wukong", return_value=None)
+    @patch("app.services.wukong_runner._build_wukong_workdir", return_value=2)
+    @patch("app.services.wukong_runner.process_txt_document")
+    def test_modelo_embeddings_caido_marca_error_con_aviso(
+        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb,
+        _mock_embeddings, _mock_qm
+    ):
+        # Si SE CAE el modelo de embeddings (no un error genérico de red/BDD),
+        # se muestra un fallo de modelo y se pide contactar a soporte.
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]
+        mock_process_txt.return_value = {"status": "ok", "document_id": "doc1"}
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        final_call = mock_sb.update_collection_processing_status.call_args_list[-1]
+        assert final_call.args[1] == "error"
+        mensaje = final_call.kwargs["error_message"]
+        assert "embeddings" in mensaje.lower()
+        assert "soporte" in mensaje.lower()
+
+    @patch("app.services.wukong_runner.export_qm_to_supabase", return_value=None)
+    @patch("app.services.wukong_runner._generate_and_store_embeddings", return_value=0)
+    @patch("app.services.wukong_runner.supabase_client")
+    @patch("app.services.wukong_runner._run_wukong",
+           side_effect=ModelUnavailableError("construcción del grafo"))
+    @patch("app.services.wukong_runner._build_wukong_workdir", return_value=2)
+    @patch("app.services.wukong_runner.process_txt_document")
+    def test_modelo_wukong_caido_marca_error_con_aviso(
+        self, mock_process_txt, _mock_build, _mock_run_wukong, mock_sb,
+        _mock_embeddings, _mock_qm
+    ):
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = [_make_doc("doc1")]
+        mock_process_txt.return_value = {"status": "ok", "document_id": "doc1"}
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        final_call = mock_sb.update_collection_processing_status.call_args_list[-1]
+        assert final_call.args[1] == "error"
+        mensaje = final_call.kwargs["error_message"]
+        assert "construcción del grafo" in mensaje.lower()
+        assert "soporte" in mensaje.lower()
+
+
+class TestModelFailureDetection:
+    def test_detecta_error_de_openai_en_salida(self):
+        salida = (
+            "openai.NotFoundError: Error code: 404 - {'message': 'does not "
+            "have access to model `gpt-4.1-mini`', 'code': 'model_not_found'}"
+        )
+        assert wukong_runner._looks_like_model_failure(salida) is True
+
+    def test_no_marca_error_generico_como_fallo_de_modelo(self):
+        salida = "FileNotFoundError: no such file 'data_model.json'"
+        assert wukong_runner._looks_like_model_failure(salida) is False

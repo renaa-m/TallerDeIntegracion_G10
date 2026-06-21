@@ -41,6 +41,7 @@ from app.config import (
 )
 # importamos el cliente de Supabase para interactuar con la base de datos
 from app.services import supabase_client, graph_transformer
+from app.services.ai_models import ModelUnavailableError
 from app.services.qm_storage import export_qm_to_supabase
 from app.services.text_extraction import (
     process_pdf_document,
@@ -244,6 +245,19 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
             )
         
     
+def _model_failure_message(modelo: str) -> str:
+    """Mensaje simple y uniforme cuando se cae un modelo de IA al generar el grafo.
+
+    Se usa tanto si se cae el modelo de Wukong (LLM/OpenAI) como el de
+    embeddings. El detalle técnico queda en los logs; al usuario solo se le
+    muestra un fallo general y se le pide contactar a soporte.
+    """
+    return (
+        f"Hubo un fallo general del modelo de {modelo}. "
+        "Por favor, contacta a soporte."
+    )
+
+
 def process_graph_collection(collection_id: str, custom_data_model: dict | None = None,
     final_status_on_success: str = "graph_ready",) -> None:
     try:
@@ -353,6 +367,10 @@ def process_graph_collection(collection_id: str, custom_data_model: dict | None 
             try:
                 n_chunks = _generate_and_store_embeddings(workdir, collection_id)
                 logger.info("Embeddings generados y guardados: %d chunks (colección %s)", n_chunks, collection_id)
+            except ModelUnavailableError:
+                # Se cayó el modelo de embeddings: se reporta como fallo de
+                # modelo (manejado abajo). Otros errores (red, BDD, archivos) no.
+                raise
             except Exception:
                 logger.exception(
                     "Error generando embeddings para colección %s — grafo sigue disponible.",
@@ -379,6 +397,21 @@ def process_graph_collection(collection_id: str, custom_data_model: dict | None 
         graph_transformer.invalidate_facets_cache(collection_id)
     except ProcessingCancelled:
         logger.info("Construcción de grafo cancelada colección %s", collection_id)
+        return
+
+    except ModelUnavailableError as exc:
+        # Se cayó un modelo de IA (Wukong/LLM o embeddings): mensaje simple
+        # "fallo general del modelo X, contactar a soporte".
+        logger.error(
+            "Modelo de IA caído (%s) construyendo grafo %s",
+            exc.model_label,
+            collection_id,
+        )
+        if not _skip_if_user_cancelled(collection_id, "fallo de modelo de IA"):
+            _mark_collection_error(
+                collection_id,
+                _model_failure_message(exc.model_label),
+            )
         return
 
     except Exception as exc:
@@ -642,50 +675,99 @@ def _persist_wukong_artifacts(
         )
 
 
+# Firmas en la salida de Wukong que indican que se cayó el modelo (LLM/OpenAI),
+# vs. otros errores (config, datos, subproceso). Se comparan en minúsculas.
+_WUKONG_MODEL_FAILURE_SIGNATURES = (
+    "model_not_found",
+    "does not have access to model",
+    "the model `",
+    "openai",
+    "rate limit",
+    "ratelimiterror",
+    "insufficient_quota",
+    "authenticationerror",
+    "incorrect api key",
+    "invalid api key",
+    "apiconnectionerror",
+    "apitimeouterror",
+    "service unavailable",
+)
+
+
+def _looks_like_model_failure(output: str) -> bool:
+    """True si la salida de Wukong parece un fallo del modelo de IA (LLM/OpenAI).
+
+    Ej.: ``model_not_found`` / "does not have access to model `gpt-4.1-mini`".
+    """
+    low = output.lower()
+    return any(sig in low for sig in _WUKONG_MODEL_FAILURE_SIGNATURES)
+
+
 def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds: int = 3600) -> str | None:
     """
     Pipeline 2. Ejecuta Wukong sobre la carpeta de trabajo.
 
     Devuelve None si Wukong terminó OK, o un mensaje de error si falló.
+    Lanza ``ModelUnavailableError`` si la salida indica que se cayó el modelo
+    de IA que usa Wukong (LLM/OpenAI), para reportarlo como fallo de modelo.
     """
     if not WUKONG_DEFAULT_CONFIG.is_file():
         return f"No existe la config de Wukong: {WUKONG_DEFAULT_CONFIG}"
+    # La salida (stdout+stderr) se captura a un archivo para poder inspeccionarla
+    # y distinguir un fallo del modelo de otros errores, sin riesgo de bloquear
+    # el subproceso por un pipe lleno (no lo drenamos durante el polling).
+    log_path = workdir / "wukong_output.log"
     try:
-        process = subprocess.Popen(
-            [
-                _wukong_python_executable(),
-                "-m",
-                "wukong_engine",
-                str(workdir),
-                "--config",
-                str(WUKONG_DEFAULT_CONFIG),
-            ],
-            stdout=None,
-            stderr=None,
-        )
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            process = subprocess.Popen(
+                [
+                    _wukong_python_executable(),
+                    "-m",
+                    "wukong_engine",
+                    str(workdir),
+                    "--config",
+                    str(WUKONG_DEFAULT_CONFIG),
+                ],
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
 
-        started_at = datetime.now(timezone.utc)
+            started_at = datetime.now(timezone.utc)
 
-        while process.poll() is None:
-            if collection_id is not None and _skip_if_user_cancelled(collection_id, "detener subprocess Wukong"):
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
+            while process.poll() is None:
+                if collection_id is not None and _skip_if_user_cancelled(collection_id, "detener subprocess Wukong"):
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    raise ProcessingCancelled()
+
+                elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
+                if elapsed > timeout_seconds:
                     process.kill()
                     process.wait()
-                raise ProcessingCancelled()
+                    return f"Wukong superó el timeout de {timeout_seconds}s."
 
-            elapsed = (datetime.now(timezone.utc) - started_at).total_seconds()
-            if elapsed > timeout_seconds:
-                process.kill()
-                process.wait()
-                return f"Wukong superó el timeout de {timeout_seconds}s."
-
-            import time
-            time.sleep(1)
+                import time
+                time.sleep(1)
 
         if process.returncode != 0:
+            output = ""
+            try:
+                output = log_path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+            # El detalle completo va a los logs para depuración.
+            if output.strip():
+                logger.error(
+                    "Salida de Wukong (exit %s):\n%s",
+                    process.returncode,
+                    output[-4000:],
+                )
+            if _looks_like_model_failure(output):
+                raise ModelUnavailableError("construcción del grafo")
             return f"Wukong falló (exit {process.returncode})"
         return None
     except subprocess.TimeoutExpired:
