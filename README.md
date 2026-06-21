@@ -17,12 +17,13 @@
 8. [Setup — Desarrollo Local](#setup--desarrollo-local)
 9. [Variables de Entorno](#variables-de-entorno)
 10. [CI/CD](#cicd)
-11. [Testing](#testing)
-12. [Integración con Wukong](#integración-con-wukong)
-13. [Integración con MillenniumDB](#integración-con-millenniumdb)
-14. [Docker](#docker)
-15. [Equipo](#equipo)
-16. [Sistema de diseño UI](#sistema-de-diseño-ui)
+11. [Rendimiento y escalamiento](#rendimiento-y-escalamiento)
+12. [Testing](#testing)
+13. [Integración con Wukong](#integración-con-wukong)
+14. [Integración con MillenniumDB](#integración-con-millenniumdb)
+15. [Docker](#docker)
+16. [Equipo](#equipo)
+17. [Sistema de diseño UI](#sistema-de-diseño-ui)
 
 ---
 
@@ -74,8 +75,8 @@ Plataforma web tipo **buscador** (no un chat) que permite a investigadores del I
 | **Data model por idioma** | Modelos por defecto en español (`default_data_model_es.json`) e inglés (`default_data_model_en.json`) |
 | **Cancelación cooperativa** | `POST .../process/cancel` — detiene el pipeline de forma segura |
 | **Confirmación de grafo parcial** | Si la extracción tuvo errores parciales, el usuario puede confirmar continuar con `awaiting_graph_confirmation` |
-| **Pipeline en segundo plano** | HTTP 202; `processing_queue` despacha el job en un thread daemon; el frontend hace polling sobre el estado de la colección |
-| **Cola de procesamiento** | Solo una colección activa por usuario a la vez; recuperación de jobs huérfanos al arrancar |
+| **Pipeline en segundo plano** | HTTP 202; `processing_queue` encola una Google Cloud Task que vuelve a llamar al mismo servicio (en local: thread daemon); el frontend hace polling sobre el estado de la colección |
+| **Cola de procesamiento** | Cloud Tasks + límites de negocio: 2 jobs globales, 1 activo por usuario, hasta 5 en espera; recuperación de jobs huérfanos al arrancar |
 
 **Estados de procesamiento:**
 `idle` → `processing_text` → `processing_graph` → `graph_ready` / `partial_error` / `error` / `cancelled` / `awaiting_graph_confirmation`
@@ -126,7 +127,14 @@ Esto genera un `data_model.json` que Wukong usa para saber exactamente qué extr
 
 ```
 POST /api/collections/{id}/generate-graph   →   202 Accepted
-        │   (processing_queue → thread daemon → wukong_runner.process_collection)
+        │   processing_queue evalúa capacidad:
+        │     • hay cupo  → estado processing_text + encola una Cloud Task
+        │     • sin cupo  → estado queued en Supabase (se despacha en orden FIFO)
+        │
+        │   La Cloud Task vuelve a llamar al MISMO servicio Cloud Run
+        │   (action=process / continue_graph, autenticado con token OIDC)
+        │   → processing_queue.execute_job → wukong_runner.process_collection
+        │   (en local, sin Cloud Tasks configurado, corre en un thread daemon)
         ▼
 ═══════════════════════════════════════════════════════
   PIPELINE 1 — Extracción de texto (por documento)
@@ -180,7 +188,7 @@ POST /api/collections/{id}/generate-graph   →   202 Accepted
 ═══════════════════════════════════════════════════════
 
   El .qm puede importarse en el servidor IMFD (mdb import …).
-  El código está preparado en millenniumdb_import.py;
+  El código de import está preparado en millenniumdb.py;
   la integración automática al pipeline es trabajo pendiente.
 ```
 
@@ -228,9 +236,9 @@ graph LR
     end
 
     subgraph GCP ["Google Cloud Platform"]
-        API[FastAPI\nCloud Run]
+        API[FastAPI · Cloud Run\nrutas + handler de tasks\nen el MISMO servicio]
+        QUEUE[[Cloud Tasks\nimfd-processing\nmax-concurrent=2]]
         SUPA[(Supabase\nDB + pgvector + Storage)]
-        BT[processing_queue\nHTTP 202 + thread]
 
         subgraph Pipeline_1 ["Pipeline 1 — Extracción de texto"]
             VISION[Cloud Vision\nOCR]
@@ -254,16 +262,19 @@ graph LR
     API -->|"2. Guarda originales"| SUPA
     U -->|"3. Selecciona entidades (data model)"| API
     U -->|"4. Botón Generar Grafo"| API
-    API -->|"5. Encola pipeline"| BT
-    BT -->|"6a. PDF digital"| PYMUPDF
-    BT -->|"6b. PDF escaneado"| VISION
-    BT -->|"6c. Archivo .txt"| TXT_PASS
-    Pipeline_1 -->|"7. Textos + estados"| SUPA
-    SUPA -->|"8a. Textos + data_model"| WK
+    API -->|"5a. hay cupo → encola Cloud Task"| QUEUE
+    API -.->|"5b. sin cupo → estado queued (FIFO)"| SUPA
+    QUEUE -->|"6. callback al MISMO servicio\n(action=process / continue_graph, OIDC)"| API
+    API -->|"7a. PDF digital"| PYMUPDF
+    API -->|"7b. PDF escaneado"| VISION
+    API -->|"7c. Archivo .txt"| TXT_PASS
+    Pipeline_1 -->|"8. Textos + estados"| SUPA
+    SUPA -->|"9. Textos + data_model"| WK
     WK --> EMB
-    EMB -->|"9a. chunk_embeddings"| SUPA
-    WK -->|"9b. .qm → Storage"| SUPA
-    WK -.->|"10. .qm\n(import pendiente)"| MDB
+    EMB -->|"10a. chunk_embeddings"| SUPA
+    WK -->|"10b. .qm → Storage"| SUPA
+    API -.->|"11. al terminar despacha el siguiente queued"| QUEUE
+    WK -.->|"12. .qm\n(import pendiente)"| MDB
 ```
 
 ### Diagrama B — Flujo de consulta / búsqueda
@@ -301,7 +312,9 @@ graph RL
 | FastAPI → OpenAI | **HTTPS** | Consumido por **Wukong** (extracción de entidades/relaciones) |
 | Embeddings | **Proceso local** | `sentence-transformers` (sin API key; descarga modelo a caché HuggingFace) |
 | FastAPI ↔ Wukong | **Subproceso Python** | `python -m wukong_engine` en el mismo contenedor / máquina |
-| Pipeline async | **Thread daemon** | `processing_queue` en local; variables `CLOUD_TASKS_*` reservadas en config para evolución en GCP |
+| FastAPI → Cloud Tasks | **API cliente oficial** | `enqueue_processing_task` crea un HTTP task con `oidc_token` (action=process / continue_graph) |
+| Cloud Tasks → FastAPI | **HTTPS + OIDC** | La task vuelve a llamar al **mismo** servicio Cloud Run; `verify_cloud_tasks_caller` valida el ID token (audience = URL del handler) |
+| Pipeline async | **Cloud Tasks** (prod) / **thread daemon** (local) | `processing_queue` encola en GCP cuando `CLOUD_TASKS_*` está configurado; si no, hace fallback a un hilo local |
 
 ---
 
@@ -318,7 +331,7 @@ graph RL
 | Grafo de conocimiento | Wukong (IMFD) → export `.qm` | submodule Python 3.13 |
 | Búsqueda semántica | **sentence-transformers** + Supabase `search_chunks` | `paraphrase-multilingual-MiniLM-L12-v2` |
 | Grafo en IMFD | MillenniumDB + driver WebSocket | integración pendiente |
-| Orquestación async | `processing_queue` (thread daemon; HTTP 202) | — |
+| Orquestación async | **Google Cloud Tasks** (callback al mismo servicio Cloud Run; HTTP 202); fallback a thread daemon en local | cola `imfd-processing` |
 | Deploy producción | Google Cloud Run + Artifact Registry | us-central1 |
 | CI/CD | GitHub Actions | ci.yml (lint+test) + cd.yml (deploy) |
 | Tests backend | pytest 8.3 | 16 módulos |
@@ -345,9 +358,11 @@ TallerDeIntegracion_G10/
 │   │   │   ├── collections.py       # CRUD + pipeline + grafo + entidades
 │   │   │   ├── documentos.py        # Carga individual, batch, URLs firmadas
 │   │   │   ├── usuarios.py          # DELETE /usuarios/me
-│   │   │   └── search.py            # POST /api/search
+│   │   │   ├── search.py            # POST /api/search
+│   │   │   └── internal_tasks.py    # Handler que ejecuta el job (callback de Cloud Tasks)
 │   │   ├── middleware/
-│   │   │   └── auth.py              # JWT Auth0
+│   │   │   ├── auth.py              # JWT Auth0
+│   │   │   └── cloud_tasks_auth.py # Verifica OIDC de Cloud Tasks
 │   │   ├── models/                  # Pydantic (document, search)
 │   │   ├── schemas/                 # graph.py (DataModelUpdate)
 │   │   └── services/
@@ -357,14 +372,14 @@ TallerDeIntegracion_G10/
 │   │       ├── embeddings_service.py
 │   │       ├── graph_transformer.py # .qm → Cytoscape; facetas de entidades
 │   │       ├── qm_storage.py        # Upload/download .qm en Storage
-│   │       ├── processing_queue.py  # Cola 1 job por usuario + recuperación
+│   │       ├── processing_queue.py  # Despacho/encolado, capacidad y recuperación
+│   │       ├── cloud_tasks_client.py # Encola HTTP tasks en Google Cloud Tasks
 │   │       ├── delete_user.py       # Eliminación completa de cuenta
-│   │       ├── millenniumdb.py      # Cliente WebSocket (consultas grafo)
-│   │       ├── millenniumdb_import.py  # Import .qm (preparado, no integrado)
+│   │       ├── millenniumdb.py      # Cliente WebSocket + import .qm (preparado, no integrado)
 │   │       ├── vision_quota.py      # Control de cuota OCR
 │   │       ├── default_data_model_es.json
 │   │       └── default_data_model_en.json
-│   ├── supabase/migrations/         # 14 migraciones SQL (esquema + pgvector)
+│   ├── supabase/migrations/         # 15 migraciones SQL (esquema + pgvector)
 │   ├── wukong-engine/               # Submodule Wukong
 │   ├── tests/                       # 16 módulos pytest
 │   ├── scripts/                     # Utilidades (grafo, OCR, cuotas)
@@ -399,6 +414,8 @@ TallerDeIntegracion_G10/
 │   ├── package.json
 │   └── .env.example
 ├── infra/
+│   ├── cloud_tasks/
+│   │   └── setup.sh         # Crea la cola Cloud Tasks + SA invoker + permisos IAM
 │   └── millenniumdb/
 │       ├── entrypoint.sh    # Script para levantar mdb server local
 │       └── sample.ttl       # Datos de ejemplo TTL
@@ -557,14 +574,18 @@ MILLENNIUMDB_PORT=1234
 
 # Google Cloud Vision (PDF escaneados)
 GOOGLE_APPLICATION_CREDENTIALS=gcp-vision-key.json
-GCP_PROJECT_ID=your-gcp-project-id
 
 # Opcional: copia del workdir Wukong tras cada run (depuración)
 WUKONG_ARTIFACTS_DIR=
 
-# Cloud Tasks (reservado para evolución en GCP)
-CLOUD_TASKS_QUEUE=
-CLOUD_TASKS_LOCATION=
+# Cloud Tasks (orquestación async en GCP).
+# Si quedan vacías, el pipeline corre en un thread daemon local (dev).
+# Deben estar TODAS presentes para que processing_queue encole en Cloud Tasks.
+GCP_PROJECT_ID=your-gcp-project-id
+CLOUD_TASKS_QUEUE=imfd-processing
+CLOUD_TASKS_LOCATION=us-central1
+CLOUD_TASKS_SERVICE_URL=https://your-service.run.app
+CLOUD_TASKS_INVOKER_SA=imfd-tasks-invoker@your-gcp-project-id.iam.gserviceaccount.com
 
 # HU-13: reintentos de subida a Storage
 MAX_UPLOAD_RETRIES=3
@@ -601,7 +622,41 @@ Corre en **push a `main`**:
 3. Descarga y cachea modelo HuggingFace (`paraphrase-multilingual-MiniLM-L12-v2`)
 4. `docker build` imagen multi-stage
 5. Push a Artifact Registry: `us-central1-docker.pkg.dev/titulo-grupo10/imfd-backend/imfd-app`
-6. Deploy Cloud Run (`imfd-backend`): 2 CPU, 2Gi RAM, `--min-instances=1`
+6. Deploy Cloud Run (`imfd-backend`) con los flags de la sección siguiente.
+
+> La cola de Cloud Tasks y la service account `imfd-tasks-invoker` se crean una vez con `infra/cloud_tasks/setup.sh` (fuera del CD).
+
+---
+
+## Rendimiento y escalamiento
+
+### Cloud Run — flags de deploy
+
+El servicio se despliega con estos flags (ver `cd.yml`), todos justificados por el perfil del pipeline:
+
+| Flag | Valor | Por qué |
+|---|---|---|
+| `--memory` | **6Gi** | Dimensionado para lotes de ~30 docs. Con 10 docs el pico fue ~1.95 GB (base ~1 GB + ~1 GB del subproceso Wukong); 30 docs ≈ ~4 GB, 6Gi deja colchón anti-OOM. Lotes ~90 requerirán remedir y quizá `--cpu=4` (cpu=2 topa en 8Gi). |
+| `--cpu` | **2** | La CPU queda casi ociosa (~0.5% p50); no se sube. |
+| `--no-cpu-throttling` | — | La CPU no se limita entre requests; necesario porque el job sigue activo tras devolver el 202. |
+| `--concurrency` | **1** | La instancia que arma un grafo (Cloud Task) no comparte con peticiones de usuarios; éstas caen en otra instancia y la página sigue respondiendo. |
+| `--min-instances` | **1** | Evita cold starts (la imagen carga el modelo de embeddings). |
+| `--max-instances` | **5** | Tope de escalado horizontal. |
+| `--timeout` | **3600** | Un grafo largo no debe cortarse en los 300s por defecto. |
+
+### Cola de procesamiento (Cloud Tasks + límites de negocio)
+
+`processing_queue` aplica el control de capacidad **antes** de encolar; Cloud Tasks aplica el suyo a nivel de cola:
+
+| Límite | Valor | Dónde |
+|---|---|---|
+| Jobs concurrentes globales | `MAX_CONCURRENT_JOBS = 2` | `processing_queue.py` + `--max-concurrent-dispatches=2` en la cola |
+| Jobs activos por usuario | **1** | `processing_queue` (vía `get_user_blocking_collection`) |
+| Colecciones en espera por usuario | `MAX_QUEUED_PER_USER = 5` | `processing_queue.py` |
+| Reintentos por task | **3** (`--max-attempts`), backoff 30s→600s | cola Cloud Tasks |
+| Despacho | **1/s** (`--max-dispatches-per-second`) | cola Cloud Tasks |
+
+**Flujo de capacidad:** si hay cupo → `processing_text` + Cloud Task; si no → estado `queued` en Supabase. Al terminar un job, `_try_dispatch_queued_from_db()` despacha el siguiente candidato FIFO respetando el límite por usuario. En el arranque del servicio, `recover_orphaned_processing()` re-encola jobs huérfanos (`processing_*`) y despacha los `queued` pendientes.
 
 ---
 
@@ -634,7 +689,6 @@ Módulos de test (cobertura ~70%):
 | `test_qm_storage.py` | Upload/download Storage |
 | `test_vision_quota.py` | Control cuota OCR |
 | `test_usuarios.py` | Rutas de usuario |
-| `test_millenniumdb_import.py` | Import .qm preparado |
 
 ### Frontend
 
@@ -700,7 +754,7 @@ data = result.data()
 driver.close()
 ```
 
-El cliente está en `backend/app/services/millenniumdb.py`. La **import automática del `.qm` al pipeline** es trabajo pendiente (código preparado en `millenniumdb_import.py`).
+El cliente está en `backend/app/services/millenniumdb.py` (también con el código de import `.qm` preparado). La **import automática del `.qm` al pipeline** es trabajo pendiente.
 
 ---
 
