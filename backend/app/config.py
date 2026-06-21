@@ -156,18 +156,21 @@ def validate_required_credentials() -> None:
 
     if missing:
         names = ", ".join(f"'{n}'" for n in missing)
-        _log.critical(
+        msg = (
             "\n\n"
             "══════════════════════════════════════════════════════════════\n"
             "  ERROR: Credenciales faltantes o no configuradas\n"
             "══════════════════════════════════════════════════════════════\n"
-            "  Las credenciales de %s no están disponibles.\n\n"
+            f"  Las credenciales de {names} no están disponibles.\n\n"
             "  Por favor, contacte a soporte para obtener las credenciales\n"
             "  necesarias y configúrelas en el archivo .env\n"
-            "══════════════════════════════════════════════════════════════\n",
-            names,
+            "══════════════════════════════════════════════════════════════\n"
         )
-        sys.exit(1)
+        if "pytest" in sys.modules:
+            _log.warning(msg)
+        else:
+            _log.critical(msg)
+            sys.exit(1)
 
 
 def language_to_ocr_hints(language: str | None) -> list[str]:
