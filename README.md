@@ -184,19 +184,19 @@ POST /api/collections/{id}/generate-graph   →   202 Accepted
         │
         ▼
 ═══════════════════════════════════════════════════════
-  MillenniumDB (integración pendiente)
+  Escalamiento futuro — MillenniumDB (fuera de este sistema)
 ═══════════════════════════════════════════════════════
 
-  El .qm puede importarse en el servidor IMFD (mdb import …).
-  El código de import está preparado en millenniumdb.py;
-  la integración automática al pipeline es trabajo pendiente.
+  El .qm es el artefacto de entrega. A futuro, el equipo del IMFD
+  puede tomarlo e importarlo en su MillenniumDB por la vía oficial
+  de su base. Nuestro pipeline NO integra MillenniumDB.
 ```
 
 > **Resumen**:
 > - Originales y textos extraídos → **Supabase Storage + DB**
 > - Chunks + embeddings para búsqueda → **Supabase (`chunk_embeddings`)**
 > - Grafo visualizable (`.qm`) → **Supabase Storage** (descargado por el frontend vía API)
-> - Grafo en **MillenniumDB** → integración pendiente
+> - Grafo en **MillenniumDB** → escalamiento a futuro; el `.qm` es la entrega y el IMFD lo importa por su vía oficial (fuera de este sistema)
 
 ### Fase 4 — Búsqueda y visualización
 
@@ -252,7 +252,7 @@ graph LR
         end
     end
 
-    subgraph IMFD_servers ["Servidores IMFD (pendiente)"]
+    subgraph IMFD_servers ["IMFD — escalamiento futuro (fuera del sistema)"]
         MDB[(MillenniumDB)]
     end
 
@@ -274,7 +274,7 @@ graph LR
     EMB -->|"10a. chunk_embeddings"| SUPA
     WK -->|"10b. .qm → Storage"| SUPA
     API -.->|"11. al terminar despacha el siguiente queued"| QUEUE
-    WK -.->|"12. .qm\n(import pendiente)"| MDB
+    SUPA -.->|"12. .qm (entrega)\nel IMFD lo importa a futuro"| MDB
 ```
 
 ### Diagrama B — Flujo de consulta / búsqueda
@@ -308,7 +308,7 @@ graph RL
 | FastAPI → Auth0 | **HTTPS (JWKS)** | Validación de JWT (middleware) + eliminación de usuarios (M2M) |
 | FastAPI → Supabase | **HTTPS (REST)** | Cliente PostgREST / Storage / RPC (`search_chunks`, etc.) |
 | FastAPI → Google Cloud Vision | **API cliente oficial** | Credenciales vía `GOOGLE_APPLICATION_CREDENTIALS` |
-| FastAPI → MillenniumDB | **WebSocket** | Driver `millenniumdb_driver` (`ws://host:puerto`); no usado en el flujo principal actual |
+| FastAPI → MillenniumDB | **WebSocket** | Driver `millenniumdb_driver` (`ws://host:puerto`); fuera del flujo actual — reservado para el escalamiento a futuro del IMFD |
 | FastAPI → OpenAI | **HTTPS** | Consumido por **Wukong** (extracción de entidades/relaciones) |
 | Embeddings | **Proceso local** | `sentence-transformers` (sin API key; descarga modelo a caché HuggingFace) |
 | FastAPI ↔ Wukong | **Subproceso Python** | `python -m wukong_engine` en el mismo contenedor / máquina |
@@ -330,7 +330,7 @@ graph RL
 | Extracción de texto | PyMuPDF + **Google Cloud Vision** (OCR escaneados) | `google-cloud-vision` 3.10 |
 | Grafo de conocimiento | Wukong (IMFD) → export `.qm` | submodule Python 3.13 |
 | Búsqueda semántica | **sentence-transformers** + Supabase `search_chunks` | `paraphrase-multilingual-MiniLM-L12-v2` |
-| Grafo en IMFD | MillenniumDB + driver WebSocket | integración pendiente |
+| Grafo en IMFD | MillenniumDB (vía oficial del IMFD; el `.qm` es la entrega) | escalamiento a futuro, fuera de este sistema |
 | Orquestación async | **Google Cloud Tasks** (callback al mismo servicio Cloud Run; HTTP 202); fallback a thread daemon en local | cola `imfd-processing` |
 | Deploy producción | Google Cloud Run + Artifact Registry | us-central1 |
 | CI/CD | GitHub Actions | ci.yml (lint+test) + cd.yml (deploy) |
@@ -731,7 +731,7 @@ En `<data_dir>/exports/`: el **`.qm`** y JSONs de entidades y relaciones. El bac
 
 ## Integración con MillenniumDB
 
-[MillenniumDB](https://github.com/MillenniumDB/MillenniumDB) corre en servidores del IMFD. Las consultas desde el driver Python usan **WebSocket** (`ws://host:puerto`).
+> **Escalamiento a futuro — fuera del alcance de este sistema.** Nuestro pipeline no integra MillenniumDB. El `.qm` que genera Wukong es el **artefacto de entrega**: a futuro, el equipo del IMFD puede tomarlo e importarlo en su [MillenniumDB](https://github.com/MillenniumDB/MillenniumDB) por la vía oficial de su base. Lo que sigue documenta esa operación del lado del IMFD para referencia; el código del driver/cliente queda preparado pero no se invoca en el flujo principal.
 
 ### CLI (operación en el servidor IMFD)
 
@@ -754,7 +754,7 @@ data = result.data()
 driver.close()
 ```
 
-El cliente está en `backend/app/services/millenniumdb.py` (también con el código de import `.qm` preparado). La **import automática del `.qm` al pipeline** es trabajo pendiente.
+El cliente está en `backend/app/services/millenniumdb.py` (con el código de import `.qm` preparado), pero **no forma parte del flujo**: la importación a MillenniumDB es un escalamiento que correrá del lado del IMFD a futuro.
 
 ---
 
