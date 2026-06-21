@@ -47,6 +47,10 @@ class ProcessingSlotBusyError(Exception):
         super().__init__(blocking.get("name") or blocking.get("id"))
 
 
+class ProcessingDispatchError(Exception):
+    """No se pudo encolar el procesamiento (p. ej. Cloud Tasks/GCP no disponible)."""
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Capacidad / despacho
 # ──────────────────────────────────────────────────────────────────────────────
@@ -106,12 +110,34 @@ def _dispatch_job(
     supabase_client.update_collection_processing_status(
         collection_id, _next_processing_status(action)
     )
-    _enqueue_cloud_task(
-        collection_id=collection_id,
-        user_id=user_id,
-        action=action,
-        custom_data_model=custom_data_model,
-    )
+    try:
+        _enqueue_cloud_task(
+            collection_id=collection_id,
+            user_id=user_id,
+            action=action,
+            custom_data_model=custom_data_model,
+        )
+    except Exception as exc:
+        # No se pudo encolar (Cloud Tasks/GCP caído). Se revierte el estado para
+        # que la colección no quede colgada en "processing_*" sin tarea, y se
+        # señala un error de despacho para que el endpoint responda 503.
+        logger.exception(
+            "No se pudo encolar el procesamiento de la colección %s", collection_id
+        )
+        try:
+            supabase_client.update_collection_processing_status(
+                collection_id,
+                "error",
+                error_message=(
+                    "No se pudo iniciar el procesamiento. "
+                    "Intenta de nuevo en unos minutos."
+                ),
+            )
+        except Exception:
+            logger.exception(
+                "Tampoco se pudo revertir el estado de la colección %s", collection_id
+            )
+        raise ProcessingDispatchError() from exc
 
 
 def _try_dispatch_queued_from_db() -> None:

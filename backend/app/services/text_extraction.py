@@ -2,13 +2,32 @@ import os
 import tempfile
 
 import fitz
+from google.api_core import exceptions as gcloud_exceptions
+from google.auth.exceptions import GoogleAuthError
 from google.cloud import vision
 
 from app.config import settings
+from app.services.ai_models import OcrServiceUnavailableError
 from app.services.supabase_client import (
     get_supabase_client,
     save_document_text,
     update_document_status,
+)
+
+# Excepciones de Google que significan que el SERVICIO de Cloud Vision está
+# caído/no disponible (credenciales, permisos, cuota, indisponibilidad, red),
+# a diferencia de un error del OCR sobre un documento concreto. ``GoogleAuthError``
+# cubre la falta de credenciales (``DefaultCredentialsError`` es subclase).
+# ``InvalidArgument`` (imagen inválida) queda fuera a propósito: es contenido.
+_VISION_SERVICE_DOWN_EXCEPTIONS = (
+    gcloud_exceptions.Unauthenticated,
+    gcloud_exceptions.PermissionDenied,
+    gcloud_exceptions.ResourceExhausted,
+    gcloud_exceptions.ServiceUnavailable,
+    gcloud_exceptions.DeadlineExceeded,
+    gcloud_exceptions.InternalServerError,
+    gcloud_exceptions.RetryError,
+    GoogleAuthError,
 )
 
 # Límite de píxeles de Cloud Vision para OCR (ancho × alto).
@@ -251,7 +270,11 @@ def extract_text_vision(
     Si cualquier página falla, se lanza la excepción (fallo total del documento).
     El llamador es responsable de marcar el documento como 'error'.
     """
-    client = vision.ImageAnnotatorClient()
+    try:
+        client = vision.ImageAnnotatorClient()
+    except _VISION_SERVICE_DOWN_EXCEPTIONS as exc:
+        raise OcrServiceUnavailableError() from exc
+
     doc = fitz.open(file_path)
     image_context = _build_image_context(language_hints)
     pages_text = []
@@ -259,6 +282,11 @@ def extract_text_vision(
     try:
         for page_num in range(len(doc)):
             pages_text.append(ocr_pdf_page(client, doc[page_num], page_num, image_context))
+    except _VISION_SERVICE_DOWN_EXCEPTIONS as exc:
+        # El servicio se cayó (credenciales/cuota/indisponibilidad), no es un
+        # problema del documento. Se propaga distinto para avisar "contacta a
+        # soporte" en vez de marcar el documento como ilegible.
+        raise OcrServiceUnavailableError() from exc
     finally:
         doc.close()
 
@@ -324,6 +352,11 @@ def process_pdf_document(
 
         return {"status": "ok", "document_id": document_id}
 
+    except OcrServiceUnavailableError:
+        # El servicio de OCR está caído: no es culpa de este documento. Se
+        # propaga para que el llamador avise "contacta a soporte" a nivel de
+        # colección, en vez de marcar el documento como ilegible.
+        raise
     except Exception as e:
         update_document_status(document_id, user_id, "error", error_message=str(e))
         return {"status": "error", "document_id": document_id, "error": str(e)}

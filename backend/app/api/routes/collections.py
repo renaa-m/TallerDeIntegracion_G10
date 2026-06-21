@@ -7,7 +7,10 @@ from app.middleware.auth import get_current_user
 from app.models.document import CollectionCreate, CollectionResponse, CollectionEntities
 from app.schemas.graph import DataModelUpdate
 from app.services import supabase_client, graph_transformer, processing_queue
-from app.services.processing_queue import ProcessingSlotBusyError
+from app.services.processing_queue import (
+    ProcessingDispatchError,
+    ProcessingSlotBusyError,
+)
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
@@ -220,6 +223,17 @@ def _slot_busy_http_exception(exc: ProcessingSlotBusyError) -> HTTPException:
     return HTTPException(
         status_code=429,
         detail=processing_queue.busy_detail_message(exc.blocking),
+    )
+
+
+def _dispatch_unavailable_http_exception() -> HTTPException:
+    """503 cuando no se pudo encolar el procesamiento (Google Cloud no disponible)."""
+    return HTTPException(
+        status_code=503,
+        detail=(
+            "No se pudo iniciar el procesamiento porque el servicio de Google "
+            "Cloud no está disponible. Intenta de nuevo en unos minutos."
+        ),
     )
 
 
@@ -451,6 +465,8 @@ async def process_collection(
         )
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
+    except ProcessingDispatchError as exc:
+        raise _dispatch_unavailable_http_exception() from exc
 
     detail = (
         "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible. "
@@ -503,6 +519,8 @@ async def continue_graph_collection(
         )
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
+    except ProcessingDispatchError as exc:
+        raise _dispatch_unavailable_http_exception() from exc
 
     detail = (
         "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible."
@@ -557,6 +575,8 @@ async def continue_graph_with_custom_model(
         )
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
+    except ProcessingDispatchError as exc:
+        raise _dispatch_unavailable_http_exception() from exc
 
     detail = (
         "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible."
@@ -624,6 +644,8 @@ async def generate_graph(
         )
     except ProcessingSlotBusyError as exc:
         raise _slot_busy_http_exception(exc) from exc
+    except ProcessingDispatchError as exc:
+        raise _dispatch_unavailable_http_exception() from exc
 
     detail = (
         "Colección encolada. Iniciará automáticamente cuando haya capacidad disponible. "

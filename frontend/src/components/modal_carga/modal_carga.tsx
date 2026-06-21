@@ -172,6 +172,13 @@ function getPipelineStatusLabel(
   return PIPELINE_LABELS[status] ?? status
 }
 
+/** Archivo que no se subió limpiamente: duplicado (ya existía) o con error. */
+type UploadIssue = {
+  filename: string
+  status: 'duplicate' | 'error'
+  reason: string
+}
+
 type PipelineNoticeKind = 'none' | 'info' | 'warn' | 'success' | 'error'
 
 function getPipelineNoticeKind(
@@ -227,6 +234,12 @@ const ModalCarga = ({
   const [isUploading, setIsUploading] = useState(false)
   const [uploadedCount, setUploadedCount] = useState(0)
   const [uploadTotal, setUploadTotal] = useState(0)
+  /**
+   * Archivos que no se subieron limpiamente: duplicados (409, ya estaban en la
+   * colección) o con error (formato/tamaño/fallo de red). Antes se tragaban en
+   * silencio; ahora se listan en el modal para que el usuario sepa qué pasó.
+   */
+  const [uploadIssues, setUploadIssues] = useState<UploadIssue[]>([])
   const [nombreColeccion, setNombreColeccion] = useState('')
   /* Idioma español por defecto, pero se puede extender para soportar otros idiomas en el futuro. */
   const [idioma, setIdioma] = useState<string>('es')
@@ -352,6 +365,7 @@ const ModalCarga = ({
     setIsUploading(false)
     setUploadedCount(0)
     setUploadTotal(0)
+    setUploadIssues([])
     setTextProgress(EMPTY_PROGRESS)
     setGraphProgress(EMPTY_PROGRESS)
     uploadCollectionIdRef.current = null
@@ -847,6 +861,7 @@ const ModalCarga = ({
     setError('')
     setUploadTotal(files.length)
     setUploadedCount(0)
+    setUploadIssues([])
 
     try {
       const token = await getAccessTokenSilently()
@@ -888,6 +903,7 @@ const ModalCarga = ({
 
       let uploaded = 0
       const uploadErrors: string[] = []
+      const issues: UploadIssue[] = []
       for (const file of files) {
         const controller = new AbortController()
         abortControllersRef.current.push(controller)
@@ -903,19 +919,36 @@ const ModalCarga = ({
             signal: controller.signal,
           },
         )
-        if (upRes.ok || upRes.status === 409) {
+        if (upRes.ok) {
           uploaded++
           setUploadedCount(uploaded)
-        } else {
+        } else if (upRes.status === 409) {
+          // Duplicado: el archivo ya existe en la colección. Cuenta como
+          // "presente" (no bloquea el avance), pero se marca para informar.
+          uploaded++
+          setUploadedCount(uploaded)
+          let reason = 'El archivo ya existe en esta colección.'
           try {
             const body = await upRes.json()
-            const msg = body?.detail ?? `Error al subir "${file.name}"`
-            uploadErrors.push(msg)
+            reason = body?.detail ?? reason
           } catch {
-            uploadErrors.push(`Error al subir "${file.name}"`)
+            /* sin cuerpo JSON: usamos el mensaje por defecto */
           }
+          issues.push({ filename: file.name, status: 'duplicate', reason })
+        } else {
+          let msg = `Error al subir "${file.name}"`
+          try {
+            const body = await upRes.json()
+            msg = body?.detail ?? msg
+          } catch {
+            /* sin cuerpo JSON: usamos el mensaje por defecto */
+          }
+          uploadErrors.push(msg)
+          issues.push({ filename: file.name, status: 'error', reason: msg })
         }
       }
+
+      setUploadIssues(issues)
 
       if (uploaded === 0) {
         const reason =
@@ -1404,6 +1437,25 @@ const ModalCarga = ({
               </p>
             )}
             <div className="mc-progress-stack">
+              {uploadIssues.length > 0 && (
+                <div className="mc-progress-errors">
+                  <div className="mc-progress-errors-header">
+                    <strong>No se subieron: </strong>
+                    <span>{uploadIssues.length} archivo(s)</span>
+                  </div>
+
+                  <ul className="mc-progress-errors-list">
+                    {uploadIssues.map((issue) => (
+                      <li key={`upload-${issue.filename}`}>
+                        {issue.filename}
+                        {issue.status === 'duplicate'
+                          ? ' — ya existía en la colección'
+                          : ` — ${issue.reason}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {(pipelineStatus === 'processing_text' ||
                 pipelineStatus === 'awaiting_graph_confirmation' ||
                 pipelineStatus === 'processing_graph' ||

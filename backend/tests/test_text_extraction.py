@@ -2,7 +2,11 @@ import fitz
 import pytest
 from unittest.mock import MagicMock, patch
 
+from google.api_core import exceptions as gcloud_exceptions
+from google.auth.exceptions import DefaultCredentialsError
+
 from app.config import language_to_ocr_hints, language_to_wukong_name
+from app.services.ai_models import OcrServiceUnavailableError
 from app.services.text_extraction import (
     _build_image_context,
     choose_ocr_dpi,
@@ -251,6 +255,68 @@ def test_process_pdf_document_scanned_marks_error_on_vision_failure(tmp_path):
     # Verifica que se intentó marcar como error
     calls = [str(c) for c in mock_status.call_args_list]
     assert any("error" in c for c in calls)
+
+
+def test_extract_text_vision_servicio_caido_lanza_ocr_service_error(tmp_path):
+    """Si el SERVICIO de Vision se cae (cuota/credenciales/indisponible), se
+    lanza OcrServiceUnavailableError — distinto de un error de OCR del documento."""
+    pdf_path = tmp_path / "test.pdf"
+    doc = fitz.open()
+    doc.new_page()
+    doc.save(str(pdf_path))
+    doc.close()
+
+    with patch("app.services.text_extraction.vision.ImageAnnotatorClient") as mock_client_class:
+        mock_client = MagicMock()
+        mock_client.document_text_detection.side_effect = (
+            gcloud_exceptions.ResourceExhausted("Quota exceeded")
+        )
+        mock_client_class.return_value = mock_client
+
+        with pytest.raises(OcrServiceUnavailableError):
+            extract_text_vision(str(pdf_path))
+
+
+def test_extract_text_vision_sin_credenciales_lanza_ocr_service_error(tmp_path):
+    """Sin credenciales válidas, crear el cliente falla → OcrServiceUnavailableError."""
+    pdf_path = tmp_path / "test.pdf"
+    doc = fitz.open()
+    doc.new_page()
+    doc.save(str(pdf_path))
+    doc.close()
+
+    with patch(
+        "app.services.text_extraction.vision.ImageAnnotatorClient",
+        side_effect=DefaultCredentialsError("sin credenciales"),
+    ):
+        with pytest.raises(OcrServiceUnavailableError):
+            extract_text_vision(str(pdf_path))
+
+
+def test_process_pdf_document_propaga_fallo_de_servicio_ocr(tmp_path):
+    """process_pdf_document NO traga el fallo de servicio: lo propaga (no marca
+    el documento como ilegible), para avisar a nivel de colección."""
+    with (
+        patch("app.services.text_extraction.download_file_from_storage") as mock_download,
+        patch("app.services.text_extraction.update_document_status") as mock_status,
+        patch("app.services.text_extraction.save_document_text") as mock_save,
+        patch("app.services.text_extraction.extract_text_vision") as mock_vision,
+        patch("app.services.text_extraction.detect_file_type", return_value="pdf_scanned"),
+    ):
+        mock_download.return_value = b"%PDF-fake"
+        mock_vision.side_effect = OcrServiceUnavailableError()
+
+        with pytest.raises(OcrServiceUnavailableError):
+            process_pdf_document(
+                document_id="doc-123",
+                user_id="auth0|test",
+                collection_id="col-456",
+                storage_path="col-456/doc-123.pdf",
+            )
+
+    # No se marcó el documento como error: no es culpa del documento.
+    mock_save.assert_not_called()
+    assert not any("error" in str(c) for c in mock_status.call_args_list)
 
 
 # ---------------------------------------------------------------------------
