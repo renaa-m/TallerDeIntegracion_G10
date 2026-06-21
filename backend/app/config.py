@@ -1,4 +1,40 @@
+import logging
+import sys
+
 from pydantic_settings import BaseSettings
+
+_log = logging.getLogger(__name__)
+
+REQUIRED_CREDENTIALS: dict[str, str] = {
+    "supabase_url": "Supabase URL",
+    "supabase_key": "Supabase Key",
+    "supabase_service_key": "Supabase Service Key",
+    "auth0_domain": "Auth0 Domain",
+    "auth0_api_audience": "Auth0 API Audience",
+    "auth0_m2m_client_id": "Auth0 M2M Client ID",
+    "auth0_m2m_client_secret": "Auth0 M2M Client Secret",
+    "openai_api_key": "OpenAI API Key",
+    "gcp_project_id": "GCP Project ID",
+    "google_application_credentials": "Google Application Credentials (Cloud Vision)",
+    "cloud_tasks_queue": "Cloud Tasks Queue",
+    "cloud_tasks_location": "Cloud Tasks Location",
+    "cloud_tasks_service_url": "Cloud Tasks Service URL",
+    "cloud_tasks_invoker_sa": "Cloud Tasks Invoker Service Account",
+}
+
+_PLACEHOLDER_VALUES = frozenset({
+    "your-project.supabase.co",
+    "https://your-project.supabase.co",
+    "your-anon-key",
+    "your-service-role-key",
+    "your-tenant.auth0.com",
+    "https://your-api-identifier",
+    "tu_client_id_de_la_app_machine_to_machine",
+    "tu_client_secret",
+    "your-gcp-project",
+    "your-gcp-project-id",
+    "imfd-tasks-invoker@your-gcp-project.iam.gserviceaccount.com",
+})
 
 
 class Settings(BaseSettings):
@@ -91,6 +127,50 @@ def language_to_wukong_name(language: str | None) -> str:
     if not language:
         return "spanish"
     return WUKONG_LANGUAGE_MAP.get(language, "spanish")
+
+
+def validate_required_credentials() -> None:
+    """Verifica que todas las credenciales requeridas estén configuradas.
+
+    Si faltan credenciales, loguea un error detallado y termina el proceso.
+    En modo DEBUG, solo emite warnings para Cloud Tasks (dev usa hilos locales).
+    """
+    missing: list[str] = []
+    cloud_tasks_fields = {
+        "cloud_tasks_queue",
+        "cloud_tasks_location",
+        "cloud_tasks_service_url",
+        "cloud_tasks_invoker_sa",
+    }
+
+    for field, label in REQUIRED_CREDENTIALS.items():
+        value = getattr(settings, field, "").strip()
+        if not value or value in _PLACEHOLDER_VALUES:
+            if settings.debug and field in cloud_tasks_fields:
+                _log.warning(
+                    "Credencial '%s' no configurada — en DEBUG se usarán hilos locales.",
+                    label,
+                )
+                continue
+            missing.append(label)
+
+    if missing:
+        names = ", ".join(f"'{n}'" for n in missing)
+        msg = (
+            "\n\n"
+            "══════════════════════════════════════════════════════════════\n"
+            "  ERROR: Credenciales faltantes o no configuradas\n"
+            "══════════════════════════════════════════════════════════════\n"
+            f"  Las credenciales de {names} no están disponibles.\n\n"
+            "  Por favor, contacte a soporte para obtener las credenciales\n"
+            "  necesarias y configúrelas en el archivo .env\n"
+            "══════════════════════════════════════════════════════════════\n"
+        )
+        if "pytest" in sys.modules:
+            _log.warning(msg)
+        else:
+            _log.critical(msg)
+            sys.exit(1)
 
 
 def language_to_ocr_hints(language: str | None) -> list[str]:
