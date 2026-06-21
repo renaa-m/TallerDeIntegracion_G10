@@ -155,3 +155,31 @@ class TestExecuteJob:
 
         assert result["status"] == "skipped"
         mock_run.assert_not_called()
+
+
+class TestDispatchJobFailure:
+    def test_fallo_de_encolado_revierte_estado_y_lanza_dispatch_error(self):
+        # Si Google Cloud Tasks no está disponible al encolar, _dispatch_job
+        # revierte el estado a "error" y lanza ProcessingDispatchError para que
+        # el endpoint responda 503 (en vez de un 500 crudo).
+        with (
+            patch("app.services.processing_queue.supabase_client") as mock_sb,
+            patch(
+                "app.services.processing_queue._enqueue_cloud_task",
+                side_effect=RuntimeError("Cloud Tasks no disponible"),
+            ),
+        ):
+            with pytest.raises(processing_queue.ProcessingDispatchError):
+                processing_queue._dispatch_job(
+                    collection_id=COL_A,
+                    user_id=USER_A,
+                    action="process",
+                    custom_data_model=None,
+                )
+
+        error_calls = [
+            c
+            for c in mock_sb.update_collection_processing_status.call_args_list
+            if "error" in c.args
+        ]
+        assert error_calls, "debe revertir el estado a 'error' al fallar el encolado"
