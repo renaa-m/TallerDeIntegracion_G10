@@ -14,7 +14,7 @@ from app.api.routes import (
     search,
     internal_tasks,
 )
-from app.config import settings
+from app.config import settings, validate_required_credentials
 from app.services import processing_queue
 
 # Clientes de Google Cloud leen credenciales solo desde os.environ.
@@ -54,6 +54,7 @@ app.include_router(internal_tasks.router)
 
 @app.on_event("startup")
 def _recover_processing_queue_on_startup() -> None:
+    validate_required_credentials()
     processing_queue.recover_orphaned_processing()
     _warn_if_wukong_missing()
 
