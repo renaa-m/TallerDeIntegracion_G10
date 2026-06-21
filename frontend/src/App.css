@@ -296,3 +296,26 @@
   font-weight: bold;
   color: var(--accent);
 }
+
+/* Banner de base de datos no disponible */
+.db-unavailable-banner {
+  position: fixed;
+  top: var(--navbar-height, 56px);
+  left: 0;
+  right: 0;
+  z-index: 999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background-color: var(--warning-bg, #fff3cd);
+  color: var(--warning-text, #856404);
+  border-bottom: 1px solid var(--warning-border, #ffc107);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.db-unavailable-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
