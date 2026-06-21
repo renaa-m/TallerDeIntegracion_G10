@@ -240,7 +240,7 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
         if not _skip_if_user_cancelled(collection_id, "error inesperado"):
             _mark_collection_error(
                 collection_id,
-                f"Error inesperado: {type(exc).__name__}: {exc}",
+                _friendly_error_message(exc),
             )
         
     
@@ -393,7 +393,7 @@ def process_graph_collection(collection_id: str, custom_data_model: dict | None 
         ):
             _mark_collection_error(
                 collection_id,
-                f"Error inesperado: {type(exc).__name__}: {exc}",
+                _friendly_error_message(exc),
             )
     return
 
@@ -744,6 +744,43 @@ def _mark_collection_error(collection_id: str, message: str) -> None:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# Nombres de excepciones (httpx / h2 / httpcore) que indican que la conexión a
+# Supabase se cortó o agotó. Se comparan por nombre para no acoplar este módulo
+# a httpx ni a su jerarquía de clases.
+_CONNECTION_ERROR_NAMES = {
+    "RemoteProtocolError",
+    "ConnectionTerminated",
+    "ConnectError",
+    "ConnectTimeout",
+    "ReadTimeout",
+    "ReadError",
+    "WriteError",
+    "PoolTimeout",
+    "ConnectionResetError",
+}
+
+
+def _friendly_error_message(exc: Exception) -> str:
+    """Mensaje legible para la usuaria.
+
+    Traduce los errores de conexión a la base de datos (cortes/intermitencias
+    de HTTP/2 contra Supabase) a un texto entendible. El detalle técnico ya
+    queda registrado vía ``logger.exception`` en el llamador.
+    """
+    names = {type(exc).__name__}
+    if exc.__cause__ is not None:
+        names.add(type(exc.__cause__).__name__)
+    if exc.__context__ is not None:
+        names.add(type(exc.__context__).__name__)
+
+    if names & _CONNECTION_ERROR_NAMES:
+        return (
+            "La base de datos dejó de responder o está presentando "
+            "intermitencias. Vuelve a intentarlo en unos minutos."
+        )
+    return f"Error inesperado: {type(exc).__name__}: {exc}"
 
 
 # ── Pipeline 3a: Embeddings ────────────────────────────────────────────────────

@@ -260,9 +260,18 @@ class TestPaginacion:
 
 class TestSignedUrl:
     def test_retorna_url_valida(self, client):
-        with patch(
-            "app.api.routes.documentos.supabase_client.create_signed_url",
-            return_value="https://example.supabase.co/storage/v1/signed?token=abc",
+        # El endpoint valida que el path corresponda a un documento real del
+        # usuario (VALIDACIÓN 2 vía list_documents), así que hay que mockearlo
+        # para llegar a probar la generación de la URL firmada.
+        with (
+            patch(
+                "app.api.routes.documentos.supabase_client.list_documents",
+                return_value=[{"storage_path": _VALID_PATH}],
+            ),
+            patch(
+                "app.api.routes.documentos.supabase_client.create_signed_url",
+                return_value="https://example.supabase.co/storage/v1/signed?token=abc",
+            ),
         ):
             response = client.get(f"/api/documentos/signed-url?path={_VALID_PATH}")
 
@@ -270,9 +279,15 @@ class TestSignedUrl:
         assert response.json()["url"].startswith("https://")
 
     def test_devuelve_502_si_storage_falla(self, client):
-        with patch(
-            "app.api.routes.documentos.supabase_client.create_signed_url",
-            side_effect=Exception("Storage error"),
+        with (
+            patch(
+                "app.api.routes.documentos.supabase_client.list_documents",
+                return_value=[{"storage_path": _VALID_PATH}],
+            ),
+            patch(
+                "app.api.routes.documentos.supabase_client.create_signed_url",
+                side_effect=Exception("Storage error"),
+            ),
         ):
             response = client.get(f"/api/documentos/signed-url?path={_VALID_PATH}")
 

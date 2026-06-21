@@ -85,7 +85,18 @@ jobs:
           # Es obligatorio porque el procesamiento de documentos corre en hilos
           # daemon que siguen activos después de devolver el 202 HTTP.
           # Sin esto Cloud Run suspende la CPU y Wukong/OCR quedan colgados.
-          flags: --allow-unauthenticated --memory=2Gi --cpu=2 --no-cpu-throttling --min-instances=1
+          # --memory=6Gi: dimensionado para lotes de ~30 documentos. Con 10 docs
+          #   el pico fue ~1.95GB (base ~1GB + ~1GB variable, casi todo del
+          #   subproceso Wukong); asumiendo el peor caso lineal, 30 docs ≈ ~4GB,
+          #   y 6Gi deja colchón para evitar OOM. Para lotes mayores (~90) habrá
+          #   que medir la pendiente real y posiblemente subir a --cpu=4 (cpu=2
+          #   topa en 8Gi; >8Gi exige más vCPU en Cloud Run).
+          # --cpu=2: la CPU queda casi ociosa (~0.5% p50); no se sube.
+          # --concurrency=1 + --max-instances=5: la instancia que procesa un
+          #   grafo (Cloud Task) no comparte con peticiones de usuarios; éstas
+          #   caen en otra instancia y la página sigue respondiendo.
+          # --timeout=3600: un grafo largo no debe cortarse a los 300s default.
+          flags: --allow-unauthenticated --memory=6Gi --cpu=2 --no-cpu-throttling --min-instances=1 --concurrency=1 --max-instances=5 --timeout=3600
           env_vars: |
             OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
             SUPABASE_URL=${{ secrets.SUPABASE_URL }}
