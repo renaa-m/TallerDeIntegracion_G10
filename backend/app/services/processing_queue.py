@@ -327,28 +327,24 @@ def execute_job(
             )
         else:
             if status == "processing_graph":
+                # La extracción ya terminó por completo en una corrida previa;
+                # solo falta (re)construir el grafo.
                 wukong_runner.process_graph_collection(
                     collection_id,
                     custom_data_model=model,
                     final_status_on_success="partial_error",
                 )
-            elif status == "processing_text":
-                texts = supabase_client.get_document_texts_by_collection(collection_id)
-                if texts:
-                    supabase_client.update_collection_processing_status(
-                        collection_id, "processing_graph"
-                    )
-                    wukong_runner.process_graph_collection(
-                        collection_id,
-                        custom_data_model=model,
-                        final_status_on_success="partial_error",
-                    )
-                else:
-                    wukong_runner.process_collection(collection_id, model)
             else:
-                supabase_client.update_collection_processing_status(
-                    collection_id, "processing_text"
-                )
+                # Fase de texto (o tarea nueva). process_collection es idempotente:
+                # _extract_texts salta los documentos ya extraídos y solo procesa
+                # los que faltan. Recién cuando TODOS terminan, encadena el grafo.
+                # No saltamos al grafo por "hay algún texto": eso lo armaría con un
+                # subconjunto de documentos si la tarea se reintenta a mitad de la
+                # extracción.
+                if status != "processing_text":
+                    supabase_client.update_collection_processing_status(
+                        collection_id, "processing_text"
+                    )
                 wukong_runner.process_collection(collection_id, model)
     finally:
         try:
@@ -441,13 +437,13 @@ def try_resume_stale_job(collection_id: str, user_id: str) -> bool:
         return False
 
     custom_model = _custom_model_from_row(row)
+    # Si quedó en processing_text al reiniciar, se re-encola como "process":
+    # process_collection reanuda la extracción de los documentos que falten y
+    # solo encadena el grafo cuando TODOS terminan. No forzamos "continue_graph"
+    # por "hay algún texto", porque eso armaría el grafo con la extracción a medias.
     action: QueueAction = (
         "continue_graph" if status == "processing_graph" else "process"
     )
-    if action == "process" and status == "processing_text":
-        texts = supabase_client.get_document_texts_by_collection(collection_id)
-        if texts:
-            action = "continue_graph"
 
     _enqueue_cloud_task(
         collection_id=collection_id,
