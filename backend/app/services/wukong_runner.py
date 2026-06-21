@@ -41,7 +41,7 @@ from app.config import (
 )
 # importamos el cliente de Supabase para interactuar con la base de datos
 from app.services import supabase_client, graph_transformer
-from app.services.ai_models import ModelUnavailableError
+from app.services.ai_models import ModelUnavailableError, OcrServiceUnavailableError
 from app.services.qm_storage import export_qm_to_supabase
 from app.services.text_extraction import (
     process_pdf_document,
@@ -235,6 +235,19 @@ def process_collection(collection_id: str, custom_data_model: dict | None = None
 
     except ProcessingCancelled:
         logger.info("Procesamiento cancelado (colección %s)", collection_id)
+        return
+    except OcrServiceUnavailableError:
+        # Se cayó el SERVICIO de OCR (Cloud Vision), no un documento puntual.
+        logger.error(
+            "Servicio de OCR (Cloud Vision) no disponible procesando colección %s",
+            collection_id,
+        )
+        if not _skip_if_user_cancelled(collection_id, "servicio de OCR caído"):
+            _mark_collection_error(
+                collection_id,
+                "Hubo un fallo general del servicio de OCR (Google Cloud Vision). "
+                "Por favor, contacta a soporte.",
+            )
         return
     except Exception as exc:
         logger.exception("Error inesperado procesando colección %s", collection_id)
@@ -531,6 +544,11 @@ def _extract_texts(
                         ],
                     )
 
+        except OcrServiceUnavailableError:
+            # El servicio de OCR se cayó: no es culpa de este documento. Se
+            # propaga para avisar a nivel de colección, sin marcar el doc como
+            # ilegible ni continuar con el resto (todos fallarían igual).
+            raise
         except Exception as exc:
             logger.exception("Falló extracción del documento %s", doc["id"])
             if collection_id is not None and _skip_if_user_cancelled(

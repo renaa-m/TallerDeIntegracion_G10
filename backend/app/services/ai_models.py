@@ -22,3 +22,13 @@ class ModelUnavailableError(Exception):
     def __init__(self, model_label: str, *args: object) -> None:
         super().__init__(*args)
         self.model_label = model_label
+
+
+class OcrServiceUnavailableError(Exception):
+    """El servicio de OCR (Google Cloud Vision) no está disponible.
+
+    Cubre solo la caída del SERVICIO en sí: credenciales inválidas, permiso
+    denegado, cuota agotada, servicio no disponible o sin conexión. NO se usa
+    para errores del OCR sobre un documento concreto (página ilegible, imagen
+    mala, sin texto), que siguen tratándose como error normal del documento.
+    """

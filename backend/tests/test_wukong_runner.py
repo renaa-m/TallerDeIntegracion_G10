@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from app.services import wukong_runner
-from app.services.ai_models import ModelUnavailableError
+from app.services.ai_models import ModelUnavailableError, OcrServiceUnavailableError
 
 MOCK_COL_ID = "11111111-2222-3333-4444-555555555555"
 MOCK_USER_ID = "auth0|testuser123"
@@ -724,6 +724,27 @@ class TestTransicionEstados:
         assert final_call.args[1] == "error"
         mensaje = final_call.kwargs["error_message"]
         assert "construcción del grafo" in mensaje.lower()
+        assert "soporte" in mensaje.lower()
+
+
+class TestOcrServiceDown:
+    @patch("app.services.wukong_runner.supabase_client")
+    @patch("app.services.wukong_runner._extract_texts",
+           side_effect=OcrServiceUnavailableError())
+    def test_servicio_ocr_caido_marca_error_con_aviso(self, _mock_extract, mock_sb):
+        # Si SE CAE el servicio de OCR (no un documento ilegible), la colección
+        # se marca como error con aviso de contactar a soporte.
+        mock_sb.get_collection_by_id.return_value = _make_collection()
+        mock_sb.get_documents_by_collection.return_value = [
+            _make_doc("doc1", file_type="pdf")
+        ]
+
+        wukong_runner.process_collection(MOCK_COL_ID)
+
+        final_call = mock_sb.update_collection_processing_status.call_args_list[-1]
+        assert final_call.args[1] == "error"
+        mensaje = final_call.kwargs["error_message"]
+        assert "ocr" in mensaje.lower()
         assert "soporte" in mensaje.lower()
 
 
