@@ -64,7 +64,10 @@ function App() {
       {dbUnavailable && (
         <div className="db-unavailable-banner" role="alert">
           <span className="db-unavailable-icon">⚠️</span>
-          <span>No hay conexión con la base de datos. Algunas funciones pueden no estar disponibles.</span>
+          <span>
+            No hay conexión con la base de datos. Algunas funciones pueden no
+            estar disponibles.
+          </span>
         </div>
       )}
       <div
