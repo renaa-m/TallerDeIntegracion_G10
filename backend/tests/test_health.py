@@ -1,7 +1,6 @@
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
-from postgrest.exceptions import APIError
 
 from app.main import app
 
