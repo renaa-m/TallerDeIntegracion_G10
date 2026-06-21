@@ -29,11 +29,18 @@ class TaskRunResponse(BaseModel):
 
 
 @router.post("/run", response_model=TaskRunResponse)
-async def run_processing_task(
+def run_processing_task(
     body: TaskRunPayload,
     _: None = Depends(verify_cloud_tasks_caller),
 ) -> TaskRunResponse:
-    """Worker HTTP: ejecuta extracción y/o grafo para una colección."""
+    """Worker HTTP: ejecuta extracción y/o grafo para una colección.
+
+    Definido como ``def`` (no ``async def``) a propósito: ``execute_job`` es
+    síncrono y bloqueante (embeddings, subproceso Wukong, consultas a DB) y
+    puede tardar minutos. FastAPI corre los handlers ``def`` en un threadpool,
+    liberando el event loop para que la app siga respondiendo mientras se arma
+    el grafo. Si fuera ``async def``, este job congelaría todo el worker.
+    """
     result = processing_queue.execute_job(
         collection_id=body.collection_id,
         user_id=body.user_id,
