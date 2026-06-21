@@ -67,3 +67,81 @@ class TestPurgeCompleteUser:
 
         with pytest.raises(RuntimeError, match="Supabase no disponible"):
             purge_complete_user(MOCK_USER_ID)
+
+    @patch("app.services.delete_user.create_client")
+    @patch("app.services.delete_user.Auth0")
+    @patch("app.services.delete_user.GetToken")
+    def test_error_al_listar_storage_loguea_y_continua(
+        self, mock_get_token_cls, mock_auth0_cls, mock_create_client
+    ):
+        mock_get_token_cls.return_value.client_credentials.return_value = {
+            "access_token": MOCK_ACCESS_TOKEN
+        }
+        mock_auth0 = MagicMock()
+        mock_auth0_cls.return_value = mock_auth0
+        mock_supabase = MagicMock()
+        mock_supabase.storage.from_.return_value.list.side_effect = Exception(
+            "storage list error"
+        )
+        mock_create_client.return_value = mock_supabase
+
+        result = purge_complete_user(MOCK_USER_ID)
+
+        assert result == {"status": "success", "user_id": MOCK_USER_ID}
+        mock_auth0.users.delete.assert_called_once_with(MOCK_USER_ID)
+
+    @patch("app.services.delete_user.create_client")
+    @patch("app.services.delete_user.Auth0")
+    @patch("app.services.delete_user.GetToken")
+    def test_storage_vacio_termina_sin_error(
+        self, mock_get_token_cls, mock_auth0_cls, mock_create_client
+    ):
+        mock_get_token_cls.return_value.client_credentials.return_value = {
+            "access_token": MOCK_ACCESS_TOKEN
+        }
+        mock_auth0 = MagicMock()
+        mock_auth0_cls.return_value = mock_auth0
+        mock_supabase = MagicMock()
+        mock_supabase.storage.from_.return_value.list.return_value = []
+        mock_create_client.return_value = mock_supabase
+
+        result = purge_complete_user(MOCK_USER_ID)
+
+        assert result == {"status": "success", "user_id": MOCK_USER_ID}
+        mock_supabase.storage.from_.return_value.remove.assert_not_called()
+
+    @patch("app.services.delete_user.create_client")
+    @patch("app.services.delete_user.Auth0")
+    @patch("app.services.delete_user.GetToken")
+    def test_error_al_borrar_archivos_loguea_y_continua(
+        self, mock_get_token_cls, mock_auth0_cls, mock_create_client
+    ):
+        mock_get_token_cls.return_value.client_credentials.return_value = {
+            "access_token": MOCK_ACCESS_TOKEN
+        }
+        mock_auth0 = MagicMock()
+        mock_auth0_cls.return_value = mock_auth0
+        mock_supabase = MagicMock()
+        mock_supabase.storage.from_.return_value.list.return_value = [
+            {"name": "archivo.pdf"}
+        ]
+        mock_supabase.storage.from_.return_value.remove.side_effect = Exception(
+            "remove error"
+        )
+        mock_create_client.return_value = mock_supabase
+
+        result = purge_complete_user(MOCK_USER_ID)
+
+        assert result == {"status": "success", "user_id": MOCK_USER_ID}
+        mock_auth0.users.delete.assert_called_once_with(MOCK_USER_ID)
+
+    @patch("app.services.delete_user.create_client")
+    @patch("app.services.delete_user.Auth0")
+    @patch("app.services.delete_user.GetToken")
+    def test_error_al_inicializar_clientes_relanza_excepcion(
+        self, mock_get_token_cls, mock_auth0_cls, mock_create_client
+    ):
+        mock_get_token_cls.side_effect = Exception("init error")
+
+        with pytest.raises(Exception, match="init error"):
+            purge_complete_user(MOCK_USER_ID)
