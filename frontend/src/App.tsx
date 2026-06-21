@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom'
 import { useAuth0 } from '@auth0/auth0-react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import LandingPage from './pages/landing_page/landing_page'
 import LoginPage from './pages/login_page/login_page'
 import Navbar from './pages/navbar/navbar'
@@ -27,6 +27,22 @@ function CallbackHandler() {
 function App() {
   const { isAuthenticated, isLoading, user } = useAuth0()
 
+  const [dbUnavailable, setDbUnavailable] = useState(false)
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch('/ready')
+        setDbUnavailable(!res.ok)
+      } catch {
+        setDbUnavailable(true)
+      }
+    }
+    checkHealth()
+    const interval = setInterval(checkHealth, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
   if (isLoading) {
     return <AppLoading message="Sincronizando..." />
   }
@@ -45,6 +61,15 @@ function App() {
     >
       <Navbar />
       <ThemeSync />
+      {dbUnavailable && (
+        <div className="db-unavailable-banner" role="alert">
+          <span className="db-unavailable-icon">⚠️</span>
+          <span>
+            No hay conexión con la base de datos. Algunas funciones pueden no
+            estar disponibles.
+          </span>
+        </div>
+      )}
       <div
         style={{ height: 'var(--navbar-height)', flexShrink: 0 }}
         aria-hidden="true"
