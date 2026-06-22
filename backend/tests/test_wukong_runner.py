@@ -446,17 +446,22 @@ class TestRunWukong:
         """Si la salida muestra un 429/quota mientras corre, mata Wukong y
         levanta ModelUnavailableError (en vez de esperar 1h al timeout)."""
         cfg = _stub_wukong_config_path(tmp_path)
-        # El subproceso sigue 'vivo' (poll=None) hasta que detectamos el error.
+        log_path = tmp_path / "wukong_output.log"
         process = mock_popen.return_value
-        process.poll.return_value = None
         process.wait.return_value = 0
 
-        # Simula que Wukong ya escribió el error de quota en su log.
-        (tmp_path / "wukong_output.log").write_text(
-            "[ERROR] LLM API call failed. Reason: Error code: 429 - "
-            "{'error': {'code': 'insufficient_quota'}}",
-            encoding="utf-8",
-        )
+        # _run_wukong abre el log en modo "w" (lo trunca). Simulamos que Wukong
+        # escribe el error de quota recién en la primera iteración del polling:
+        # poll() sigue devolviendo None (proceso vivo) pero deja el error en el log.
+        def poll_side_effect():
+            log_path.write_text(
+                "[ERROR] LLM API call failed. Reason: Error code: 429 - "
+                "{'error': {'code': 'insufficient_quota'}}",
+                encoding="utf-8",
+            )
+            return None
+
+        process.poll.side_effect = poll_side_effect
 
         with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
             with pytest.raises(ModelUnavailableError):
