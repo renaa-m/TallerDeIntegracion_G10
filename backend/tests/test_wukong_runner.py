@@ -438,6 +438,55 @@ class TestRunWukong:
         assert result is not None
         assert "wukong_engine" in result.lower()
 
+    @patch("app.services.wukong_runner.time.sleep", lambda *_: None)
+    @patch("app.services.wukong_runner.subprocess.Popen")
+    def test_detecta_error_de_quota_en_tiempo_real_y_mata_proceso(
+        self, mock_popen, tmp_path
+    ):
+        """Si la salida muestra un 429/quota mientras corre, mata Wukong y
+        levanta ModelUnavailableError (en vez de esperar 1h al timeout)."""
+        cfg = _stub_wukong_config_path(tmp_path)
+        log_path = tmp_path / "wukong_output.log"
+        process = mock_popen.return_value
+        process.wait.return_value = 0
+
+        # _run_wukong abre el log en modo "w" (lo trunca). Simulamos que Wukong
+        # escribe el error de quota recién en la primera iteración del polling:
+        # poll() sigue devolviendo None (proceso vivo) pero deja el error en el log.
+        def poll_side_effect():
+            log_path.write_text(
+                "[ERROR] LLM API call failed. Reason: Error code: 429 - "
+                "{'error': {'code': 'insufficient_quota'}}",
+                encoding="utf-8",
+            )
+            return None
+
+        process.poll.side_effect = poll_side_effect
+
+        with patch.object(wukong_runner, "WUKONG_DEFAULT_CONFIG", cfg):
+            with pytest.raises(ModelUnavailableError):
+                wukong_runner._run_wukong(tmp_path)
+        process.terminate.assert_called_once()
+
+
+class TestTailWukongLog:
+    def test_loguea_lineas_y_no_falla_sin_archivo(self, tmp_path):
+        # Sin archivo aún: devuelve la misma posición sin reventar.
+        missing = tmp_path / "noexiste.log"
+        assert wukong_runner._tail_wukong_log(missing, 0, "col-1") == 0
+
+    def test_detecta_firma_de_fallo_de_modelo(self, tmp_path):
+        log = tmp_path / "wukong_output.log"
+        log.write_text("procesando...\ninsufficient_quota\n", encoding="utf-8")
+        with pytest.raises(wukong_runner._FatalLlmError):
+            wukong_runner._tail_wukong_log(log, 0, "col-1")
+
+    def test_avanza_posicion_sin_error(self, tmp_path):
+        log = tmp_path / "wukong_output.log"
+        log.write_text("linea normal de progreso\n", encoding="utf-8")
+        new_pos = wukong_runner._tail_wukong_log(log, 0, "col-1")
+        assert new_pos > 0
+
 
 # ── Tests para _split_into_subchunks ──────────────────────────────────────────
 
