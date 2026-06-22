@@ -71,15 +71,23 @@ async def get_collection(
                 detail="Colección no encontrada.",
             )
 
-        if collection.get("processing_status") in (
-            "queued",
-            "processing_text",
-            "processing_graph",
-        ):
-            status, collection = _resume_pipeline_and_refresh(
-                str(collection_id), user_id, collection
-            )
-            _ = status
+        # Un GET de polling es de SOLO LECTURA: no re-encola. Antes llamaba a
+        # _resume_pipeline_and_refresh, que en cada poll (cada ~3s) intentaba
+        # recrear la Cloud Task y Cloud Tasks la rechazaba con ALREADY_EXISTS,
+        # ensuciando los logs con errores. La recuperación de jobs huérfanos ya
+        # ocurre al arrancar (recover_orphaned_processing), por los reintentos
+        # propios de Cloud Tasks, y al reanudar desde los endpoints POST.
+        # Aquí solo limpiamos entradas legacy 'queued' (sin queue_action), que
+        # no implica encolar nada.
+        if collection.get("processing_status") == "queued":
+            normalized = _normalize_legacy_queued(str(collection_id), collection)
+            if normalized != "queued":
+                refreshed = supabase_client.get_collection(
+                    collection_id=str(collection_id),
+                    user_id=user_id,
+                )
+                if refreshed is not None:
+                    collection = refreshed
 
         return collection
 

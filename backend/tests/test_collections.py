@@ -108,6 +108,24 @@ class TestObtenerColeccion:
         response = client_sin_auth.get(f"/api/collections/{MOCK_COLLECTION_ID}")
         assert response.status_code == 403
 
+    def test_get_no_reencola_mientras_procesa(self, client):
+        # Un GET de polling NO debe re-encolar: hacerlo en cada poll generaba
+        # ALREADY_EXISTS en Cloud Tasks cada ~3s.
+        col = {**MOCK_COLLECTION, "processing_status": "processing_graph"}
+        with (
+            patch(
+                "app.api.routes.collections.supabase_client.get_collection",
+                return_value=col,
+            ),
+            patch(
+                "app.api.routes.collections.processing_queue.ensure_collection_processing",
+            ) as mock_ensure,
+        ):
+            response = client.get(f"/api/collections/{MOCK_COLLECTION_ID}")
+
+        assert response.status_code == 200
+        mock_ensure.assert_not_called()
+
 
 # ── Eliminar ───────────────────────────────────────────────────────────────────
 
