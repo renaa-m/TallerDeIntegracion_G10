@@ -17,7 +17,7 @@ import {
   getCollectionCardProgressLabel,
   isPipelineInProgress,
   isPipelineRunning,
-  MODAL_ETAPA_KEY,
+  clearActiveCollectionStorage,
   clearActiveCollectionStorageIfMatch,
 } from '../../lib/collection_processing'
 
@@ -138,7 +138,12 @@ function LandingPage() {
   )
 
   const handleIniciar = async () => {
-    localStorage.removeItem(MODAL_ETAPA_KEY)
+    // Empezar una colección nueva debe abrir un modal limpio. Si había otra
+    // colección procesándose en background, su tracking local (ACTIVE_COLLECTION_KEY,
+    // MODAL_NUEVA_SESSION_KEY, MODAL_ETAPA_KEY) seguía apuntando a ella y el modal
+    // de /nueva la reabría mostrando su pipeline. Limpiamos todo el tracking para
+    // arrancar una sesión fresca (la colección anterior sigue procesándose en el backend).
+    clearActiveCollectionStorage()
     navigate(`/${id_usuario || currentUserId}/colecciones/nueva/buscador`, {
       state: { abrirModalCarga: true },
     })
