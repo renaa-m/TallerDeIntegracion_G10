@@ -31,6 +31,7 @@ import shutil # para copiar el workdir de Wukong a disco
 import subprocess # para ejecutar Wukong
 import sys # para ejecutar Wukong
 import tempfile # para crear un directorio temporal para el workdir de Wukong
+import time # para el polling del subprocess de Wukong
 from datetime import datetime, timezone # para manejar fechas y horas en UTC
 from pathlib import Path # para manejar rutas de archivos   
 
@@ -721,6 +722,39 @@ def _looks_like_model_failure(output: str) -> bool:
     return any(sig in low for sig in _WUKONG_MODEL_FAILURE_SIGNATURES)
 
 
+class _FatalLlmError(Exception):
+    """Señal interna: se detectó un error irrecuperable del LLM en la salida de Wukong."""
+
+
+def _tail_wukong_log(
+    log_path: Path, read_pos: int, collection_id: str | None,
+) -> int:
+    """Lee líneas nuevas del log de Wukong, las logea, y detecta errores fatales.
+
+    Devuelve la nueva posición de lectura.
+    Lanza ``_FatalLlmError`` si se detecta un error irrecuperable del LLM.
+    """
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            f.seek(read_pos)
+            new_content = f.read()
+            new_pos = f.tell()
+    except FileNotFoundError:
+        return read_pos
+
+    if not new_content:
+        return read_pos
+
+    for line in new_content.splitlines():
+        if line.strip():
+            logger.info("Wukong [%s]: %s", collection_id, line.rstrip())
+
+    if _looks_like_model_failure(new_content):
+        raise _FatalLlmError()
+
+    return new_pos
+
+
 def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds: int = 3600) -> str | None:
     """
     Pipeline 2. Ejecuta Wukong sobre la carpeta de trabajo.
@@ -752,6 +786,8 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
 
             started_at = datetime.now(timezone.utc)
 
+            log_read_pos = 0
+
             while process.poll() is None:
                 if collection_id is not None and _skip_if_user_cancelled(collection_id, "detener subprocess Wukong"):
                     process.terminate()
@@ -768,7 +804,19 @@ def _run_wukong(workdir: Path, collection_id: str | None = None, timeout_seconds
                     process.wait()
                     return f"Wukong superó el timeout de {timeout_seconds}s."
 
-                import time
+                try:
+                    log_read_pos = _tail_wukong_log(
+                        log_path, log_read_pos, collection_id,
+                    )
+                except _FatalLlmError:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    raise ModelUnavailableError("construcción del grafo")
+
                 time.sleep(1)
 
         if process.returncode != 0:
